@@ -1,0 +1,95 @@
+import { Request, Response, NextFunction } from 'express';
+import { SaleService } from '../services/sale.service';
+
+const saleService = new SaleService();
+
+export class SaleController {
+  static async list(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const {
+        customerId,
+        cashSessionId,
+        documentTypeId,
+        warehouseId,
+        status,
+        search,
+        startDate,
+        endDate,
+        page,
+        limit,
+      } = req.query;
+
+      const filters: any = {
+        customerId: customerId ? String(customerId) : undefined,
+        cashSessionId: cashSessionId ? String(cashSessionId) : undefined,
+        documentTypeId: documentTypeId ? String(documentTypeId) : undefined,
+        warehouseId: warehouseId ? String(warehouseId) : undefined,
+        status: status ? String(status) : undefined,
+        search: search ? String(search) : undefined,
+        page: page ? Number(page) : undefined,
+        limit: limit ? Number(limit) : undefined,
+      };
+
+      if (startDate) filters.startDate = new Date(String(startDate));
+      if (endDate) filters.endDate = new Date(String(endDate));
+
+      const result = await saleService.list(businessId, filters);
+      return res.status(200).json({
+        success: true,
+        data: result.items,
+        pagination: {
+          total: result.total,
+          page: result.page,
+          limit: result.limit,
+          totalPages: result.totalPages,
+        },
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async findById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const item = await saleService.findOne(req.params.id, businessId);
+      return res.status(200).json({
+        success: true,
+        data: item,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async create(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      const item = await saleService.create(businessId, userId, req.body);
+      return res.status(201).json({
+        success: true,
+        data: item,
+        message: 'Venta registrada exitosamente',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async cancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      const item = await saleService.cancel(req.params.id, businessId, userId);
+      return res.status(200).json({
+        success: true,
+        data: item,
+        message: 'Venta anulada exitosamente con reversión de stock',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+}

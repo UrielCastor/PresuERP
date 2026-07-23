@@ -1,0 +1,596 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply antialiased font-sans bg-slate-50 text-slate-900 transition-colors duration-200;
+  }
+
+  /* Dark mode backgrounds */
+  .dark body {
+    @apply bg-slate-900 text-slate-100;
+  }
+}
+
+/* Glassmorphism utility classes */
+.glass {
+  background: rgba(255, 255, 255, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+}
+
+.dark .glass {
+  background: rgba(15, 23, 42, 0.7);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background-color: var(--text-muted);
+  border-radius: 9999px;
+  opacity: 0.6;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background-color: var(--text-secondary);
+}
+
+/* Global color tokens falling back to Blue Light theme */
+:root {
+  --background: #f8fafc;
+  --surface: #ffffff;
+  --surface-secondary: #f1f5f9;
+  --card: #ffffff;
+  --sidebar: #ffffff;
+  --header: #ffffff;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
+  --input-bg: #ffffff;
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.05);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0ea5e9;
+  --color-primary-600: #0284c7;
+  --color-primary-700: #0369a1;
+  --color-primary-800: #075985;
+  --color-primary-950: #032f30;
+}
+
+/* 1. Theme Light (Slate accent) */
+.theme-light {
+  --background: #f9fafb;
+  --surface: #ffffff;
+  --surface-secondary: #f3f4f6;
+  --card: #ffffff;
+  --sidebar: #f9fafb;
+  --header: #ffffff;
+  --border: #e5e7eb;
+  --text-primary: #111827;
+  --text-secondary: #4b5563;
+  --text-muted: #9ca3af;
+  --input-bg: #ffffff;
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #f8fafc;
+  --color-primary-100: #f1f5f9;
+  --color-primary-200: #e2e8f0;
+  --color-primary-300: #cbd5e1;
+  --color-primary-400: #94a3b8;
+  --color-primary-500: #64748b;
+  --color-primary-600: #475569;
+  --color-primary-700: #334155;
+  --color-primary-800: #1e293b;
+  --color-primary-950: #0f172a;
+}
+
+/* 2. Theme Dark */
+.theme-dark {
+  --background: #0B0F19;
+  --surface: #111827;
+  --surface-secondary: #1f2937;
+  --card: #1A2235;
+  --sidebar: #0F172A;
+  --header: #111827;
+  --border: #263244;
+  --text-primary: #F8FAFC;
+  --text-secondary: #CBD5E1;
+  --text-muted: #94A3B8;
+  --input-bg: #111827;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  --primary-foreground: #0B0F19;
+
+  --color-primary-50: #1f2937;
+  --color-primary-100: #374151;
+  --color-primary-200: #4b5563;
+  --color-primary-300: #9ca3af;
+  --color-primary-400: #d1d5db;
+  --color-primary-500: #f3f4f6;
+  --color-primary-600: #f9fafb;
+  --color-primary-700: #ffffff;
+  --color-primary-800: #ffffff;
+  --color-primary-950: #111827;
+}
+
+/* 3. Theme Blue */
+.theme-blue {
+  --background: #0B0F19;
+  --surface: #111827;
+  --surface-secondary: #1F2937;
+  --card: #1A2235;
+  --sidebar: #0F172A;
+  --header: #111827;
+  --border: #263244;
+  --text-primary: #F8FAFC;
+  --text-secondary: #cbd5e1;
+  --text-muted: #9ca3af;
+  --input-bg: #1f2937;
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
+  --primary-foreground: #0B0F19;
+
+  --color-primary-50: #082f49;
+  --color-primary-100: #0c4a6e;
+  --color-primary-200: #0369a1;
+  --color-primary-300: #0284c7;
+  --color-primary-400: #0ea5e9;
+  --color-primary-500: #38bdf8;
+  --color-primary-600: #7dd3fc;
+  --color-primary-700: #bae6fd;
+  --color-primary-800: #e0f2fe;
+  --color-primary-950: #f0f9ff;
+}
+
+/* 4. Theme Emerald */
+.theme-emerald {
+  --background: #f0faf5;
+  --surface: #ffffff;
+  --surface-secondary: #dcfce7;
+  --card: #ffffff;
+  --sidebar: #f0faf5;
+  --header: #ffffff;
+  --border: #a7f3d0;
+  --text-primary: #064e3b;
+  --text-secondary: #047857;
+  --text-muted: #10b981;
+  --input-bg: #ffffff;
+  --shadow: 0 2px 6px 0 rgba(16, 185, 129, 0.1);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #ecfdf5;
+  --color-primary-100: #d1fae5;
+  --color-primary-200: #a7f3d0;
+  --color-primary-300: #6ee7b7;
+  --color-primary-400: #34d399;
+  --color-primary-500: #10b981;
+  --color-primary-600: #059669;
+  --color-primary-700: #047857;
+  --color-primary-800: #065f46;
+  --color-primary-950: #022c22;
+}
+
+/* 5. Theme Purple */
+.theme-purple {
+  --background: #0d0518;
+  --surface: #170c2a;
+  --surface-secondary: #251442;
+  --card: #1d0f35;
+  --sidebar: #0a0413;
+  --header: #170c2a;
+  --border: #3a2066;
+  --text-primary: #f3e8ff;
+  --text-secondary: #d8b4fe;
+  --text-muted: #a855f7;
+  --input-bg: #170c2a;
+  --shadow: 0 4px 12px 0 rgba(168, 85, 247, 0.15);
+  --primary-foreground: #0d0518;
+
+  --color-primary-50: #2e0854;
+  --color-primary-100: #4a048a;
+  --color-primary-200: #581c87;
+  --color-primary-300: #7e22ce;
+  --color-primary-400: #9333ea;
+  --color-primary-500: #c084fc;
+  --color-primary-600: #d8b4fe;
+  --color-primary-700: #e9d5ff;
+  --color-primary-800: #f3e8ff;
+  --color-primary-950: #faf5ff;
+}
+
+/* 6. Theme Orange */
+.theme-orange {
+  --background: #0e0702;
+  --surface: #1e0f06;
+  --surface-secondary: #2f180a;
+  --card: #271408;
+  --sidebar: #0a0501;
+  --header: #1e0f06;
+  --border: #4c2810;
+  --text-primary: #ffedd5;
+  --text-secondary: #fdbb74;
+  --text-muted: #fb923c;
+  --input-bg: #1e0f06;
+  --shadow: 0 4px 12px 0 rgba(249, 115, 22, 0.15);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #431407;
+  --color-primary-100: #7c2d12;
+  --color-primary-200: #9a3412;
+  --color-primary-300: #c2410c;
+  --color-primary-400: #ea580c;
+  --color-primary-500: #f97316;
+  --color-primary-600: #fb923c;
+  --color-primary-700: #fdbb74;
+  --color-primary-800: #fed7aa;
+  --color-primary-950: #fff7ed;
+}
+
+/* 7. Theme Rose */
+.theme-rose {
+  --background: #0f020a;
+  --surface: #1b0514;
+  --surface-secondary: #2e0b23;
+  --card: #23081a;
+  --sidebar: #0b0106;
+  --header: #1b0514;
+  --border: #4c123b;
+  --text-primary: #ffe4e6;
+  --text-secondary: #fda4af;
+  --text-muted: #fb7185;
+  --input-bg: #1b0514;
+  --shadow: 0 4px 12px 0 rgba(244, 63, 94, 0.15);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #4c0519;
+  --color-primary-100: #881337;
+  --color-primary-200: #9f1239;
+  --color-primary-300: #be123c;
+  --color-primary-400: #e11d48;
+  --color-primary-500: #f43f5e;
+  --color-primary-600: #fb7185;
+  --color-primary-700: #fda4af;
+  --color-primary-800: #fecdd3;
+  --color-primary-950: #fff1f2;
+}
+
+/* 8. Theme Midnight */
+.theme-midnight {
+  --background: #040212;
+  --surface: #0b0826;
+  --surface-secondary: #14103c;
+  --card: #100b34;
+  --sidebar: #05031b;
+  --header: #0b0826;
+  --border: #221a5c;
+  --text-primary: #e0e0ff;
+  --text-secondary: #a6a3dc;
+  --text-muted: #7670ad;
+  --input-bg: #0b0826;
+  --shadow: 0 4px 12px 0 rgba(99, 102, 241, 0.2);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #1e1b4b;
+  --color-primary-100: #312e81;
+  --color-primary-200: #3730a3;
+  --color-primary-300: #4338ca;
+  --color-primary-400: #4f46e5;
+  --color-primary-500: #6366f1;
+  --color-primary-600: #818cf8;
+  --color-primary-700: #a5b4fc;
+  --color-primary-800: #c7d2fe;
+  --color-primary-950: #e0e7ff;
+}
+
+/* 9. Theme Forest */
+.theme-forest {
+  --background: #050c07;
+  --surface: #0c1a11;
+  --surface-secondary: #142d1d;
+  --card: #0f2216;
+  --sidebar: #07120a;
+  --header: #0c1a11;
+  --border: #1e442c;
+  --text-primary: #f0fdf4;
+  --text-secondary: #86efac;
+  --text-muted: #4ade80;
+  --input-bg: #0c1a11;
+  --shadow: 0 4px 12px 0 rgba(34, 197, 94, 0.2);
+  --primary-foreground: #050c07;
+
+  --color-primary-50: #052e16;
+  --color-primary-100: #14532d;
+  --color-primary-200: #166534;
+  --color-primary-300: #15803d;
+  --color-primary-400: #16a34a;
+  --color-primary-500: #22c55e;
+  --color-primary-600: #4ade80;
+  --color-primary-700: #86efac;
+  --color-primary-800: #bbf7d0;
+  --color-primary-950: #dcfce7;
+}
+
+/* 10. Theme Ocean */
+.theme-ocean {
+  --background: #010b14;
+  --surface: #031628;
+  --surface-secondary: #062540;
+  --card: #041c33;
+  --sidebar: #021120;
+  --header: #031628;
+  --border: #0f3e64;
+  --text-primary: #e0f2fe;
+  --text-secondary: #7dd3fc;
+  --text-muted: #38bdf8;
+  --input-bg: #031628;
+  --shadow: 0 4px 12px 0 rgba(6, 182, 212, 0.2);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #083344;
+  --color-primary-100: #164e63;
+  --color-primary-200: #155e75;
+  --color-primary-300: #0e7490;
+  --color-primary-400: #0891b2;
+  --color-primary-500: #06b6d4;
+  --color-primary-600: #22d3ee;
+  --color-primary-700: #67e8f9;
+  --color-primary-800: #a5f3fc;
+  --color-primary-950: #cffafe;
+}
+
+
+/* DENSITY CUSTOMIZATIONS */
+.density-compact td,
+.density-compact th {
+  padding-top: 0.375rem !important;
+  padding-bottom: 0.375rem !important;
+  height: auto !important;
+}
+.density-compact .px-6 {
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+.density-compact .py-4 {
+  padding-top: 0.5rem !important;
+  padding-bottom: 0.5rem !important;
+}
+.density-compact .py-5,
+.density-compact .py-6 {
+  padding-top: 0.75rem !important;
+  padding-bottom: 0.75rem !important;
+}
+.density-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 0.75rem !important;
+}
+.density-compact .gap-6 {
+  gap: 0.75rem !important;
+}
+
+.density-wide td,
+.density-wide th {
+  padding-top: 1.25rem !important;
+  padding-bottom: 1.25rem !important;
+}
+.density-wide .px-6 {
+  padding-left: 2rem !important;
+  padding-right: 2rem !important;
+}
+.density-wide .py-4 {
+  padding-top: 1.5rem !important;
+  padding-bottom: 1.5rem !important;
+}
+.density-wide .py-5,
+.density-wide .py-6 {
+  padding-top: 2rem !important;
+  padding-bottom: 2rem !important;
+}
+.density-wide .space-y-6 > :not([hidden]) ~ :not([hidden]) {
+  margin-top: 2rem !important;
+}
+.density-wide .gap-6 {
+  gap: 2rem !important;
+}
+
+/* BORDER RADIUS MODIFIERS */
+.borders-rounded,
+.borders-rounded * {
+  border-radius: 0.75rem !important;
+}
+.borders-rounded input, 
+.borders-rounded button, 
+.borders-rounded select, 
+.borders-rounded textarea {
+  border-radius: 0.5rem !important;
+}
+
+.borders-square,
+.borders-square * {
+  border-radius: 0px !important;
+}
+
+/* FONT SIZE CUSTOM OPTIONS */
+.font-size-small,
+.font-size-small button,
+.font-size-small p,
+.font-size-small a,
+.font-size-small td,
+.font-size-small span,
+.font-size-small input,
+.font-size-small select,
+.font-size-small textarea {
+  font-size: 0.8rem !important;
+}
+.font-size-small h1 { font-size: 1.5rem !important; }
+.font-size-small h2 { font-size: 1.2rem !important; }
+.font-size-small h3 { font-size: 1rem !important; }
+
+.font-size-large,
+.font-size-large button,
+.font-size-large p,
+.font-size-large a,
+.font-size-large td,
+.font-size-large span,
+.font-size-large input,
+.font-size-large select,
+.font-size-large textarea {
+  font-size: 1.075rem !important;
+}
+.font-size-large h1 { font-size: 2.25rem !important; }
+.font-size-large h2 { font-size: 1.85rem !important; }
+.font-size-large h3 { font-size: 1.45rem !important; }
+
+/* ANIMATION SWITCH OVERRIDE */
+.animations-disabled,
+.animations-disabled * {
+  transition: none !important;
+  animation: none !important;
+}
+
+
+/* REAL-TIME DYNAMIC STYLING OVERRIDES */
+body {
+  background-color: var(--background) !important;
+  color: var(--text-primary) !important;
+}
+
+aside {
+  background-color: var(--sidebar) !important;
+  border-color: var(--border) !important;
+}
+
+header {
+  background-color: var(--header) !important;
+  border-color: var(--border) !important;
+}
+
+/* Override Tailwind Background Classes */
+.bg-white,
+.dark\:bg-slate-900 {
+  background-color: var(--surface) !important;
+}
+
+.bg-slate-50,
+.bg-slate-950,
+.dark\:bg-slate-950 {
+  background-color: var(--background) !important;
+}
+
+.bg-slate-100,
+.bg-slate-800,
+.dark\:bg-slate-800 {
+  background-color: var(--surface-secondary) !important;
+}
+
+/* Background overlay classes on Card glass backgrounds */
+.bg-white\/70,
+.dark\:bg-slate-900\/70 {
+  background-color: var(--card) !important;
+  border-color: var(--border) !important;
+}
+
+/* Divider & Grid Borders */
+.border-slate-100,
+.border-slate-200,
+.border-slate-350,
+.border-slate-800,
+.border-slate-700,
+.dark\:border-slate-800 {
+  border-color: var(--border) !important;
+}
+
+/* Text Element Colors */
+.text-slate-900,
+.text-slate-805,
+.text-slate-800,
+.text-slate-100,
+.dark\:text-white,
+.dark\:text-slate-100 {
+  color: var(--text-primary) !important;
+}
+
+.text-slate-700,
+.text-slate-650,
+.text-slate-600,
+.text-slate-500,
+.dark\:text-slate-300,
+.dark\:text-slate-400 {
+  color: var(--text-secondary) !important;
+}
+
+.text-slate-400,
+.text-slate-450,
+.dark\:text-slate-500 {
+  color: var(--text-muted) !important;
+}
+
+/* Specific component overrides */
+input,
+select,
+textarea {
+  background-color: var(--input-bg) !important;
+  color: var(--text-primary) !important;
+  border-color: var(--border) !important;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  border-color: var(--color-primary-500) !important;
+  box-shadow: 0 0 0 1px var(--color-primary-500) !important;
+}
+
+input:disabled,
+select:disabled,
+textarea:disabled {
+  background-color: var(--surface-secondary) !important;
+  opacity: 0.65;
+}
+
+/* Overlay & portals dropdowns */
+.absolute.bg-white,
+.absolute.dark\:bg-slate-900 {
+  background-color: var(--surface) !important;
+  border-color: var(--border) !important;
+}
+
+/* Badges and tags overrides */
+.bg-primary-50,
+.dark\:bg-primary-950\/30,
+.dark\:bg-primary-950\/20 {
+  background-color: var(--surface-secondary) !important;
+  color: var(--color-primary-500) !important;
+}
+
+/* Secondary Button Hover fixes */
+.hover\:bg-slate-100:hover,
+.dark\:hover\:bg-slate-800\/60:hover {
+  background-color: var(--surface-secondary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Primary Button Typography Foreground overrides */
+.bg-primary-600,
+.hover\:bg-primary-700:hover,
+.focus\:ring-primary-500:focus,
+.text-white.bg-primary-600,
+button.bg-primary-600 {
+  color: var(--primary-foreground, #ffffff) !important;
+}

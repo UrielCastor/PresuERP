@@ -1,0 +1,833 @@
+import React, { useState, useEffect } from 'react';
+import { PageHeader } from '../components/ui/PageHeader';
+import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
+import { Input } from '../components/forms/Input';
+import { Button } from '../components/ui/Button';
+import { useAppearance } from '../contexts/AppearanceContext';
+import {
+  SettingsService,
+  BusinessWithSettings,
+  BusinessData,
+  BusinessSettingsData,
+  FiscalSettingsData,
+  POSSettingsData,
+  PrintSettingsData,
+  EmailSettingsData,
+  NumberSettingsData
+} from '../services/settings.service';
+import {
+  Building,
+  Settings as SettingsIcon,
+  Percent,
+  Printer,
+  Mail,
+  ListPlus,
+  Loader2,
+  AlertCircle,
+  CheckCircle2,
+  Palette
+} from 'lucide-react';
+
+export const Settings: React.FC = () => {
+  const { preferences, updatePreference } = useAppearance();
+  const [activeTab, setActiveTab] = useState<'business' | 'preferences' | 'fiscal' | 'pos' | 'print' | 'email' | 'numbers' | 'inventory' | 'appearance'>('business');
+  
+  // Status hooks
+  const [loading, setLoading] = useState<boolean>(true);
+  const [saving, setSaving] = useState<boolean>(false);
+  const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // Core settings state
+  const [settings, setSettings] = useState<BusinessWithSettings | null>(null);
+
+  // Section states
+  const [bizData, setBizData] = useState<BusinessData>({ name: '', email: '', phone: '', address: '' });
+  const [prefData, setPrefData] = useState<BusinessSettingsData>({ currencyCode: 'ARS', currencySymbol: '$', timezone: 'America/Argentina/Buenos_Aires', dateFormat: 'DD/MM/YYYY', language: 'es' });
+  const [fiscalData, setFiscalData] = useState<FiscalSettingsData>({ taxRegime: 'Responsable Inscripto', vatNumber: '', isLocalTaxEnabled: true, defaultTaxRate: 21 });
+  const [posData, setPOSData] = useState<POSSettingsData>({ isAutoCloseSessionEnabled: false, maxCashLimit: 0, printReceiptAfterSale: true, isDiscountAllowed: true, maxDiscountPercentage: 100 });
+  const [printData, setPrintData] = useState<PrintSettingsData>({ printerType: 'THERMAL', paperWidth: '80MM', fontName: 'Monospace', headerText: '', footerText: '', logoSize: 100 });
+  const [emailData, setEmailData] = useState<EmailSettingsData>({ smtpHost: '', smtpPort: 587, smtpUser: '', smtpPassword: '', senderEmail: '', senderName: '', secureConnection: true });
+  const [numberData, setNumberData] = useState<NumberSettingsData>({ currentPurchaseNumber: 1, currentSaleNumber: 1, currentTransferNumber: 1, currentInventoryNumber: 1 });
+
+  // Fetch settings on mount
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const fetchSettings = async () => {
+    try {
+      setLoading(true);
+      setError(null);
+      const data = await SettingsService.getSettings();
+      setSettings(data);
+
+      setBizData({
+        name: data.name,
+        email: data.email,
+        phone: data.phone,
+        address: data.address
+      });
+
+      if (data.settings) {
+        setPrefData({
+          ...data.settings,
+          allowNegativeStock: !!data.settings.allowNegativeStock,
+        });
+      }
+      if (data.fiscalSettings) {
+        setFiscalData({
+          taxRegime: data.fiscalSettings.taxRegime,
+          vatNumber: data.fiscalSettings.vatNumber,
+          isLocalTaxEnabled: data.fiscalSettings.isLocalTaxEnabled,
+          defaultTaxRate: Number(data.fiscalSettings.defaultTaxRate)
+        });
+      }
+      if (data.posSettings) {
+        setPOSData({
+          isAutoCloseSessionEnabled: data.posSettings.isAutoCloseSessionEnabled,
+          maxCashLimit: Number(data.posSettings.maxCashLimit),
+          printReceiptAfterSale: data.posSettings.printReceiptAfterSale,
+          isDiscountAllowed: data.posSettings.isDiscountAllowed,
+          maxDiscountPercentage: Number(data.posSettings.maxDiscountPercentage)
+        });
+      }
+      if (data.printSettings) setPrintData(data.printSettings);
+      if (data.emailSettings) {
+        setEmailData({
+          smtpHost: data.emailSettings.smtpHost,
+          smtpPort: data.emailSettings.smtpPort,
+          smtpUser: data.emailSettings.smtpUser,
+          smtpPassword: '', // Don't bind passwords directly for safety
+          senderEmail: data.emailSettings.senderEmail,
+          senderName: data.emailSettings.senderName,
+          secureConnection: data.emailSettings.secureConnection
+        });
+      }
+      if (data.numberSettings) setNumberData(data.numberSettings);
+
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Error al recuperar las configuraciones.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleSave = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSaving(true);
+    setError(null);
+    setSuccessMessage(null);
+
+    try {
+      if (activeTab === 'business') {
+        const updated = await SettingsService.updateBusiness(bizData);
+        setBizData(updated);
+        setSuccessMessage('Datos de empresa actualizados correctamente');
+      } else if (activeTab === 'preferences') {
+        const updated = await SettingsService.updatePreferences(prefData);
+        setPrefData({
+          ...updated,
+          allowNegativeStock: !!updated.allowNegativeStock,
+        });
+        setSuccessMessage('Preferencias y moneda actualizadas correctamente');
+      } else if (activeTab === 'inventory') {
+        const updated = await SettingsService.updatePreferences(prefData);
+        setPrefData({
+          ...updated,
+          allowNegativeStock: !!updated.allowNegativeStock,
+        });
+        setSuccessMessage('Configuraciones de inventario actualizadas correctamente');
+      } else if (activeTab === 'fiscal') {
+        const updated = await SettingsService.updateFiscal(fiscalData);
+        setFiscalData({
+          ...updated,
+          defaultTaxRate: Number(updated.defaultTaxRate)
+        });
+        setSuccessMessage('Datos fiscales de facturación actualizados correctamente');
+      } else if (activeTab === 'pos') {
+        const updated = await SettingsService.updatePOS(posData);
+        setPOSData({
+          ...updated,
+          maxCashLimit: Number(updated.maxCashLimit),
+          maxDiscountPercentage: Number(updated.maxDiscountPercentage)
+        });
+        setSuccessMessage('Reglas y parámetros de venta POS actualizadas correctamente');
+      } else if (activeTab === 'print') {
+        const updated = await SettingsService.updatePrint(printData);
+        setPrintData(updated);
+        setSuccessMessage('Ajustes de impresión térmica registrados');
+      } else if (activeTab === 'email') {
+        const updated = await SettingsService.updateEmail(emailData);
+        setEmailData({
+          ...updated,
+          smtpPassword: ''
+        });
+        setSuccessMessage('Credenciales del servidor SMTP actualizadas');
+      } else if (activeTab === 'numbers') {
+        const updated = await SettingsService.updateNumbers(numberData);
+        setNumberData(updated);
+        setSuccessMessage('Numeradores y contadores ajustados de forma consecutiva');
+      } else if (activeTab === 'appearance') {
+        setSuccessMessage('Ajustes de apariencia guardados correctamente');
+      }
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Ocurrió un error al guardar los cambios.');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex h-64 items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary-600" />
+      </div>
+    );
+  }
+
+  const tabs = [
+    { id: 'business', label: 'Empresa', icon: Building },
+    { id: 'preferences', label: 'Preferencias', icon: SettingsIcon },
+    { id: 'fiscal', label: 'Fiscal / Impuestos', icon: Percent },
+    { id: 'pos', label: 'Reglas POS', icon: SettingsIcon },
+    { id: 'print', label: 'Impresión', icon: Printer },
+    { id: 'email', label: 'Email / SMTP', icon: Mail },
+    { id: 'numbers', label: 'Numeradores', icon: ListPlus },
+    { id: 'inventory', label: 'Inventario', icon: SettingsIcon },
+    { id: 'appearance', label: 'Apariencia', icon: Palette },
+  ];
+
+  return (
+    <div>
+      <PageHeader
+        title="Configuración de Sistema"
+        subtitle="Modifica y resguarda los parámetros organizativos globales de tu tenant."
+      />
+
+      {error && (
+        <div className="mb-4 flex items-center gap-2 p-4 bg-red-50 dark:bg-red-950/20 text-red-700 dark:text-red-400 rounded-lg text-sm font-medium border border-red-100 dark:border-red-900/50">
+          <AlertCircle className="h-5 w-5 shrink-0" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {successMessage && (
+        <div className="mb-4 flex items-center gap-2 p-4 bg-green-50 dark:bg-green-950/20 text-green-700 dark:text-green-400 rounded-lg text-sm font-medium border border-green-100 dark:border-green-905/30">
+          <CheckCircle2 className="h-5 w-5 shrink-0" />
+          <span>{successMessage}</span>
+        </div>
+      )}
+
+      <div className="flex flex-col lg:flex-row gap-6">
+        {/* Navigation Sidebar */}
+        <aside className="w-full lg:w-64 shrink-0">
+          <nav className="flex flex-row lg:flex-col overflow-x-auto lg:overflow-visible gap-1 pb-3 lg:pb-0 border-b lg:border-b-0 border-slate-100 dark:border-slate-800">
+            {tabs.map((tab) => {
+              const Icon = tab.icon;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => {
+                    setActiveTab(tab.id as any);
+                    setError(null);
+                    setSuccessMessage(null);
+                  }}
+                  className={`flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
+                    activeTab === tab.id
+                      ? 'bg-primary-600 text-white shadow-sm'
+                      : 'text-slate-650 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+                  }`}
+                >
+                  <Icon className="h-4 w-4 shrink-0" />
+                  {tab.label}
+                </button>
+              );
+            })}
+          </nav>
+        </aside>
+
+        {/* Content Box */}
+        <main className="flex-1 max-w-3xl">
+          <Card>
+            <CardHeader className="border-b border-slate-100 dark:border-slate-800 pb-5">
+              <CardTitle className="capitalize">
+                Ajustes de {activeTab === 'pos' ? 'POS' : activeTab === 'numbers' ? 'numeradores' : activeTab === 'business' ? 'empresa' : activeTab === 'inventory' ? 'inventario' : activeTab}
+              </CardTitle>
+              <p className="text-xs text-slate-400 mt-1">
+                Asegúrate de completar todos los campos obligatorios antes de proceder a resguardar la información.
+              </p>
+            </CardHeader>
+            <CardContent className="mt-6">
+              <form onSubmit={handleSave} className="space-y-6">
+                
+                {/* 1. BUSINESS PROFILE FORM */}
+                {activeTab === 'business' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="name"
+                        label="Nombre / Razón Social"
+                        value={bizData.name}
+                        onChange={(e) => setBizData({ ...bizData, name: e.target.value })}
+                        required
+                      />
+                      <Input
+                        id="taxId"
+                        label="Identificación Impositiva (Tax ID / CUIT)"
+                        value={settings?.taxId || ''}
+                        disabled
+                        helperText="Inmutable por regulaciones fiscales del tenant"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="email"
+                        label="Email de Contacto"
+                        value={bizData.email || ''}
+                        onChange={(e) => setBizData({ ...bizData, email: e.target.value })}
+                      />
+                      <Input
+                        id="phone"
+                        label="Teléfono Comercial"
+                        value={bizData.phone || ''}
+                        onChange={(e) => setBizData({ ...bizData, phone: e.target.value })}
+                      />
+                    </div>
+                    <Input
+                      id="address"
+                      label="Dirección Física de Casa Central"
+                      value={bizData.address || ''}
+                      onChange={(e) => setBizData({ ...bizData, address: e.target.value })}
+                    />
+                  </div>
+                )}
+
+                {/* 2. USER PREFERENCES FORM */}
+                {activeTab === 'preferences' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="currencyCode"
+                        label="Código de Divisa (ej. ARS, USD)"
+                        value={String(prefData.currencyCode)}
+                        onChange={(e) => setPrefData({ ...prefData, currencyCode: e.target.value })}
+                        maxLength={3}
+                        required
+                      />
+                      <Input
+                        id="currencySymbol"
+                        label="Símbolo de Divisa (ej. $, U$S)"
+                        value={String(prefData.currencySymbol)}
+                        onChange={(e) => setPrefData({ ...prefData, currencySymbol: e.target.value })}
+                        maxLength={5}
+                        required
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Zona Horaria</label>
+                        <select
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-805 dark:text-slate-100 sm:text-sm"
+                          value={String(prefData.timezone)}
+                          onChange={(e) => setPrefData({ ...prefData, timezone: e.target.value })}
+                        >
+                          <option value="America/Argentina/Buenos_Aires">America/Argentina/Buenos_Aires</option>
+                          <option value="America/Santiago">America/Santiago</option>
+                          <option value="America/Mexico_City">America/Mexico_City</option>
+                          <option value="Europe/Madrid">Europe/Madrid</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Formato de Fecha</label>
+                        <select
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-805 dark:text-slate-100 sm:text-sm"
+                          value={String(prefData.dateFormat)}
+                          onChange={(e) => setPrefData({ ...prefData, dateFormat: e.target.value })}
+                        >
+                          <option value="DD/MM/YYYY">DD/MM/YYYY</option>
+                          <option value="MM/DD/YYYY">MM/DD/YYYY</option>
+                          <option value="YYYY-MM-DD">YYYY-MM-DD</option>
+                        </select>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 3. FISCAL SETTINGS FORM */}
+                {activeTab === 'fiscal' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Régimen Impositivo</label>
+                        <select
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-805 dark:text-slate-100 sm:text-sm"
+                          value={fiscalData.taxRegime}
+                          onChange={(e) => setFiscalData({ ...fiscalData, taxRegime: e.target.value })}
+                        >
+                          <option value="Responsable Inscripto">Responsable Inscripto</option>
+                          <option value="Monotributo">Monotributo</option>
+                          <option value="Exento">Responsable Exento</option>
+                        </select>
+                      </div>
+                      <Input
+                        id="vatNumber"
+                        label="Patente / Registro IVA"
+                        value={fiscalData.vatNumber || ''}
+                        onChange={(e) => setFiscalData({ ...fiscalData, vatNumber: e.target.value })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="defaultTaxRate"
+                        label="Alicuota de IVA General (%)"
+                        type="number"
+                        step="0.01"
+                        value={fiscalData.defaultTaxRate}
+                        onChange={(e) => setFiscalData({ ...fiscalData, defaultTaxRate: e.target.value })}
+                      />
+                      <div className="flex items-center gap-3 pt-6">
+                        <input
+                          type="checkbox"
+                          id="isLocalTaxEnabled"
+                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          checked={fiscalData.isLocalTaxEnabled}
+                          onChange={(e) => setFiscalData({ ...fiscalData, isLocalTaxEnabled: e.target.checked })}
+                        />
+                        <label htmlFor="isLocalTaxEnabled" className="text-sm font-medium text-slate-700 dark:text-slate-205">
+                          Habilitar cargos impositivos municipales adicionales
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 4. POS SETTINGS FORM */}
+                {activeTab === 'pos' && (
+                  <div className="space-y-4 font-sans">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="maxCashLimit"
+                        label="Límite Máximo de Efectivo en Caja Chica ($)"
+                        type="number"
+                        value={posData.maxCashLimit}
+                        onChange={(e) => setPOSData({ ...posData, maxCashLimit: e.target.value })}
+                      />
+                      <Input
+                        id="maxDiscountPercentage"
+                        label="Descuento Comercial Máximo Permitido (%)"
+                        type="number"
+                        min="0"
+                        max="100"
+                        value={posData.maxDiscountPercentage}
+                        onChange={(e) => setPOSData({ ...posData, maxDiscountPercentage: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="flex flex-col gap-3">
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="isAutoCloseSessionEnabled"
+                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          checked={posData.isAutoCloseSessionEnabled}
+                          onChange={(e) => setPOSData({ ...posData, isAutoCloseSessionEnabled: e.target.checked })}
+                        />
+                        <label htmlFor="isAutoCloseSessionEnabled" className="text-sm font-medium text-slate-700 dark:text-slate-205">
+                          Habilitar cierre cronológico/automático de caja diaria al fin de la jornada
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="printReceiptAfterSale"
+                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          checked={posData.printReceiptAfterSale}
+                          onChange={(e) => setPOSData({ ...posData, printReceiptAfterSale: e.target.checked })}
+                        />
+                        <label htmlFor="printReceiptAfterSale" className="text-sm font-medium text-slate-700 dark:text-slate-205">
+                          Disparar diálogo de impresión térmica automáticamente tras confirmarse la venta
+                        </label>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <input
+                          type="checkbox"
+                          id="isDiscountAllowed"
+                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          checked={posData.isDiscountAllowed}
+                          onChange={(e) => setPOSData({ ...posData, isDiscountAllowed: e.target.checked })}
+                        />
+                        <label htmlFor="isDiscountAllowed" className="text-sm font-medium text-slate-700 dark:text-slate-205">
+                          Habilitar descuentos manuales por parte del cajero
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 5. PRINT SETTINGS FORM */}
+                {activeTab === 'print' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Tipo de Impresora</label>
+                        <select
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-805 dark:text-slate-100 sm:text-sm"
+                          value={printData.printerType}
+                          onChange={(e) => setPrintData({ ...printData, printerType: e.target.value })}
+                        >
+                          <option value="THERMAL">Térmica Esc/POS</option>
+                          <option value="LASER">Láser Estándar</option>
+                          <option value="INKJET">Chorro de Tinta</option>
+                        </select>
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Ancho de Papel</label>
+                        <select
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-700 dark:bg-slate-805 dark:text-slate-100 sm:text-sm"
+                          value={printData.paperWidth}
+                          onChange={(e) => setPrintData({ ...printData, paperWidth: e.target.value })}
+                        >
+                          <option value="80MM">80 MM (Estándar POS)</option>
+                          <option value="58MM">58 MM (Mini térmico)</option>
+                          <option value="A4">Hoja A4</option>
+                        </select>
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="fontName"
+                        label="Fuente Tipográfica"
+                        value={printData.fontName}
+                        onChange={(e) => setPrintData({ ...printData, fontName: e.target.value })}
+                      />
+                      <Input
+                        id="logoSize"
+                        label="Escala del Logo (%)"
+                        type="number"
+                        value={printData.logoSize}
+                        onChange={(e) => setPrintData({ ...printData, logoSize: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Encabezado del Ticket</label>
+                        <textarea
+                          rows={2}
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-705 dark:bg-slate-800 dark:text-slate-100 sm:text-sm"
+                          value={printData.headerText || ''}
+                          onChange={(e) => setPrintData({ ...printData, headerText: e.target.value })}
+                        />
+                      </div>
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-sm font-medium text-slate-700 dark:text-slate-205">Pie del Ticket</label>
+                        <textarea
+                          rows={2}
+                          className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none dark:border-slate-705 dark:bg-slate-800 dark:text-slate-100 sm:text-sm"
+                          value={printData.footerText || ''}
+                          onChange={(e) => setPrintData({ ...printData, footerText: e.target.value })}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 6. EMAIL SMTP SETTINGS FORM */}
+                {activeTab === 'email' && (
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="smtpHost"
+                        label="Servidor SMTP (Host)"
+                        value={emailData.smtpHost || ''}
+                        onChange={(e) => setEmailData({ ...emailData, smtpHost: e.target.value })}
+                      />
+                      <Input
+                        id="smtpPort"
+                        label="Puerto"
+                        type="number"
+                        value={emailData.smtpPort || ''}
+                        onChange={(e) => setEmailData({ ...emailData, smtpPort: e.target.value ? Number(e.target.value) : null })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="smtpUser"
+                        label="Usuario SMTP"
+                        value={emailData.smtpUser || ''}
+                        onChange={(e) => setEmailData({ ...emailData, smtpUser: e.target.value })}
+                      />
+                      <Input
+                        id="smtpPassword"
+                        label="Contraseña SMTP"
+                        type="password"
+                        placeholder="Contraseña (desactualizada)"
+                        value={emailData.smtpPassword || ''}
+                        onChange={(e) => setEmailData({ ...emailData, smtpPassword: e.target.value })}
+                        helperText="Se conserva encriptada fuera del alcance del navegador"
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="senderEmail"
+                        label="Email Emisor"
+                        value={emailData.senderEmail || ''}
+                        onChange={(e) => setEmailData({ ...emailData, senderEmail: e.target.value })}
+                      />
+                      <Input
+                        id="senderName"
+                        label="Nombre Emisor"
+                        value={emailData.senderName || ''}
+                        onChange={(e) => setEmailData({ ...emailData, senderName: e.target.value })}
+                      />
+                    </div>
+                    <div className="flex items-center gap-3">
+                      <input
+                        type="checkbox"
+                        id="secureConnection"
+                        className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                        checked={emailData.secureConnection}
+                        onChange={(e) => setEmailData({ ...emailData, secureConnection: e.target.checked })}
+                      />
+                      <label htmlFor="secureConnection" className="text-sm font-medium text-slate-700 dark:text-slate-205">
+                        Utilizar conexión SSL/TLS segura obligatoria (Puerto 465)
+                      </label>
+                    </div>
+                  </div>
+                )}
+
+                {/* 7. NUMBER COUNTERS FORM */}
+                {activeTab === 'numbers' && (
+                  <div className="space-y-4">
+                    <p className="text-xs text-amber-600 bg-amber-50 dark:bg-amber-950/20 p-3 rounded-lg border border-amber-200 border-dashed">
+                      ⚠️ Precaución: Alterar estos números rompe la correlatividad numérica esperada de futuras facturas obligatorias de cara al fisco.
+                    </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="currentSaleNumber"
+                        label="Próximo Número de Venta / Factura"
+                        type="number"
+                        value={numberData.currentSaleNumber}
+                        onChange={(e) => setNumberData({ ...numberData, currentSaleNumber: Number(e.target.value) })}
+                      />
+                      <Input
+                        id="currentPurchaseNumber"
+                        label="Próximo Número de Orden de Compra"
+                        type="number"
+                        value={numberData.currentPurchaseNumber}
+                        onChange={(e) => setNumberData({ ...numberData, currentPurchaseNumber: Number(e.target.value) })}
+                      />
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <Input
+                        id="currentTransferNumber"
+                        label="Próximo Número de Remito de Transferencia"
+                        type="number"
+                        value={numberData.currentTransferNumber}
+                        onChange={(e) => setNumberData({ ...numberData, currentTransferNumber: Number(e.target.value) })}
+                      />
+                      <Input
+                        id="currentInventoryNumber"
+                        label="Próximo Número de Ajuste de Stock"
+                        type="number"
+                        value={numberData.currentInventoryNumber}
+                        onChange={(e) => setNumberData({ ...numberData, currentInventoryNumber: Number(e.target.value) })}
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {/* 8. INVENTORY SETTINGS FORM */}
+                {activeTab === 'inventory' && (
+                  <div className="space-y-4">
+                    <div className="flex flex-col gap-4">
+                      <div className="flex items-start gap-3 p-4 bg-slate-50 dark:bg-slate-900 rounded-lg">
+                        <input
+                          type="checkbox"
+                          id="allowNegativeStock"
+                          className="h-4 w-4 mt-1 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                          checked={!!prefData.allowNegativeStock}
+                          onChange={(e) => setPrefData({ ...prefData, allowNegativeStock: e.target.checked })}
+                        />
+                        <div className="flex flex-col">
+                          <label htmlFor="allowNegativeStock" className="text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer">
+                            Permitir stock negativo
+                          </label>
+                          <p className="text-xs text-slate-500 mt-1">
+                            Si está activado: Permite vender aunque el stock quede negativo.
+                          </p>
+                          <p className="text-xs text-slate-500 mt-0.5">
+                            Si está desactivado: Bloquea ventas cuando no exista stock suficiente.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* 9. APARIENCIA / CONFIGURACIONES VISUALES */}
+                {activeTab === 'appearance' && (
+                  <div className="space-y-6">
+                    {/* Theme Mode */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                        Tema de Color
+                      </label>
+                      <div className="grid grid-cols-2 gap-4">
+                        <button
+                          type="button"
+                          onClick={() => updatePreference('themeMode', 'light')}
+                          className={`flex items-center justify-center p-4 border rounded-xl transition-all ${
+                            preferences.themeMode === 'light'
+                              ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/20 text-primary-600'
+                              : 'border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-905'
+                          }`}
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-sm font-medium">Claro</span>
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => updatePreference('themeMode', 'dark')}
+                          className={`flex items-center justify-center p-4 border rounded-xl transition-all ${
+                            preferences.themeMode === 'dark'
+                              ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/20 text-primary-600'
+                              : 'border-slate-200 dark:border-slate-800 text-slate-650 dark:text-slate-350 hover:bg-slate-50 dark:hover:bg-slate-905'
+                          }`}
+                        >
+                          <div className="flex flex-col items-center gap-2">
+                            <span className="text-sm font-medium">Oscuro</span>
+                          </div>
+                        </button>
+                      </div>
+                    </div>
+
+                    {/* Accent Colors */}
+                    <div>
+                      <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100 mb-3">
+                        Paleta de Acentos
+                      </label>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                        {[
+                          { id: 'blue', label: 'Sky Blue', color: 'bg-blue-500' },
+                          { id: 'emerald', label: 'Esmeralda', color: 'bg-emerald-500' },
+                          { id: 'purple', label: 'Púrpura', color: 'bg-purple-500' },
+                          { id: 'orange', label: 'Naranja', color: 'bg-orange-500' },
+                          { id: 'rose', label: 'Rosado', color: 'bg-rose-500' },
+                          { id: 'midnight', label: 'Midnight', color: 'bg-indigo-600' },
+                          { id: 'forest', label: 'Forest', color: 'bg-green-700' },
+                          { id: 'ocean', label: 'Ocean', color: 'bg-cyan-600' },
+                          { id: 'light', label: 'Plata Claro', color: 'bg-slate-400' },
+                          { id: 'dark', label: 'Plata Oscuro', color: 'bg-slate-600' },
+                        ].map((thm) => (
+                          <button
+                            key={thm.id}
+                            type="button"
+                            onClick={() => updatePreference('accentColor', thm.id as any)}
+                            className={`flex items-center gap-3 p-3 border rounded-xl transition-all text-left ${
+                              preferences.accentColor === thm.id
+                                ? 'border-primary-500 bg-primary-50/50 dark:bg-primary-950/20 ring-1 ring-primary-500/20'
+                                : 'border-slate-200 dark:border-slate-800 hover:bg-slate-50 dark:hover:bg-slate-900'
+                            }`}
+                          >
+                            <span className={`h-4 w-4 rounded-full shrink-0 ${thm.color}`} />
+                            <span className="text-xs font-semibold text-slate-700 dark:text-slate-350 capitalize">{thm.label}</span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Density */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                          Densidad de la Interfaz
+                        </label>
+                        <select
+                          className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm p-2.5 focus:border-primary-500 focus:ring-primary-500 text-slate-800 dark:text-slate-200"
+                          value={preferences.density}
+                          onChange={(e) => updatePreference('density', e.target.value as any)}
+                        >
+                          <option value="compact">Compacta (Pequeña)</option>
+                          <option value="normal">Normal</option>
+                          <option value="wide">Amplia</option>
+                        </select>
+                      </div>
+
+                      {/* Borders */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                          Estilo de Bordes
+                        </label>
+                        <select
+                          className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm p-2.5 focus:border-primary-500 focus:ring-primary-500 text-slate-800 dark:text-slate-200"
+                          value={preferences.borders}
+                          onChange={(e) => updatePreference('borders', e.target.value as any)}
+                        >
+                          <option value="rounded">Redondeados</option>
+                          <option value="medium">Medios</option>
+                          <option value="square">Cuadrados (Sharp)</option>
+                        </select>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      {/* Font Size */}
+                      <div>
+                        <label className="block text-sm font-semibold text-slate-900 dark:text-slate-100 mb-2">
+                          Tamaño del Texto
+                        </label>
+                        <select
+                          className="w-full rounded-lg border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-sm p-2.5 focus:border-primary-500 focus:ring-primary-500 text-slate-800 dark:text-slate-200"
+                          value={preferences.fontSize}
+                          onChange={(e) => updatePreference('fontSize', e.target.value as any)}
+                        >
+                          <option value="small">Pequeño</option>
+                          <option value="normal">Normal</option>
+                          <option value="large">Grande</option>
+                        </select>
+                      </div>
+
+                      {/* Animations Toggle */}
+                      <div className="flex items-center gap-3 p-4 bg-slate-50/50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-800 rounded-xl mt-6">
+                        <input
+                          type="checkbox"
+                          id="animationsToggle"
+                          className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500 cursor-pointer"
+                          checked={preferences.animations}
+                          onChange={(e) => updatePreference('animations', e.target.checked)}
+                        />
+                        <div className="flex flex-col">
+                          <label htmlFor="animationsToggle" className="text-sm font-semibold text-slate-900 dark:text-slate-100 cursor-pointer">
+                            Activar Transiciones y Animaciones
+                          </label>
+                          <p className="text-xs text-slate-450 mt-0.5">
+                            Permite transiciones suaves entre vistas y clics de la interfaz.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Action button */}
+                <div className="pt-4 border-t border-slate-100 dark:border-slate-800 flex justify-end">
+                  <Button type="submit" variant="primary" disabled={saving}>
+                    {saving ? (
+                      <>
+                        <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                        Guardando...
+                      </>
+                    ) : (
+                      'Guardar Cambios'
+                    )}
+                  </Button>
+                </div>
+              </form>
+            </CardContent>
+          </Card>
+        </main>
+      </div>
+    </div>
+  );
+};
