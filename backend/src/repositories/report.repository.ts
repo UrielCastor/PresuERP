@@ -40,6 +40,18 @@ export class ReportRepository {
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
+    const thisMonthSales = await prisma.sale.aggregate({
+      where: {
+        businessId,
+        status: { not: 'CANCELLED' },
+        createdAt: { gte: startOfThisMonth, lte: now }
+      },
+      _sum: { totalAmount: true },
+      _count: { id: true }
+    });
+    const salesMonth = Number(thisMonthSales._sum.totalAmount || 0);
+    const salesCount = Number(thisMonthSales._count.id || 0);
+
     const validStatuses = ['APPROVED', 'RECEIVED', 'COMPLETED', 'PAID'];
 
     const thisMonthPurchases = await prisma.purchase.aggregate({
@@ -70,10 +82,13 @@ export class ReportRepository {
     }
 
     return {
-       stockValue,
-       cashBalance,
+       salesMonth,
+       salesCount,
        purchasesMonth,
-       purchasesTrend
+       purchasesTrend,
+       grossMargin: salesMonth - purchasesMonth,
+       stockValue,
+       cashBalance
     };
   }
 
@@ -85,6 +100,7 @@ export class ReportRepository {
 
     const baseWhere: any = {
       businessId,
+      status: { not: 'CANCELLED' },
       createdAt: { gte: start, lte: end }
     };
 
@@ -98,9 +114,45 @@ export class ReportRepository {
       _count: { id: true },
     });
 
-    const totalAmount = metrics._sum?.totalAmount || 0;
-    const totalSales = (metrics._count as any).id || 0;
-    const averageTicket = totalSales > 0 ? Number(totalAmount) / totalSales : 0;
+    const totalAmount = Number(metrics._sum?.totalAmount || 0);
+    const totalSales = Number(metrics._count?.id || 0);
+    const averageTicket = totalSales > 0 ? totalAmount / totalSales : 0;
+
+    const topProductsRaw: any[] = await prisma.$queryRaw`
+      SELECT p.name as "productName", p.sku, SUM(si.quantity) as quantity, SUM(si."totalAmount") as amount
+      FROM "sale_items" si
+      JOIN "sales" s ON s.id = si."saleId"
+      JOIN "products" p ON p.id = si."productId"
+      WHERE s."businessId" = ${businessId}
+        AND s.status != 'CANCELLED'
+        AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      GROUP BY p.id, p.name, p.sku
+      ORDER BY amount DESC
+      LIMIT 50
+    `;
+    const topProducts = topProductsRaw.map((tp) => ({
+      productName: tp.productName,
+      sku: tp.sku || 'S/S',
+      quantity: Number(tp.quantity || 0),
+      amount: Number(tp.amount || 0),
+    }));
+
+    const topCustomersRaw: any[] = await prisma.$queryRaw`
+      SELECT COALESCE(c.name, 'Consumidor Final') as "customerName", COUNT(s.id) as count, SUM(s."totalAmount") as amount
+      FROM "sales" s
+      LEFT JOIN "customers" c ON c.id = s."customerId"
+      WHERE s."businessId" = ${businessId}
+        AND s.status != 'CANCELLED'
+        AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      GROUP BY c.id, c.name
+      ORDER BY amount DESC
+      LIMIT 50
+    `;
+    const topCustomers = topCustomersRaw.map((tc) => ({
+      customerName: tc.customerName,
+      count: Number(tc.count || 0),
+      amount: Number(tc.amount || 0),
+    }));
 
     return {
       totalSales,
@@ -115,11 +167,12 @@ export class ReportRepository {
         SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as total
         FROM "sales"
         WHERE "businessId" = ${businessId}
+          AND status != 'CANCELLED'
           AND "createdAt" >= ${start} AND "createdAt" <= ${end}
         GROUP BY 1 ORDER BY 1
       `,
-      topProducts: [], // Architecture ready, to be implemented via join
-      topUsers: [] // Architecture ready
+      topProducts,
+      topCustomers
     };
   }
 
@@ -609,6 +662,93 @@ export class ReportRepository {
          sales: g._count._all,
          total: g._sum.totalAmount
       })).sort((a, b) => b.sales - a.sales),
+    };
+  }
+
+  async getAuditReport(businessId: string, filters: any) {
+    if (!businessId) throw new Error('businessId is mandatory for reporting');
+    
+    const page = Math.max(1, Number(filters?.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(filters?.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const where: any = { businessId };
+
+    if (filters?.userId) {
+      where.userId = filters.userId;
+    }
+
+    if (filters?.module && filters.module !== 'ALL') {
+      where.entityName = { contains: filters.module, mode: 'insensitive' };
+    }
+
+    if (filters?.action && filters.action !== 'ALL') {
+      where.actionType = { contains: filters.action, mode: 'insensitive' };
+    }
+
+    if (filters?.dateFrom || filters?.dateTo) {
+      where.createdAt = {};
+      if (filters.dateFrom) where.createdAt.gte = new Date(filters.dateFrom);
+      if (filters.dateTo) where.createdAt.lte = new Date(filters.dateTo);
+    }
+
+    if (filters?.search && filters.search.trim()) {
+      const q = filters.search.trim();
+      where.OR = [
+        { entityName: { contains: q, mode: 'insensitive' } },
+        { actionType: { contains: q, mode: 'insensitive' } },
+        { entityId: { contains: q, mode: 'insensitive' } },
+        { previousValues: { contains: q, mode: 'insensitive' } },
+        { newValues: { contains: q, mode: 'insensitive' } },
+        { user: { name: { contains: q, mode: 'insensitive' } } },
+        { user: { email: { contains: q, mode: 'insensitive' } } },
+      ];
+    }
+
+    const safeParse = (str?: string | null) => {
+      if (!str) return null;
+      try {
+        return JSON.parse(str);
+      } catch {
+        return str;
+      }
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.activityLog.findMany({
+        where,
+        include: {
+          user: { select: { id: true, name: true, email: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      prisma.activityLog.count({ where }),
+    ]);
+
+    return {
+      items: items.map(item => ({
+        id: item.id,
+        createdAt: item.createdAt,
+        user: item.user?.name || item.user?.email || 'Sistema',
+        userId: item.userId,
+        userEmail: item.user?.email,
+        module: item.entityName,
+        action: item.actionType,
+        entity: item.entityName,
+        entityId: item.entityId,
+        ipAddress: item.ipAddress,
+        userAgent: item.userAgent,
+        oldData: safeParse(item.previousValues),
+        newData: safeParse(item.newValues),
+      })),
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / limit) || 1,
+      },
     };
   }
 }

@@ -193,6 +193,10 @@ export class CashService {
   }
 
   async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) {
+    if (!data.concept || !data.concept.trim()) {
+      throw new BadRequestError('El motivo del movimiento es obligatorio.');
+    }
+
     if (data.amount <= 0) {
       throw new BadRequestError('El monto del movimiento debe ser mayor a cero.');
     }
@@ -204,6 +208,7 @@ export class CashService {
 
     const dbType = data.type === 'INCOME' ? 'IN' : 'OUT';
     const amountVariation = data.type === 'INCOME' ? data.amount : -data.amount;
+    const reason = data.concept.trim() + (data.notes ? ` - ${data.notes.trim()}` : '');
 
     return prisma.$transaction(async (tx: any) => {
       const movement = await this.cashRepo.createMovement({
@@ -211,7 +216,7 @@ export class CashService {
         cashSessionId: session.id,
         type: dbType,
         amount: data.amount,
-        reason: data.concept + (data.notes ? ` - ${data.notes}` : ''),
+        reason,
         referenceType: 'MANUAL',
         createdById: data.userId,
       }, tx);
@@ -224,8 +229,14 @@ export class CashService {
           userId: data.userId,
           entityName: 'CashMovement',
           entityId: movement.id,
-          actionType: `MANUAL_${data.type}`,
-          newValues: JSON.stringify({ amount: data.amount, type: data.type }),
+          actionType: data.type === 'INCOME' ? 'MANUAL_INCOME' : 'MANUAL_EXPENSE',
+          newValues: JSON.stringify({
+            amount: data.amount,
+            type: data.type,
+            reason,
+            concept: data.concept,
+            notes: data.notes,
+          }),
         }
       });
 

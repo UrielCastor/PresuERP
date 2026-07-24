@@ -55,4 +55,8 @@ export class ReportService {
     const { start, end } = parseDateRange(filters.dateFrom, filters.dateTo);
     return this.reportRepo.getUsersMetrics(businessId, start, end, filters);
   }
+
+  async getAuditReport(businessId: string, filters: any) {
+    return this.reportRepo.getAuditReport(businessId, filters);
+  }
 }

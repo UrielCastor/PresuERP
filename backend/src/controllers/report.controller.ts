@@ -100,6 +100,14 @@ export class ReportController {
     } catch (error) { next(error); }
   };
 
+  getAudit = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+       if (!req.user || !req.user.businessId) throw new AppError('Business ID is missing from Context', 400);
+       const data = await this.reportService.getAuditReport(req.user.businessId, req.query);
+       res.status(200).json({ success: true, data });
+    } catch (error) { next(error); }
+  };
+
   exportReport = async (req: Request, res: Response, next: NextFunction) => {
     try {
        const { report, type, dateFrom, dateTo } = req.body;

@@ -48,8 +48,8 @@ export const requirePermission = (permission: string) => {
 
     const { permissions, role } = req.user;
 
-    // Super Admin or general Admin can bypass if role match (or if permissions match)
-    if (role === 'Administrator') {
+    // Super Admin, Admin or Owner roles bypass permission checks
+    if (role && ['Administrator', 'Administrador', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'Owner'].includes(role)) {
       return next();
     }
 

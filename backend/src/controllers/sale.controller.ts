@@ -31,8 +31,14 @@ export class SaleController {
         limit: limit ? Number(limit) : undefined,
       };
 
-      if (startDate) filters.startDate = new Date(String(startDate));
-      if (endDate) filters.endDate = new Date(String(endDate));
+      if (startDate) {
+        const dateStr = String(startDate).split('T')[0];
+        filters.startDate = new Date(`${dateStr}T00:00:00.000`);
+      }
+      if (endDate) {
+        const dateStr = String(endDate).split('T')[0];
+        filters.endDate = new Date(`${dateStr}T23:59:59.999`);
+      }
 
       const result = await saleService.list(businessId, filters);
       return res.status(200).json({

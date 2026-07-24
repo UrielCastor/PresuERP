@@ -79,4 +79,6 @@ router.use('/cash', requireAuth, cashRoutes);
 
 router.use('/payment-adjustment-rules', requireAuth, paymentAdjustmentRuleRoutes);
 
+router.use('/reports', requireAuth, reportRoutes);
+
 export default router;

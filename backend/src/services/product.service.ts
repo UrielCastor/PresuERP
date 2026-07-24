@@ -200,13 +200,33 @@ export class ProductService {
     const parsedUpdated = this.parseProductPrices(updated);
     const parsedExisting = this.parseProductPrices(existing);
 
-    // Determine if pricing has been updated
-    const isPriceChange =
-      purchase !== oldPurchasePrice ||
-      sale !== oldSalePrice ||
-      margin !== oldProfitMargin;
+    // Determine specific change types for audit tracking
+    const isPriceChange = sale !== oldSalePrice;
+    const isCostChange = purchase !== oldPurchasePrice;
 
-    const actionType = isPriceChange ? 'PRICE_UPDATE' : 'UPDATE';
+    let actionType = 'PRODUCT_UPDATED';
+    if (isPriceChange) actionType = 'PRODUCT_PRICE_CHANGED';
+    else if (isCostChange) actionType = 'PRODUCT_COST_CHANGED';
+
+    const prevSnapshot = {
+      name: existing.name,
+      price: oldSalePrice,
+      cost: oldPurchasePrice,
+      categoryId: existing.categoryId,
+      supplierId: existing.supplierId,
+      ...parsedExisting,
+    };
+
+    const newSnapshot = {
+      name: updated.name,
+      price: sale,
+      cost: purchase,
+      categoryId: updated.categoryId,
+      supplierId: updated.supplierId,
+      reason: data.changeReason,
+      changeReason: data.changeReason,
+      ...parsedUpdated,
+    };
 
     await this.activityLogRepo.log({
       userId: operator.id,
@@ -214,8 +234,8 @@ export class ProductService {
       entityName: 'Product',
       entityId: id,
       actionType,
-      previousValues: JSON.stringify(parsedExisting),
-      newValues: JSON.stringify({ ...parsedUpdated, changeReason: data.changeReason }),
+      previousValues: JSON.stringify(prevSnapshot),
+      newValues: JSON.stringify(newSnapshot),
       ipAddress: ip || null,
       userAgent: userAgent || null,
     });
