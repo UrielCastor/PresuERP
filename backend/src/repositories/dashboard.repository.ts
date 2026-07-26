@@ -1,10 +1,14 @@
 import { prisma } from '../config/db';
+import { calculateSessionTotals } from '../services/cash.service';
 
 export class DashboardRepository {
   async getSalesTotal(businessId: string, startDate: Date, endDate: Date): Promise<number> {
     const aggregate = await prisma.sale.aggregate({
       _sum: {
         totalAmount: true,
+      },
+      _count: {
+        _all: true,
       },
       where: {
         businessId,
@@ -17,7 +21,19 @@ export class DashboardRepository {
         },
       },
     });
-    return Number(aggregate._sum.totalAmount || 0);
+
+    const totalSales = Number(aggregate._sum.totalAmount || 0);
+    const salesCount = aggregate._count._all || 0;
+
+    console.log('[DASHBOARD QUERY]', {
+      salesCount,
+      totalSales,
+      startDate,
+      endDate,
+      businessId
+    });
+
+    return totalSales;
   }
 
   async getNewCustomersCount(businessId: string, startDate: Date): Promise<number> {
@@ -75,6 +91,7 @@ export class DashboardRepository {
       },
       include: {
         cashRegister: true,
+        cashMovements: true,
       },
       orderBy: {
         openedAt: 'desc',
@@ -83,13 +100,12 @@ export class DashboardRepository {
 
     if (!activeSession) return null;
 
-    const openingBalance = Number(activeSession.openingBalance) || 0;
-    const transactions = Number(activeSession.cashTransactionsTotal) || 0;
+    const totals = calculateSessionTotals(activeSession);
 
     return {
       active: true,
       name: activeSession.cashRegister.name,
-      balance: openingBalance + transactions,
+      balance: totals.expectedCashBalance,
     };
   }
 

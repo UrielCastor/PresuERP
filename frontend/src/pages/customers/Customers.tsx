@@ -17,6 +17,7 @@ import {
 import { Customer, getCustomers, deleteCustomer } from '../../services/customer.service';
 import { CustomerFormModal } from './CustomerFormModal';
 import { CustomerDetailModal } from './CustomerDetailModal';
+import { Input, Select } from '../../components/ui';
 
 export const Customers: React.FC = () => {
   const [customers, setCustomers] = useState<Customer[]>([]);
@@ -108,14 +109,12 @@ export const Customers: React.FC = () => {
 
       {/* Filter and Search Bar */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col md:flex-row items-center justify-between gap-4">
-        <div className="relative w-full md:w-96">
-          <Search className="w-4 h-4 text-slate-400 absolute left-3.5 top-1/2 -translate-y-1/2" />
-          <input
-            type="text"
+        <div className="w-full md:w-96">
+          <Input
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por nombre, DNI, CUIT o email..."
-            className="w-full text-sm pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            leftIcon={Search}
           />
         </div>
 
@@ -123,15 +122,27 @@ export const Customers: React.FC = () => {
           <div className="flex items-center gap-2 text-xs font-semibold text-slate-500">
             <Filter className="w-4 h-4" /> Tipo:
           </div>
-          <select
+          <Select
             value={typeFilter}
             onChange={(e) => setTypeFilter(e.target.value)}
-            className="text-sm px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+            className="w-44"
           >
             <option value="">Todos los tipos</option>
             <option value="PERSON">Persona Física</option>
             <option value="COMPANY">Empresa</option>
-          </select>
+          </Select>
+
+          {(search.trim() || typeFilter) && (
+            <button
+              onClick={() => {
+                setSearch('');
+                setTypeFilter('');
+              }}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 transition-colors"
+            >
+              Limpiar filtros
+            </button>
+          )}
         </div>
       </div>
 

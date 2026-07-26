@@ -27,7 +27,7 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
     province: '',
     notes: '',
     allowCreditAccount: false,
-    creditLimit: 0,
+    creditLimit: '' as number | string,
   });
 
   const [loading, setLoading] = useState(false);
@@ -85,13 +85,16 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
     setLoading(true);
     setError(null);
 
-    console.log("1. [FRONTEND] Payload enviado:", formData);
+    const payload = {
+      ...formData,
+      creditLimit: Number(formData.creditLimit) || 0,
+    };
 
     try {
       if (customer) {
-        await updateCustomer(customer.id, formData);
+        await updateCustomer(customer.id, payload);
       } else {
-        await createCustomer(formData);
+        await createCustomer(payload);
       }
       onSuccess();
       onClose();
@@ -321,8 +324,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                   type="number"
                   min="0"
                   step="100"
-                  value={formData.creditLimit}
-                  onChange={(e) => setFormData({ ...formData, creditLimit: Number(e.target.value) })}
+                  value={formData.creditLimit === 0 ? '' : formData.creditLimit}
+                  onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
                   placeholder="0.00"
                   className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
                 />

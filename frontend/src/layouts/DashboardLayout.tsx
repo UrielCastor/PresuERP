@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
+import { useAppearance } from '../contexts/AppearanceContext';
 import {
   LayoutDashboard,
   Users,
@@ -23,7 +24,8 @@ import {
   Truck,
   Warehouse,
   Boxes,
-  ClipboardList
+  ClipboardList,
+  History
 } from 'lucide-react';
 import { menuConfig } from '../config/menu';
 import { Button } from '../components/ui/Button';
@@ -32,6 +34,7 @@ import { HelpButton } from '../components/ui/HelpButton';
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout, hasPermission } = useAuth();
   const { theme, toggleTheme } = useTheme();
+  const { preferences, updatePreference } = useAppearance();
   const location = useLocation();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -71,6 +74,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       case 'ShoppingCart': return <ShoppingCart className="h-5 w-5" />;
       case 'TrendingUp': return <TrendingUp className="h-5 w-5" />;
       case 'Settings': return <Settings className="h-5 w-5" />;
+      case 'ShieldCheck': return <ShieldCheck className="h-5 w-5" />;
+      case 'History': return <History className="h-5 w-5" />;
       default: return null;
     }
   };
@@ -321,6 +326,30 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           <div className="flex items-center ml-auto gap-4">
             {/* Global Help Button */}
             <HelpButton />
+
+            {/* Quick 15 Themes Selector */}
+            <select
+              value={preferences.accentColor}
+              onChange={(e) => updatePreference('accentColor', e.target.value as any)}
+              className="hidden sm:block text-xs font-semibold px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-primary-500 transition-all shadow-sm cursor-pointer"
+              title="Cambiar tema visual ERP"
+            >
+              <option value="light">☀️ Light</option>
+              <option value="dark">🌙 Dark Obsidian</option>
+              <option value="midnight">🌌 Midnight Indigo</option>
+              <option value="emerald">🟢 Emerald Mint</option>
+              <option value="ocean">🌊 Ocean Pacific</option>
+              <option value="sapphire">🔷 Sapphire Royal</option>
+              <option value="indigo">🔮 Linear Indigo</option>
+              <option value="purple">💜 Purple Amethyst</option>
+              <option value="rose">🌹 Rose Crimson</option>
+              <option value="coffee">☕ Coffee Espresso</option>
+              <option value="forest">🌲 Forest Pine</option>
+              <option value="sunset">🌅 Sunset Amber</option>
+              <option value="cyber">⚡ Cyber Cyan</option>
+              <option value="slate">🔘 Slate SaaS</option>
+              <option value="nord">❄️ Nord Polar</option>
+            </select>
 
             {/* Theme switcher */}
             <button

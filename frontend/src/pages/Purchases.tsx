@@ -97,9 +97,9 @@ export const Purchases: React.FC = () => {
   const [pendingFormData, setPendingFormData] = useState<PurchaseFormData | null>(null);
 
   const [selectedProductToAdd, setSelectedProductToAdd] = useState('');
-  const [qtyToAdd, setQtyToAdd] = useState(1);
-  const [costToAdd, setCostToAdd] = useState(0);
-  const [discToAdd, setDiscToAdd] = useState(0);
+  const [qtyToAdd, setQtyToAdd] = useState<number | string>(1);
+  const [costToAdd, setCostToAdd] = useState<number | string>('');
+  const [discToAdd, setDiscToAdd] = useState<number | string>('');
   const [searchVal, setSearchVal] = useState('');
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
@@ -429,15 +429,18 @@ export const Purchases: React.FC = () => {
 
   const handleAddItem = () => {
     if (!selectedProductToAdd) { alert('Selecciona un producto'); return; }
-    if (qtyToAdd <= 0) { alert('Cantidad debe ser > 0'); return; }
+    const numQty = Number(qtyToAdd) || 1;
+    const numCost = Number(costToAdd) || 0;
+    const numDisc = Number(discToAdd) || 0;
+    if (numQty <= 0) { alert('Cantidad debe ser > 0'); return; }
     if (fields.findIndex(f => f.productId === selectedProductToAdd) > -1) {
       alert('Este producto ya fue agregado. Modifica su cantidad en la lista.'); return;
     }
-    append({ productId: selectedProductToAdd, quantity: qtyToAdd, unitCost: costToAdd, discount: discToAdd });
+    append({ productId: selectedProductToAdd, quantity: numQty, unitCost: numCost, discount: numDisc });
     setSelectedProductToAdd('');
     setQtyToAdd(1);
-    setCostToAdd(0);
-    setDiscToAdd(0);
+    setCostToAdd('');
+    setDiscToAdd('');
     setSearchVal('');
   };
 
@@ -479,8 +482,8 @@ export const Purchases: React.FC = () => {
   const purchases = purchasesData?.data || [];
   const pagination = purchasesData?.pagination || { total: 0, totalPages: 1 };
 
-  const inputCls = 'w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-3 py-2 text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500';
-  const labelCls = 'block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1';
+  const inputCls = 'w-full rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 disabled:bg-slate-100 dark:disabled:bg-slate-800/60 disabled:text-slate-400 dark:disabled:text-slate-500 disabled:cursor-not-allowed disabled:border-slate-200 dark:disabled:border-slate-800 disabled:opacity-75 transition-all shadow-2xs [&::-webkit-calendar-picker-indicator]:cursor-pointer [&::-webkit-calendar-picker-indicator]:opacity-60 hover:[&::-webkit-calendar-picker-indicator]:opacity-100 dark:[&::-webkit-calendar-picker-indicator]:invert';
+  const labelCls = 'block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1';
 
   const getStatusLabel = (status: string) => {
     const labels: Record<string, string> = {
@@ -562,11 +565,11 @@ export const Purchases: React.FC = () => {
           />
         </div>
 
-        {/* Pago */}
+        {/* Estado de Pago */}
         <select
           value={paymentFilter}
           onChange={e => { setPaymentFilter(e.target.value); setPage(1); }}
-          className="rounded-lg border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary-500 transition-all font-medium text-slate-700 dark:text-slate-300 w-[140px]"
+          className="rounded-lg border border-slate-200 dark:border-slate-850 bg-slate-50/50 dark:bg-slate-950 px-3 py-1.5 text-sm outline-none focus:ring-2 focus:ring-primary-500 transition-all font-medium text-slate-700 dark:text-slate-300 max-w-[170px]"
         >
           <option value="">Todos los Pagos</option>
           <option value="PENDING">Pendiente</option>
@@ -585,7 +588,7 @@ export const Purchases: React.FC = () => {
               setPaymentFilter('');
               setStatusFilter('');
               setPage(1);
-              setQueryTriggered(false);
+              setQueryTriggered(true);
               setIsLast10Mode(false);
             }}
             className="text-xs font-semibold text-red-500 hover:text-red-650 dark:hover:text-red-400 transition-colors uppercase tracking-wider px-2 py-1"
@@ -615,62 +618,59 @@ export const Purchases: React.FC = () => {
 
           const colorTheme = {
             ALL: isSelected 
-              ? 'border-primary-500 bg-primary-500/5 text-primary-650 dark:text-primary-400 ring-2 ring-primary-500/20' 
-              : 'border-slate-205 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300',
+              ? 'border-slate-800 bg-slate-900 text-white dark:border-slate-700 dark:bg-slate-800' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-slate-300',
             DRAFT: isSelected 
-              ? 'border-yellow-500 bg-yellow-500/5 text-yellow-600 dark:text-yellow-400 ring-2 ring-yellow-500/20' 
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300',
+              ? 'border-amber-500 bg-amber-500 text-white' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-amber-300',
             PENDIENTE_APROBACION: isSelected 
-              ? 'border-amber-500 bg-amber-500/5 text-amber-600 dark:text-amber-400 ring-2 ring-amber-500/20' 
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300',
+              ? 'border-blue-500 bg-blue-500 text-white' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-blue-300',
             APPROVED: isSelected 
-              ? 'border-blue-500 bg-blue-500/5 text-blue-600 dark:text-blue-400 ring-2 ring-blue-500/20' 
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300',
+              ? 'border-indigo-500 bg-indigo-500 text-white' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-indigo-300',
             RECEIVED: isSelected 
-              ? 'border-green-500 bg-green-500/5 text-green-600 dark:text-green-400 ring-2 ring-green-500/20' 
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-700 dark:text-slate-300',
+              ? 'border-emerald-500 bg-emerald-500 text-white' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-emerald-300',
             CANCELLED: isSelected 
-              ? 'border-red-500 bg-red-500/5 text-red-650 dark:text-red-400 ring-2 ring-red-500/20' 
-              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-slate-300 dark:hover:border-slate-700 text-slate-750 dark:text-slate-300',
+              ? 'border-rose-500 bg-rose-500 text-white' 
+              : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:border-rose-300',
           }[statusKey];
 
           return (
             <button
               key={statusKey}
-              type="button"
               onClick={() => {
                 setStatusFilter(statusKey === 'ALL' ? '' : statusKey);
                 setPage(1);
+                setQueryTriggered(true);
+                setIsLast10Mode(false);
               }}
-              className={`rounded-xl border p-4 text-left shadow-sm transition-all focus:outline-none flex flex-col justify-between h-[86px] cursor-pointer ${colorTheme}`}
+              className={`p-3 rounded-xl border transition-all text-left flex flex-col justify-between cursor-pointer ${colorTheme}`}
             >
-              <span className="text-xs font-semibold text-slate-500 dark:text-slate-400 block truncate">{label}</span>
-              <div className="flex items-baseline justify-between w-full mt-2">
-                <span className="text-2xl font-extrabold tracking-tight text-slate-900 dark:text-white">{count}</span>
-                {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-primary-500" />}
+              <span className="text-xs font-semibold uppercase tracking-wider block opacity-90">{label}</span>
+              <div className="flex items-baseline justify-between mt-2">
+                <span className="text-xl font-bold font-mono">{count}</span>
+                {isSelected && <span className="h-1.5 w-1.5 rounded-full bg-white animate-pulse" />}
               </div>
             </button>
           );
         })}
       </div>
 
-      {/* Single Table */}
+      {/* Primary table list */}
       {!queryTriggered ? (
-        <div className="flex flex-col items-center justify-center p-8 md:p-12 text-center rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-sm max-w-2xl mx-auto w-full mt-6">
-          <div className="w-16 h-16 mb-5 rounded-full bg-slate-50 dark:bg-slate-800/50 flex items-center justify-center text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 shadow-sm select-none">
-            <ClipboardList className="w-8 h-8 text-primary-550 dark:text-primary-400" />
+        <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-8 text-center space-y-4 shadow-sm">
+          <div className="mx-auto w-12 h-12 rounded-full bg-primary-50 dark:bg-primary-950/50 flex items-center justify-center text-primary-600 dark:text-primary-400">
+            <ShoppingCart className="h-6 w-6" />
           </div>
-          
-          <h3 className="text-lg md:text-xl font-bold text-slate-890 dark:text-slate-100 mb-2">
-            Historial de Compras
-          </h3>
-          
-          <p className="text-sm text-slate-500 dark:text-slate-405 max-w-md mx-auto mb-6 leading-relaxed">
-            Todavía no has realizado ninguna búsqueda.<br />
-            Utiliza los filtros superiores para buscar compras o selecciona una de las siguientes opciones.
-          </p>
-          
-          <div className="flex flex-wrap gap-3 justify-center">
+          <div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">Módulo de Órdenes de Compra</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto mt-1">
+              Haga clic en uno de los accesos rápidos para cargar la lista de comprobantes registrados o ver las compras más recientes.
+            </p>
+          </div>
+          <div className="flex justify-center gap-3 pt-2">
             <Button
               variant="outline"
               onClick={() => {
@@ -759,41 +759,24 @@ export const Purchases: React.FC = () => {
                             </>
                           )}
 
-                          {p.status === 'PENDIENTE_APROBACION' && (
-                            <>
-                              {canApprove && (
-                                <button
-                                  onClick={() => {
-                                    if (window.confirm(`¿Aprobar la compra ${p.purchaseNumber}?`)) {
-                                      approveMutation.mutate(p.id);
-                                    }
-                                  }}
-                                  title="Aprobar"
-                                  className="p-1 px-2 text-green-600 bg-green-50 dark:bg-green-950/30 rounded"
-                                >
-                                  <ThumbsUp className="h-4 w-4" />
-                                </button>
-                              )}
-                              {canApprove && (
-                                <button
-                                  onClick={() => {
-                                    if (window.confirm(`¿Rechazar y devolver a Borrador la compra ${p.purchaseNumber}?`)) {
-                                      rejectMutation.mutate(p.id);
-                                    }
-                                  }}
-                                  title="Rechazar (Devolver a Borrador)"
-                                  className="p-1 px-2 text-amber-600 bg-amber-50 dark:bg-amber-955/35 rounded"
-                                >
-                                  <X className="h-4 w-4" />
-                                </button>
-                              )}
-                            </>
-                          )}
-
-                          {p.status === 'APPROVED' && (
+                          {p.status === 'PENDIENTE_APROBACION' && canApprove && (
                             <button
                               onClick={() => {
-                                if (window.confirm(`¿Confirmar recepción de mercadería para ${p.purchaseNumber}?`)) {
+                                if (window.confirm(`¿Aprobar orden de compra ${p.purchaseNumber}?`)) {
+                                  approveMutation.mutate(p.id);
+                                }
+                              }}
+                              title="Aprobar Orden"
+                              className="p-1 px-2 text-indigo-600 bg-indigo-50 dark:bg-indigo-950/30 rounded font-semibold text-xs flex items-center gap-1"
+                            >
+                              <ThumbsUp className="h-3.5 w-3.5" /> Aprobar
+                            </button>
+                          )}
+
+                          {p.status === 'APPROVED' && canUpdate && (
+                            <button
+                              onClick={() => {
+                                if (window.confirm(`¿Confirmar recepción e ingreso de mercadería para la compra ${p.purchaseNumber}?`)) {
                                   receiveMutation.mutate(p.id);
                                 }
                               }}
@@ -871,28 +854,35 @@ export const Purchases: React.FC = () => {
                         setValue('supplierId', newSupplierId);
                       }
                     }}
-                    className={inputCls}
+                    className={`${inputCls} ${!watchedSupplierId ? 'text-slate-500 dark:text-slate-400 font-normal' : 'text-slate-900 dark:text-white font-medium'}`}
                   >
-                    <option value="">Selecciona Proveedor</option>
-                    {(suppliers as any[]).map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+                    <option value="" className="text-slate-500 dark:text-slate-400">Selecciona Proveedor</option>
+                    {(suppliers as any[]).map(s => <option key={s.id} value={s.id} className="text-slate-900 dark:text-white">{s.name}</option>)}
                   </select>
                   {errors.supplierId && <p className="mt-1 text-xs text-red-600">{errors.supplierId.message}</p>}
                 </div>
                 <div>
                   <label className={labelCls}>Almacén de Ingreso *</label>
-                  <select {...register('warehouseId')} disabled={!!editingPurchase} className={`${inputCls} disabled:opacity-50`}>
-                    <option value="">Selecciona Almacén</option>
-                    {(warehouses as any[]).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+                  <select
+                    {...register('warehouseId')}
+                    disabled={!!editingPurchase}
+                    className={`${inputCls} ${!watch('warehouseId') ? 'text-slate-500 dark:text-slate-400 font-normal' : 'text-slate-900 dark:text-white font-medium'}`}
+                  >
+                    <option value="" className="text-slate-500 dark:text-slate-400">Selecciona Almacén</option>
+                    {(warehouses as any[]).map(w => <option key={w.id} value={w.id} className="text-slate-900 dark:text-white">{w.name}</option>)}
                   </select>
                   {errors.warehouseId && <p className="mt-1 text-xs text-red-600">{errors.warehouseId.message}</p>}
                 </div>
                 <div>
                   <label className={labelCls}>Tipo Comprobante *</label>
-                  <select {...register('documentType')} className={inputCls}>
-                    <option value="FACTURA">Factura</option>
-                    <option value="BOLETA">Boleta</option>
-                    <option value="GUIA_REMISION">Guía de Remisión</option>
-                    <option value="NOTA_CREDITO">Nota de Crédito</option>
+                  <select
+                    {...register('documentType')}
+                    className={`${inputCls} ${!watch('documentType') ? 'text-slate-500 dark:text-slate-400 font-normal' : 'text-slate-900 dark:text-white font-medium'}`}
+                  >
+                    <option value="FACTURA" className="text-slate-900 dark:text-white">Factura</option>
+                    <option value="BOLETA" className="text-slate-900 dark:text-white">Boleta</option>
+                    <option value="GUIA_REMISION" className="text-slate-900 dark:text-white">Guía de Remisión</option>
+                    <option value="NOTA_CREDITO" className="text-slate-900 dark:text-white">Nota de Crédito</option>
                   </select>
                 </div>
                 <div>
@@ -901,7 +891,7 @@ export const Purchases: React.FC = () => {
                 </div>
                 <div>
                   <label className={labelCls}>Fecha Esperada</label>
-                  <input type="date" {...register('expectedDate')} className={inputCls} />
+                  <input type="date" {...register('expectedDate')} className={`${inputCls} ${!watch('expectedDate') ? 'text-slate-500 dark:text-slate-400' : 'text-slate-900 dark:text-white'}`} />
                 </div>
                 <div>
                   <label className={labelCls}>Notas adicionales</label>
@@ -981,11 +971,11 @@ export const Purchases: React.FC = () => {
                   </div>
                   <div>
                     <label className={labelCls}>Cantidad</label>
-                    <input type="number" min={1} value={qtyToAdd} onChange={e => setQtyToAdd(Number(e.target.value))} className={inputCls} />
+                    <input type="number" min={1} value={qtyToAdd || ''} onChange={e => setQtyToAdd(e.target.value)} placeholder="1" className={inputCls} />
                   </div>
                   <div>
                     <label className={labelCls}>Costo Unit.</label>
-                    <input type="number" step="0.01" min={0} value={costToAdd} onChange={e => setCostToAdd(Number(e.target.value))} className={inputCls} />
+                    <input type="number" step="0.01" min={0} value={costToAdd || ''} onChange={e => setCostToAdd(e.target.value)} placeholder="0.00" className={inputCls} />
                   </div>
                   <div>
                     <Button type="button" onClick={handleAddItem} className="w-full" disabled={!watchedSupplierId}><Plus className="h-4 w-4 mr-1" />Agregar</Button>

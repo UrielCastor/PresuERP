@@ -68,23 +68,42 @@ export class SaleService {
       }[];
     }
   ) {
-    return prisma.$transaction(async (tx) => {
-      // 0. Validar la sesión de caja obligatoria (Regla de negocio: Sin caja no hay venta)
-      if (!data.cashSessionId) {
-        throw new BadRequestError('Es obligatorio tener una sesión de caja abierta para registrar una venta.');
-      }
+    console.log('[SALE CREATE]', {
+      businessId,
+      cashSessionIdRecibido: data.cashSessionId,
+      paymentMethod: (data as any).paymentMethod || data.payments?.[0]?.details,
+      totalAmount: data.totalAmount,
+    });
 
-      const activeSession = await tx.cashSession.findFirst({
-        where: {
-          id: data.cashSessionId,
-          businessId,
-          status: 'OPEN',
+    const createdSale = await prisma.$transaction(async (tx) => {
+      // 0. Resolver y Validar la sesión de caja obligatoria (Regla de negocio: Sin caja no hay venta)
+      let targetCashSessionId = data.cashSessionId;
+      if (!targetCashSessionId) {
+        const activeSession = await tx.cashSession.findFirst({
+          where: { businessId, status: 'OPEN', openedById: userId },
+          orderBy: { openedAt: 'desc' }
+        }) || await tx.cashSession.findFirst({
+          where: { businessId, status: 'OPEN' },
+          orderBy: { openedAt: 'desc' }
+        });
+
+        if (!activeSession) {
+          throw new BadRequestError('Es obligatorio tener una sesión de caja abierta para registrar una venta.');
         }
-      });
+        targetCashSessionId = activeSession.id;
+      } else {
+        const activeSession = await tx.cashSession.findFirst({
+          where: { id: targetCashSessionId, businessId, status: 'OPEN' }
+        });
 
-      if (!activeSession) {
-        throw new BadRequestError('La sesión de caja asignada no es válida o ya fue cerrada. Operación cancelada.');
+        if (!activeSession) {
+          throw new BadRequestError('La sesión de caja asignada no es válida o ya fue cerrada. Operación cancelada.');
+        }
       }
+
+      console.log('[SALE CASH SESSION]', {
+        resolvedCashSessionId: targetCashSessionId
+      });
 
       // 1. Validar el almacén
       const warehouse = await tx.warehouse.findFirst({
@@ -117,7 +136,9 @@ export class SaleService {
 
       // Cálculo y Validación Estricta del Descuento
       const discountType = data.discountType === 'PERCENTAGE' ? 'PERCENTAGE' : 'FIXED';
-      const rawDiscountValue = Number(data.discountValue ?? data.discountAmount ?? 0);
+      const rawDiscountValue = (data.discountValue !== undefined && data.discountValue !== null && Number(data.discountValue) > 0)
+        ? Number(data.discountValue)
+        : Number(data.discountAmount || 0);
 
       if (rawDiscountValue < 0) {
         throw new BadRequestError('El valor del descuento no puede ser negativo.');
@@ -136,7 +157,9 @@ export class SaleService {
 
       // Cálculo y Validación Estricta del Recargo
       const surchargeType = (data.surchargeType === 'PERCENTAGE' || data.surchargeType === 'FIXED') ? data.surchargeType : 'NONE';
-      const rawSurchargeValue = Number(data.surchargeValue ?? data.surchargeAmount ?? 0);
+      const rawSurchargeValue = (data.surchargeValue !== undefined && data.surchargeValue !== null && Number(data.surchargeValue) > 0)
+        ? Number(data.surchargeValue)
+        : Number(data.surchargeAmount || 0);
 
       if (rawSurchargeValue < 0) {
         throw new BadRequestError('El valor del recargo no puede ser negativo.');
@@ -172,14 +195,31 @@ export class SaleService {
       const processedPayments = [];
       let creditAccountPaymentTotal = 0;
 
-      if (data.payments && data.payments.length > 0) {
-        for (const p of data.payments) {
+      console.log('[CASH DEBUG] Petición de venta recibida:', {
+        paymentMethod: (data as any).paymentMethod,
+        paymentsLength: data.payments?.length || 0,
+        cashSessionId: data.cashSessionId,
+        totalAmount: data.totalAmount,
+      });
+
+      let rawPayments = (data.payments && data.payments.length > 0)
+        ? data.payments
+        : (data as any).paymentMethod
+          ? [{ amount: data.totalAmount, details: (data as any).paymentMethod }]
+          : [];
+
+      if (rawPayments.length === 0 && (data.status || 'COMPLETED') === 'COMPLETED' && data.totalAmount > 0) {
+        rawPayments = [{ amount: data.totalAmount, details: 'CASH' }];
+      }
+
+      if (rawPayments.length > 0) {
+        for (const p of rawPayments) {
           const pmCode = normalizePaymentMethodCode(p.details);
           if (pmCode === 'CREDIT_ACCOUNT') {
             creditAccountPaymentTotal += Number(p.amount || 0);
           }
 
-          let pmId = p.paymentMethodId;
+          let pmId = (p as any).paymentMethodId;
           if (!pmId) {
             let pmType = 'CASH';
             if (pmCode === 'MERCADO_PAGO') pmType = 'DIGITAL_WALLET';
@@ -215,7 +255,7 @@ export class SaleService {
           processedPayments.push({
             paymentMethodId: pmId,
             amount: p.amount,
-            transactionReference: p.transactionReference,
+            transactionReference: (p as any).transactionReference,
             details: p.details || pmCode,
             pmCode,
           });
@@ -268,15 +308,28 @@ export class SaleService {
         }
       }
 
+      const isPendingMp = processedPayments.some(p => p.pmCode === 'MERCADO_PAGO') || data.status === 'PENDING';
+      const initialStatus = isPendingMp ? 'PENDING' : (data.status || 'COMPLETED');
+      const initialPaymentStatus = isPendingMp ? 'PENDING' : 'PAID';
+
+      console.log('[CASH TRACE 2] Antes de crear la venta en DB', {
+        businessId,
+        cashSessionId: data.cashSessionId,
+        status: initialStatus,
+        paymentStatus: initialPaymentStatus,
+        processedPaymentsCount: processedPayments.length,
+      });
+
       const sale = await this.saleRepo.create(
         {
           businessId,
           customerId: data.customerId,
-          cashSessionId: data.cashSessionId,
+          cashSessionId: targetCashSessionId,
           documentTypeId: docType.id,
           documentSeriesId: data.documentSeriesId,
           documentNumber: saleNumber,
-          status: data.status || 'COMPLETED', // Status transaccional por defecto para ventas POS rápidas
+          status: initialStatus,
+          paymentStatus: initialPaymentStatus,
           subtotal: calculatedSubtotal,
           discountType,
           discountValue: rawDiscountValue,
@@ -304,11 +357,21 @@ export class SaleService {
               amount: p.amount,
               transactionReference: p.transactionReference,
               details: p.details,
+              provider: p.pmCode === 'MERCADO_PAGO' ? 'MERCADO_PAGO' : undefined,
+              status: isPendingMp ? 'PENDING' : 'APPROVED',
             })),
           } : undefined,
         },
         tx
       );
+
+      console.log('[REAL POS SALE]', {
+        saleId: sale.id,
+        businessId,
+        cashSessionId: sale.cashSessionId,
+        paymentMethod: (data as any).paymentMethod || data.payments?.[0]?.details,
+        totalAmount: Number(sale.totalAmount)
+      });
 
       // 5. Modificar stock lógico / Kardex a través del servicio integrado interno
       for (const item of data.items) {
@@ -334,6 +397,12 @@ export class SaleService {
       }
 
       // 6. Impactar pagos transaccionales (Caja o Cuenta Corriente)
+      console.log('[CASH DEBUG] Evaluando bloque de pagos transaccionales:', {
+        saleStatus: sale.status,
+        processedPaymentsLength: processedPayments.length,
+        cashSessionId: sale.cashSessionId,
+      });
+
       if (sale.status === 'COMPLETED' && processedPayments.length > 0) {
         for (const payment of processedPayments) {
            if (payment.pmCode === 'CREDIT_ACCOUNT' && data.customerId) {
@@ -359,12 +428,19 @@ export class SaleService {
                  createdById: userId,
                }
              });
-           } else if (sale.cashSessionId) {
-             // Métodos de pago físicos impactan la Caja de la sesión
-             await tx.cashMovement.create({
+           } else if (targetCashSessionId) {
+             console.log('[CASH MOVEMENT CREATE]', {
+               cashSessionId: targetCashSessionId,
+               amount: payment.amount,
+               type: 'IN',
+               referenceType: 'SALE',
+               paymentMethod: payment.pmCode
+             });
+
+             const mov = await tx.cashMovement.create({
                data: {
                  businessId,
-                 cashSessionId: sale.cashSessionId,
+                 cashSessionId: targetCashSessionId,
                  createdById: userId,
                  paymentMethodId: payment.paymentMethodId,
                  paymentMethod: payment.pmCode,
@@ -375,15 +451,17 @@ export class SaleService {
                  reason: `Cobro de venta ${docType.code}-${saleNumber} (${payment.details || payment.pmCode})`,
                }
              });
-             
-             await tx.cashSession.update({
-               where: { id: sale.cashSessionId },
-               data: {
-                 cashTransactionsTotal: { increment: payment.amount }
-               }
+
+             console.log('[CASH MOVEMENT GENERATED]', {
+               id: mov.id,
+               cashSessionId: mov.cashSessionId,
+               referenceId: mov.referenceId,
+               amount: Number(mov.amount)
              });
            }
         }
+      } else {
+        console.log('[CASH DEBUG] OMITIDO: El bloque de pagos NO se ejecutó porque status !== COMPLETED o processedPayments.length === 0');
       }
 
       // 7. Generar log de auditoría
@@ -406,6 +484,19 @@ export class SaleService {
 
       return sale;
     }); // End $transaction
+
+    // Intentar emisión de Factura ARCA en segundo plano si está activada
+    try {
+      const { FiscalService } = await import('./fiscal.service');
+      const fiscalInvoice = await FiscalService.emitInvoiceForSale(businessId, createdSale.id);
+      if (fiscalInvoice) {
+        (createdSale as any).electronicInvoice = fiscalInvoice;
+      }
+    } catch (fiscalErr: any) {
+      console.warn(`[ARCA Invoicing Warning] No se pudo autorizar factura automática para venta ${createdSale.id}:`, fiscalErr.message);
+    }
+
+    return createdSale;
   }
 
   async cancel(id: string, businessId: string, userId: string) {
@@ -467,13 +558,6 @@ export class SaleService {
                referenceType: 'SALE_REFUND',
                referenceId: sale.id,
                reason: `Anulación de venta ${sale.documentType.code}-${sale.documentNumber} (${payment.details || pmCode})`,
-             }
-           });
-           
-           await tx.cashSession.update({
-             where: { id: sale.cashSessionId },
-             data: {
-               cashTransactionsTotal: { decrement: payment.amount }
              }
            });
         }

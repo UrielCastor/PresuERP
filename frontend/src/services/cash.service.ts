@@ -8,7 +8,6 @@ export const cashApi = {
 
   getActiveSession: async () => {
     const { data } = await api.get('/cash/active');
-    console.log('[CAJA] Datos recibidos', data);
     return data.data;
   },
 

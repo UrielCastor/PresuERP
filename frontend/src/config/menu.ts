@@ -58,7 +58,6 @@ export const menuConfig: MenuItem[] = [
         iconName: 'Boxes',
         permission: 'stocks:read',
       },
-
       {
         name: 'Compras',
         href: '/purchases',
@@ -82,7 +81,7 @@ export const menuConfig: MenuItem[] = [
   {
     name: 'Caja',
     href: '/cash',
-    iconName: 'Building', // Reusing an existing icon
+    iconName: 'Building',
     permission: 'cash:view',
   },
   {
@@ -95,18 +94,24 @@ export const menuConfig: MenuItem[] = [
     name: 'Configuración',
     iconName: 'Settings',
     children: [
-       {
-          name: 'Empresa',
-          href: '/settings/company',
-          iconName: 'Building2',
-          permission: 'settings:read',
-       },
-       {
-          name: 'Sistema',
-          href: '/settings',
-          iconName: 'Settings',
-          permission: 'settings:read',
-       }
-    ]
+      {
+        name: 'Empresa',
+        href: '/settings/company',
+        iconName: 'Building2',
+        permission: 'settings:read',
+      },
+      {
+        name: 'Sistema',
+        href: '/settings',
+        iconName: 'Settings',
+        permission: 'settings:read',
+      },
+      {
+        name: 'Auditoría del Sistema',
+        href: '/system/audit',
+        iconName: 'History',
+        permission: 'AUDIT_VIEW',
+      },
+    ],
   },
 ];

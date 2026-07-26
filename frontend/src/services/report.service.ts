@@ -26,6 +26,11 @@ export class ReportService {
     return response.data.data;
   }
 
+  static async getStock(params: any = {}) {
+    const response = await api.get('/reports/stock', { params });
+    return response.data.data;
+  }
+
   static async getKardex(params: any = {}) {
     const response = await api.get('/reports/kardex', { params });
     return response.data.data;
@@ -48,6 +53,11 @@ export class ReportService {
 
   static async getUsers(params: any = {}) {
     const response = await api.get('/reports/users', { params });
+    return response.data.data;
+  }
+
+  static async getAudit(params: any = {}) {
+    const response = await api.get('/reports/audit', { params });
     return response.data.data;
   }
 

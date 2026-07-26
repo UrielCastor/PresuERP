@@ -307,6 +307,19 @@ export const Products: React.FC = () => {
             <option value="DRAFT">Borrador</option>
           </select>
 
+          {(searchTerm.trim() || categoryFilter !== 'ALL' || statusFilter !== 'ALL') && (
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setCategoryFilter('ALL');
+                setStatusFilter('ALL');
+              }}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 transition-colors"
+            >
+              Limpiar filtros
+            </button>
+          )}
+
           <div className="text-xs text-slate-500 dark:text-slate-400 pl-2">
             Total: {filteredProducts.length} productos
           </div>
@@ -692,11 +705,13 @@ export const Products: React.FC = () => {
                     }}
                     className="w-full mb-2 px-3.5 py-2.5 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-sm text-slate-700 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
                   >
-                    <option value="">Selecciona un motivo</option>
-                    <option value="Actualización de precio">Actualización de precio</option>
+                    <option value="">Selecciona un motivo (*obligatorio)</option>
+                    <option value="Aumento proveedor">Aumento proveedor</option>
+                    <option value="Corrección de precio">Corrección de precio</option>
+                    <option value="Oferta">Oferta</option>
                     <option value="Cambio de proveedor">Cambio de proveedor</option>
-                    <option value="Corrección de datos">Corrección de datos</option>
-                    <option value="Actualización de descripción">Actualización de descripción</option>
+                    <option value="Aumento de costo">Aumento de costo</option>
+                    <option value="Ajuste de stock mínimo">Ajuste de stock mínimo</option>
                     <option value="custom">Otro motivo (escribir)</option>
                   </select>
                   <input

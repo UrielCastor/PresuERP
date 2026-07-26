@@ -23,11 +23,20 @@ import { paymentAdjustmentRuleService, PaymentAdjustmentRule } from '../services
 import {
   Building, Settings as SettingsIcon, Percent, Printer, Mail, ListPlus,
   Loader2, AlertCircle, CheckCircle2, Palette, Users, Package, Store,
-  ShoppingCart, Shield, Activity, Share2, Award, Banknote, Calendar, Zap, CreditCard, Clock, Globe, Fingerprint, History, Layers,
+  ShoppingCart, Shield, ShieldCheck, Activity, Share2, Award, Banknote, Calendar, Zap, CreditCard, Clock, Globe, Fingerprint, History, Layers,
   Plus, Trash2, Edit2, X
 } from 'lucide-react';
 
+import { useSearchParams } from 'react-router-dom';
+import { useAuth } from '../contexts/AuthContext';
+import { FiscalSettings } from './FiscalSettings';
+import { FiscalService, FiscalConfigData } from '../services/fiscal.service';
+
 export const Settings: React.FC = () => {
+  const { user, hasPermission } = useAuth();
+  const canViewAudit =
+    Boolean(user?.role && ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'Administrator', 'Administrador', 'Owner'].includes(user.role)) ||
+    hasPermission('reports:audit');
   const { preferences, updatePreference } = useAppearance();
   
   const [loading, setLoading] = useState<boolean>(true);
@@ -52,6 +61,19 @@ export const Settings: React.FC = () => {
   const [selectedCycles, setSelectedCycles] = useState<Record<string, string>>({}); // planId -> selectedCycle
   const [payingPlanPrice, setPayingPlanPrice] = useState<string | null>(null); // spinner state
   const [activeSection, setActiveSection] = useState('general');
+  const [searchParams] = useSearchParams();
+  const [arcaConfig, setArcaConfig] = useState<FiscalConfigData | null>(null);
+
+  useEffect(() => {
+    const section = searchParams.get('section') || searchParams.get('tab');
+    if (section) {
+      setActiveSection(section);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
+    FiscalService.getConfig().then(cfg => setArcaConfig(cfg)).catch(() => {});
+  }, [activeSection]);
 
   // Integrations states
   const [isConfiguringMP, setIsConfiguringMP] = useState<boolean>(false);
@@ -405,7 +427,6 @@ export const Settings: React.FC = () => {
       { id: 'appearance', label: 'Apariencia', icon: Palette },
       { id: 'security', label: 'Seguridad', icon: Shield },
       { id: 'integrations', label: 'Integraciones', icon: Share2 },
-      { id: 'audit', label: 'Auditoría', icon: History },
     ]},
     { label: 'Administración', items: [
       { id: 'license', label: 'Licencia', icon: Award },
@@ -553,23 +574,8 @@ export const Settings: React.FC = () => {
               </div>
             ) },
             { id: 'fiscal', label: 'Fiscal', content: (
-              <div className="space-y-6 mt-6">
-                <Card><CardHeader><CardTitle>Información Fiscal</CardTitle></CardHeader><CardContent className="space-y-4 pt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    <Input id="vat" label="CUIT / Documento Fiscal" value={fiscalData.vatNumber || ''} onChange={e => setFiscalData({...fiscalData, vatNumber: e.target.value})} />
-                    <div className="flex flex-col gap-1.5"><label className="text-sm font-medium">Responsabilidad IVA</label><select className="input-class" value={fiscalData.taxRegime} onChange={e => setFiscalData({...fiscalData, taxRegime: e.target.value})}><option value="Responsable Inscripto">Responsable Inscripto</option><option value="Monotributo">Monotributo</option></select></div>
-                    <Input id="iibb" label="Ingresos Brutos" value={fiscalData.grossIncomeNumber || ''} onChange={e => setFiscalData({...fiscalData, grossIncomeNumber: e.target.value})} />
-                    <Input id="pospt" label="Punto de Venta Principal" value={fiscalData.mainPointOfSale || ''} onChange={e => setFiscalData({...fiscalData, mainPointOfSale: e.target.value})} />
-                  </div>
-                </CardContent></Card>
-                <Card><CardHeader><CardTitle>Facturación AFIP/ARCA</CardTitle></CardHeader><CardContent className="space-y-4 pt-4">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                     <div className="flex flex-col gap-1.5"><label className="text-sm font-medium">Ambiente</label><select className="input-class" value={fiscalData.afipEnvironment} onChange={e => setFiscalData({...fiscalData, afipEnvironment: e.target.value})}><option value="Testing">Homologación (Testing)</option><option value="Production">Producción</option></select></div>
-                     <Input id="crt" label="Certificado (P12/CRT/KEY)" value={fiscalData.digitalCertificateUrl || ''} onChange={e => setFiscalData({...fiscalData, digitalCertificateUrl: e.target.value})} />
-                  </div>
-                  <AlertCircle className="inline h-4 w-4 text-orange-500 mr-2"/><span className="text-sm text-slate-500">Conexión AFIP programada para próximo Release de Integraciones.</span>
-                </CardContent></Card>
-                {renderSubmitButton('fiscal')}
+              <div className="mt-6">
+                <FiscalSettings />
               </div>
             ) },
             { id: 'pos', label: 'POS', content: (
@@ -928,11 +934,39 @@ export const Settings: React.FC = () => {
                       <button onClick={() => updatePreference('themeMode', 'dark')} className={`p-4 border rounded-xl flex-1 ${preferences.themeMode === 'dark' ? 'border-primary-500 bg-primary-900/50 text-primary-400' : 'bg-slate-900 text-white'}`}>Oscuro</button>
                     </div>
                   </div>
-                  <div className="pt-4 border-t border-slate-100"><label className="block text-sm font-medium mb-3">Acentos</label>
-                    <div className="grid grid-cols-3 sm:grid-cols-4 gap-3">
-                    {[ { id: 'blue', color: 'bg-blue-500', name: 'Sky' }, { id: 'emerald', color: 'bg-emerald-500', name: 'Emerald' }, { id: 'purple', color: 'bg-purple-500', name: 'Purple' }, { id: 'orange', color: 'bg-orange-500', name: 'Orange' } ].map(t => (
-                      <button key={t.id} onClick={() => updatePreference('accentColor', t.id as any)} className={`p-3 border rounded-xl flex items-center gap-2 ${preferences.accentColor === t.id ? 'border-primary-500 bg-primary-50' : 'bg-white'} dark:bg-slate-800`}><span className={`w-4 h-4 rounded-full ${t.color}`}></span><span className="text-xs">{t.name}</span></button>
-                    ))}
+                  <div className="pt-4 border-t border-slate-100 dark:border-slate-800">
+                    <label className="block text-sm font-medium mb-3">Temas Visuales (15 Temas SaaS)</label>
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                      {[
+                        { id: 'light', color: 'bg-slate-200 border border-slate-400', name: '☀️ Light' },
+                        { id: 'dark', color: 'bg-slate-950', name: '🌙 Dark Obsidian' },
+                        { id: 'midnight', color: 'bg-indigo-950', name: '🌌 Midnight' },
+                        { id: 'emerald', color: 'bg-emerald-600', name: '🟢 Emerald' },
+                        { id: 'ocean', color: 'bg-cyan-700', name: '🌊 Ocean' },
+                        { id: 'sapphire', color: 'bg-blue-800', name: '🔷 Sapphire' },
+                        { id: 'indigo', color: 'bg-indigo-600', name: '🔮 Indigo' },
+                        { id: 'purple', color: 'bg-purple-700', name: '💜 Purple' },
+                        { id: 'rose', color: 'bg-rose-700', name: '🌹 Rose' },
+                        { id: 'coffee', color: 'bg-amber-900', name: '☕ Coffee' },
+                        { id: 'forest', color: 'bg-green-800', name: '🌲 Forest' },
+                        { id: 'sunset', color: 'bg-amber-600', name: '🌅 Sunset' },
+                        { id: 'cyber', color: 'bg-cyan-400', name: '⚡ Cyber' },
+                        { id: 'slate', color: 'bg-slate-600', name: '🔘 Slate' },
+                        { id: 'nord', color: 'bg-slate-700', name: '❄️ Nord' },
+                      ].map(t => (
+                        <button
+                          key={t.id}
+                          onClick={() => updatePreference('accentColor', t.id as any)}
+                          className={`p-3 border rounded-xl flex items-center gap-2 transition-all ${
+                            preferences.accentColor === t.id
+                              ? 'border-indigo-500 bg-indigo-50/50 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20'
+                              : 'bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <span className={`w-4 h-4 rounded-full ${t.color} shrink-0`}></span>
+                          <span className="text-xs font-semibold truncate">{t.name}</span>
+                        </button>
+                      ))}
                     </div>
                   </div>
                 </CardContent></Card>
@@ -1203,18 +1237,44 @@ export const Settings: React.FC = () => {
                     </CardContent>
                   </Card>
 
-                  <Card className="opacity-60 bg-slate-50/50 dark:bg-slate-950/20">
-                    <CardContent className="p-6 flex items-center justify-between">
+                  <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                    <CardContent className="p-6 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                       <div className="flex items-center gap-4">
-                        <div className="h-10 w-10 bg-slate-800 rounded-lg flex items-center justify-center text-white font-bold text-xs">
+                        <div className="h-12 w-12 bg-slate-800 rounded-xl flex items-center justify-center text-white font-black text-sm shadow-md shrink-0">
                           ARCA
                         </div>
                         <div>
-                          <h4 className="font-bold text-slate-800 dark:text-white">Facturación Electrónica</h4>
-                          <p className="text-xs text-slate-500">AFIP WsFEv1</p>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-bold text-slate-800 dark:text-white">Facturación Electrónica ARCA / AFIP</h4>
+                            {arcaConfig?.enabled ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-400 border border-emerald-200">
+                                🟢 Conectado
+                              </span>
+                            ) : arcaConfig?.certificateName || arcaConfig?.taxId ? (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-400 border border-amber-200">
+                                🟡 Certificado cargado
+                              </span>
+                            ) : (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400 border border-slate-200">
+                                ⚪ Disponible
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            {arcaConfig?.taxId
+                              ? `CUIT: ${arcaConfig.taxId} · Ambiente: ${arcaConfig.environment}`
+                              : 'Emisión de facturas A/B/C con trazabilidad fiscal WSFEv1 y QR AFIP'}
+                          </p>
                         </div>
                       </div>
-                      <Badge variant="outline">Próximamente</Badge>
+                      <Button
+                        variant={arcaConfig?.enabled ? 'outline' : 'primary'}
+                        size="sm"
+                        onClick={() => setActiveSection('fiscal')}
+                        className="shrink-0 font-bold"
+                      >
+                        {arcaConfig?.enabled || arcaConfig?.taxId ? 'Administrar' : 'Configurar'}
+                      </Button>
                     </CardContent>
                   </Card>
 
@@ -1248,13 +1308,6 @@ export const Settings: React.FC = () => {
                     </CardContent>
                   </Card>
                 </div>
-              </div>
-            )},
-            { id: 'audit', label: 'Auditoría', content: (
-              <div className="space-y-6 mt-6">
-                <Card><CardHeader><CardTitle className="flex items-center gap-2"><History className="h-5 w-5"/>Línea de Tiempo de Logs (Preview)</CardTitle></CardHeader><CardContent className="py-10">
-                  <EmptyState icon={History} title="Activity Logs Operando" description="El servicio transaccional Prisma está guardando las entidades previas. La UI de auditoría visual estará en el módulo de Reportes." />
-                </CardContent></Card>
               </div>
             )},
             { id: 'license', label: 'Licencia', content: (
@@ -1430,20 +1483,20 @@ export const Settings: React.FC = () => {
         </div>
       </div>
       <style>{`
-        .input-class, input, select {
-          display: block; width: 100%; border-radius: 0.75rem; border: 1px solid #e2e8f0;
-          background-color: #f8fafc; padding: 0.625rem 0.875rem; color: #0f172a; font-size: 0.875rem;
-          font-weight: 500; transition: all 0.2s; outline: none; box-shadow: inset 0 1px 2px 0 rgb(0 0 0 / 0.02);
+        .settings-panel-container .input-class {
+          display: block; width: 100%; border-radius: 0.75rem; border: 1px solid #cbd5e1;
+          background-color: #ffffff; padding: 0.625rem 0.875rem; color: #0f172a; font-size: 0.875rem;
+          font-weight: 500; transition: all 0.2s; outline: none; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.05);
         }
-        .input-class:focus, input:focus, select:focus { 
-          border-color: #6366f1; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2); 
+        .settings-panel-container .input-class:focus { 
+          border-color: #0ea5e9; background-color: #ffffff; box-shadow: 0 0 0 3px rgba(14, 165, 233, 0.15); 
         }
         
-        .dark .input-class, .dark input, .dark select { 
-          background-color: #0f172a; border-color: #334155; color: #f1f5f9; box-shadow: inset 0 1px 2px 0 rgb(0 0 0 / 0.1); 
+        .dark .settings-panel-container .input-class { 
+          background-color: #0f172a; border-color: #334155; color: #f8fafc; box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.2); 
         }
-        .dark .input-class:focus, .dark input:focus, .dark select:focus { 
-          border-color: #818cf8; background-color: #1e293b; box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.15); 
+        .dark .settings-panel-container .input-class:focus { 
+          border-color: #38bdf8; background-color: #0f172a; box-shadow: 0 0 0 3px rgba(56, 189, 248, 0.15); 
         }
 
         /* Modern Small Labels */

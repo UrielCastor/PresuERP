@@ -21,6 +21,8 @@ import { Cash } from '../pages/Cash';
 import { Reports } from '../pages/Reports';
 import { Businesses } from '../pages/Businesses';
 import { CompanyProfile } from '../pages/CompanyProfile';
+import { Audit } from '../pages/Audit';
+import { FiscalSettings } from '../pages/FiscalSettings';
 import { NotFound } from '../pages/NotFound';
 
 interface ProtectedRouteProps {
@@ -88,6 +90,16 @@ export const AppRoutes: React.FC = () => {
           <PublicRoute>
             <Login />
           </PublicRoute>
+        }
+      />
+
+      {/* Auditoría del Sistema para Administradores */}
+      <Route
+        path="/system/audit"
+        element={
+          <ProtectedRoute permission="AUDIT_VIEW">
+            <Audit />
+          </ProtectedRoute>
         }
       />
 
@@ -241,6 +253,15 @@ export const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute>
             <CompanyProfile />
+          </ProtectedRoute>
+        }
+      />
+
+      <Route
+        path="/settings/fiscal"
+        element={
+          <ProtectedRoute permission="FISCAL_VIEW">
+            <FiscalSettings />
           </ProtectedRoute>
         }
       />

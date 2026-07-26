@@ -21,6 +21,7 @@ import systemRoutes from '../system/system.routes';
 import businessIntegrationRoutes from './business-integration.routes';
 import paymentAdjustmentRuleRoutes from './payment-adjustment-rule.routes';
 import customerRoutes from './customer.routes';
+import fiscalRoutes from './fiscal.routes';
 import { BusinessIntegrationController } from '../controllers/business-integration.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
@@ -80,5 +81,7 @@ router.use('/cash', requireAuth, cashRoutes);
 router.use('/payment-adjustment-rules', requireAuth, paymentAdjustmentRuleRoutes);
 
 router.use('/reports', requireAuth, reportRoutes);
+
+router.use('/fiscal', requireAuth, fiscalRoutes);
 
 export default router;

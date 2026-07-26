@@ -26,7 +26,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // Payment form state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
-  const [paymentAmount, setPaymentAmount] = useState<number>(0);
+  const [paymentAmount, setPaymentAmount] = useState<number | string>('');
   const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'TRANSFER' | 'MERCADO_PAGO' | 'DEBIT_CARD' | 'CREDIT_CARD'>('CASH');
   const [paymentDescription, setPaymentDescription] = useState('');
   const [submittingPayment, setSubmittingPayment] = useState(false);
@@ -41,7 +41,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   // Cálculo de ajuste reutilizando EXACTAMENTE el mismo motor que el POS
   const adjustmentCalculation = useMemo(() => {
-    return calculatePaymentAdjustment(paymentAmount, paymentMethod, adjustmentRules as any);
+    return calculatePaymentAdjustment(Number(paymentAmount) || 0, paymentMethod, adjustmentRules as any);
   }, [paymentAmount, paymentMethod, adjustmentRules]);
 
   const [creditSubTab, setCreditSubTab] = useState<'PENDING' | 'HISTORY'>('PENDING');
@@ -107,7 +107,8 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!customerId || paymentAmount <= 0) {
+    const numAmount = Number(paymentAmount) || 0;
+    if (!customerId || numAmount <= 0) {
       setPaymentError('Ingresa un monto válido mayor a $0');
       return;
     }
@@ -117,12 +118,12 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
 
     try {
       await registerCustomerAccountPayment(customerId, {
-        amount: paymentAmount,
+        amount: numAmount,
         paymentMethod,
         description: paymentDescription.trim() || 'Pago a cuenta corriente',
       });
       setIsPaymentModalOpen(false);
-      setPaymentAmount(0);
+      setPaymentAmount('');
       setPaymentMethod('CASH');
       setPaymentDescription('');
       console.log('[PAYMENT] Invalidando query', ['cash']);
@@ -563,8 +564,8 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   step="0.01"
                   min="0.01"
                   required
-                  value={paymentAmount}
-                  onChange={(e) => setPaymentAmount(Number(e.target.value))}
+                  value={paymentAmount || ''}
+                  onChange={(e) => setPaymentAmount(e.target.value)}
                   placeholder="0.00"
                   className="w-full text-base font-bold px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-indigo-500"
                 />
@@ -588,12 +589,12 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                 </select>
               </div>
 
-              {paymentAmount > 0 && (
+              {Number(paymentAmount) > 0 && (
                 <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 text-xs shadow-sm">
                   <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
                     <span className="font-medium">Monto Original (Reducción Deuda):</span>
                     <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
-                      {formatCurrency(paymentAmount)}
+                      {formatCurrency(Number(paymentAmount))}
                     </span>
                   </div>
 

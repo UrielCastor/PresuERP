@@ -6,14 +6,19 @@ import { StatCard } from '../components/ui/StatCard';
 import { ReportToolbar } from '../components/ui/ReportToolbar';
 import { ChartCard } from '../components/ui/ChartCard';
 import { MetricTrend } from '../components/ui/MetricTrend';
-import { ShoppingCart, ShoppingBag, Banknote, Package, Box, LineChart as LineChartIcon, Users, CreditCard, DollarSign, TrendingUp, TrendingDown, AlertCircle, Building2, Layers } from 'lucide-react';
+import { ShoppingCart, ShoppingBag, Banknote, Package, Box, LineChart as LineChartIcon, Users, CreditCard, DollarSign, TrendingUp, TrendingDown, AlertCircle, Building2, Layers, ShieldCheck, History, List, Activity, Eye, CheckCircle2, XCircle, RefreshCw, Search } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ReportService } from '../services/report.service';
+import { Modal, Button } from '../components/ui';
+import { useAuth } from '../contexts/AuthContext';
 
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
 export const Reports: React.FC = () => {
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') || 'overview';
+  });
   const [dateRange, setDateRange] = useState('this_month');
   const [dateFrom, setDateFrom] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
   const [dateTo, setDateTo] = useState(new Date().toISOString());
@@ -30,9 +35,51 @@ export const Reports: React.FC = () => {
   const [usersData, setUsersData] = useState<any>(null);
   const [executiveData, setExecutiveData] = useState<any>(null);
 
+  const handleDateRangeChange = (range: string) => {
+    setDateRange(range);
+    const now = new Date();
+    let from = new Date();
+    let to = new Date();
+
+    switch (range) {
+      case 'today':
+        from = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+        to = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59);
+        break;
+      case 'this_week': {
+        const day = now.getDay() || 7;
+        from = new Date(now);
+        from.setDate(now.getDate() - day + 1);
+        from.setHours(0, 0, 0, 0);
+        to = new Date(now);
+        to.setHours(23, 59, 59, 999);
+        break;
+      }
+      case 'this_month':
+        from = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0);
+        to = new Date(now);
+        to.setHours(23, 59, 59, 999);
+        break;
+      case 'last_month':
+        from = new Date(now.getFullYear(), now.getMonth() - 1, 1, 0, 0, 0);
+        to = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
+        break;
+      case 'this_year':
+        from = new Date(now.getFullYear(), 0, 1, 0, 0, 0);
+        to = new Date(now);
+        to.setHours(23, 59, 59, 999);
+        break;
+      default:
+        break;
+    }
+
+    setDateFrom(from.toISOString());
+    setDateTo(to.toISOString());
+  };
+
   useEffect(() => {
     fetchActiveReport();
-  }, [activeTab, dateRange]);
+  }, [activeTab, dateFrom, dateTo]);
 
   const fetchActiveReport = async () => {
     setLoading(true);
@@ -42,7 +89,7 @@ export const Reports: React.FC = () => {
        if (activeTab === 'overview' || activeTab === 'sales') setSalesData(await ReportService.getSales(params));
        if (activeTab === 'overview' || activeTab === 'purchases') setPurchaseData(await ReportService.getPurchases(params));
        if (activeTab === 'cash') setCashData(await ReportService.getCash(params));
-       if (activeTab === 'overview' || activeTab === 'stock' && !stockData) setStockData(await ReportService.getInventory(params)); // Solo 1 vez snapshot
+       if (activeTab === 'overview' || activeTab === 'stock') setStockData(await ReportService.getInventory(params));
        if (activeTab === 'kardex') setKardexData(await ReportService.getKardex(params));
        
        if (activeTab === 'financial') setFinancialData(await ReportService.getFinancial(params));
@@ -56,6 +103,10 @@ export const Reports: React.FC = () => {
     }
   };
 
+  const handleClearFilters = () => {
+    handleDateRangeChange('this_month');
+  };
+
   const handleExport = (type: 'CSV' | 'XLSX' | 'PDF') => {
     ReportService.exportReport({ report: activeTab, type, dateFrom, dateTo });
   };
@@ -63,7 +114,7 @@ export const Reports: React.FC = () => {
   const renderOverview = () => {
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
            <StatCard title="Ventas del Mes" value={`$ ${Number(salesData?.totalAmount || 0).toLocaleString()}`} icon={DollarSign} />
            <StatCard 
@@ -99,7 +150,7 @@ export const Reports: React.FC = () => {
     if (!financialData) return null;
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
            <StatCard title="Ingresos Totales (Ventas)" value={`$ ${Number(financialData.totalSales || 0).toLocaleString()}`} icon={TrendingUp} />
            <StatCard title="Costos (Compras Grales)" value={`$ ${Number(financialData.totalPurchases || 0).toLocaleString()}`} icon={TrendingDown} />
@@ -114,7 +165,7 @@ export const Reports: React.FC = () => {
     if (!salesData) return null;
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         {/* Visual content from earlier */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
            <StatCard title="Ventas Totales" value={`$ ${Number(salesData.totalAmount || 0).toLocaleString()}`} icon={DollarSign} />
@@ -129,7 +180,7 @@ export const Reports: React.FC = () => {
     if (!usersData) return null;
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         <Card>
           <CardContent className="p-0">
              <div className="overflow-x-auto">
@@ -159,7 +210,7 @@ export const Reports: React.FC = () => {
     if (!customersData) return null;
     return (
       <div className="space-y-6">
-         <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
            <StatCard title="Clientes Activos" value={customersData.totalActive || 0} icon={Users} />
            <StatCard title="Nuevos" value={customersData.newCustomers || 0} icon={Users} />
@@ -174,7 +225,7 @@ export const Reports: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
 
         <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
           <StatCard title="Productos en Stock" value={summary.totalProducts || 0} icon={Package} />
@@ -273,7 +324,7 @@ export const Reports: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
 
         <Tabs
           variant="pill"
@@ -400,7 +451,7 @@ export const Reports: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
 
         <Tabs
           variant="pill"
@@ -536,7 +587,7 @@ export const Reports: React.FC = () => {
 
     return (
       <div className="space-y-6">
-        <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+        <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         
         {/* Resumen Superior */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
@@ -602,7 +653,7 @@ export const Reports: React.FC = () => {
     
     return (
       <div className="space-y-6">
-         <ReportToolbar dateRange={dateRange} onDateRangeChange={setDateRange} onExport={handleExport} onClearFilters={() => {}} />
+         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
          
          <Tabs 
            variant="pill"
@@ -688,7 +739,10 @@ export const Reports: React.FC = () => {
 
   return (
     <div className="space-y-6 pb-20">
-      <PageHeader title="Centro Analítico BI" subtitle="Visualiza métricas, exporta datos y audita rentabilidad." />
+      <PageHeader
+        title="Centro Analítico BI"
+        subtitle="Visualiza métricas, exporta datos y audita rentabilidad."
+      />
       <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <Tabs
           variant="underline"

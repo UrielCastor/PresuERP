@@ -30,6 +30,8 @@ import { supplierApi } from '../services/supplier.service';
 import { warehouseApi } from '../services/warehouse.service';
 import { productApi } from '../services/product.service';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
+import { Select } from '../components/ui/Select';
 
 // Zod schema for manual stock movements creation (ENTRY, EXIT, ADJUSTMENT, INVENTORY)
 const createMovementSchema = z.object({
@@ -546,6 +548,24 @@ export const Kardex: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {(searchTerm.trim() || selectedWarehouse !== 'ALL' || selectedType !== 'ALL' || startDate || endDate) && (
+          <div className="flex justify-end pt-2 border-t border-slate-100 dark:border-slate-800/60">
+            <button
+              onClick={() => {
+                setSearchTerm('');
+                setSelectedWarehouse('ALL');
+                setSelectedType('ALL');
+                setStartDate('');
+                setEndDate('');
+                setCurrentPage(1);
+              }}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 transition-colors"
+            >
+              Limpiar filtros
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Main List */}
@@ -745,62 +765,47 @@ export const Kardex: React.FC = () => {
               {/* Movement Type & Cost details */}
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Tipo de Movimiento *
-                  </label>
-                  <select
+                  <Select
+                    label="Tipo de Movimiento *"
                     {...register('movementType')}
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-800 dark:text-slate-205 focus:outline-none"
                   >
                     <option value="ENTRY">INGRESO (ENTRY)</option>
                     <option value="EXIT">EGRESO (EXIT)</option>
                     <option value="ADJUSTMENT">AJUSTE (ADJUSTMENT)</option>
                     <option value="INVENTORY">RECUENTO (INVENTORY)</option>
-                  </select>
+                  </Select>
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Cantidad Requerida *
-                  </label>
-                  <input
+                  <Input
+                    label="Cantidad Requerida *"
                     type="number"
                     step="0.001"
                     {...register('quantity', { valueAsNumber: true })}
                     placeholder="Ej: 10.00"
-                    className={`w-full px-3.5 py-2.5 bg-transparent border rounded-lg text-sm text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-primary-500 ${
-                      errors.quantity ? 'border-red-500' : 'border-slate-350 dark:border-slate-800'
-                    }`}
+                    error={errors.quantity?.message}
                   />
-                  {errors.quantity && (
-                    <p className="mt-1 text-xs text-red-500 font-medium">{errors.quantity.message}</p>
-                  )}
                 </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Costo Unitario ($)
-                  </label>
-                  <input
+                  <Input
+                    label="Costo Unitario ($)"
                     type="number"
                     step="0.01"
                     {...register('unitCost', { valueAsNumber: true })}
                     placeholder="Por defecto costo del producto"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white font-mono focus:outline-none focus:ring-2 focus:ring-primary-500"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Motivo / Descripción Corta *
-                  </label>
-                  <input
+                  <Input
+                    label="Motivo / Descripción Corta *"
                     type="text"
                     {...register('reason')}
-                    placeholder="Ej: Ajuste por rotura de pallet"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-950 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500"
+                    placeholder="Ej: Ajuste por rotura / Recuento anual"
+                    error={errors.reason?.message}
                   />
                 </div>
               </div>

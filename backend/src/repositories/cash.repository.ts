@@ -14,6 +14,59 @@ export class CashRepository {
     });
   }
 
+  async findActiveSessionWithDetails(businessId: string, userId?: string) {
+    let session = null;
+    if (userId) {
+      session = await prisma.cashSession.findFirst({
+        where: {
+          businessId,
+          openedById: userId,
+          status: 'OPEN',
+        },
+        include: {
+          cashRegister: true,
+          openedBy: { select: { id: true, name: true, email: true } },
+          cashMovements: {
+            include: {
+              paymentMethodRel: true,
+              createdByUser: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          sales: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+      });
+    }
+
+    if (!session) {
+      session = await prisma.cashSession.findFirst({
+        where: {
+          businessId,
+          status: 'OPEN',
+        },
+        include: {
+          cashRegister: true,
+          openedBy: { select: { id: true, name: true, email: true } },
+          cashMovements: {
+            include: {
+              paymentMethodRel: true,
+              createdByUser: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { createdAt: 'desc' },
+          },
+          sales: {
+            orderBy: { createdAt: 'desc' },
+          },
+        },
+        orderBy: { openedAt: 'desc' },
+      });
+    }
+
+    return session;
+  }
+
   async findActiveSessionByRegister(cashRegisterId: string, businessId: string) {
     return prisma.cashSession.findFirst({
       where: {

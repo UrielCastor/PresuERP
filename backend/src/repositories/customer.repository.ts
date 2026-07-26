@@ -299,13 +299,6 @@ export class CustomerRepository {
 
       console.log('[PAYMENT] CashMovement creado', cashMovement);
 
-      await tx.cashSession.update({
-        where: { id: activeSession.id },
-        data: {
-          cashTransactionsTotal: { increment: paidAmount },
-        },
-      });
-
       return {
         movement,
         cashMovement,

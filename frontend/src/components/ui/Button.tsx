@@ -29,10 +29,10 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
             'text-primary-600 underline-offset-4 hover:underline focus:ring-primary-500': variant === 'link',
             
             // Sizes
-            'h-9 px-3 text-sm': size === 'sm',
-            'h-10 px-4 py-2 text-base': size === 'md',
-            'h-11 px-6 text-lg': size === 'lg',
-            'h-10 w-10 p-0': size === 'icon',
+            'h-7.5 px-2.5 text-xs': size === 'sm',
+            'h-9 px-3.5 text-xs font-semibold': size === 'md',
+            'h-10 px-4 text-sm font-bold': size === 'lg',
+            'h-9 w-9 p-0': size === 'icon',
           },
           className
         )}

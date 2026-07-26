@@ -9,23 +9,30 @@
 
   /* Dark mode backgrounds */
   .dark body {
-    @apply bg-slate-900 text-slate-100;
+    @apply bg-slate-950 text-slate-100;
   }
+}
+
+/* Micro-animations and Smooth Transitions */
+*, ::before, ::after {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform;
+  transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  transition-duration: 150ms;
 }
 
 /* Glassmorphism utility classes */
 .glass {
-  background: rgba(255, 255, 255, 0.75);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.4);
+  background: rgba(255, 255, 255, 0.82);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(226, 232, 240, 0.8);
 }
 
 .dark .glass {
-  background: rgba(15, 23, 42, 0.7);
-  backdrop-filter: blur(12px);
-  -webkit-backdrop-filter: blur(12px);
-  border: 1px solid rgba(255, 255, 255, 0.04);
+  background: rgba(15, 23, 42, 0.8);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
 }
 
 /* Custom scrollbars */
@@ -39,16 +46,80 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background-color: var(--text-muted);
+  background-color: rgba(148, 163, 184, 0.4);
   border-radius: 9999px;
-  opacity: 0.6;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background-color: var(--text-secondary);
+  background-color: rgba(100, 116, 139, 0.7);
 }
 
-/* Global color tokens falling back to Blue Light theme */
+/* Keyframes for SaaS Animations */
+@keyframes modalIn {
+  from {
+    opacity: 0;
+    transform: scale(0.96) translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes dropdownIn {
+  from {
+    opacity: 0;
+    transform: translateY(-6px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes toastIn {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-modal-in {
+  animation: modalIn 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-dropdown-in {
+  animation: dropdownIn 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+.animate-toast-in {
+  animation: toastIn 0.22s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Button & Card Micro-Interactions */
+.btn-interactive {
+  transition: all 0.18s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.btn-interactive:hover {
+  transform: translateY(-1px);
+}
+.btn-interactive:active {
+  transform: scale(0.98);
+}
+
+.card-interactive {
+  transition: all 0.22s cubic-bezier(0.16, 1, 0.3, 1);
+}
+.card-interactive:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 12px 28px -10px rgba(0, 0, 0, 0.12);
+}
+
+/* Global Root Default Variables */
 :root {
   --background: #f8fafc;
   --surface: #ffffff;
@@ -76,216 +147,80 @@
   --color-primary-950: #032f30;
 }
 
-/* 1. Theme Light (Slate accent) */
+/* ==========================================================================
+   15 PROFESSIONAL SAAS THEME DEFINITIONS
+   ========================================================================== */
+
+/* 1. Light Theme (Linear & Stripe SaaS White) */
 .theme-light {
-  --background: #f9fafb;
+  --background: #f8fafc;
   --surface: #ffffff;
-  --surface-secondary: #f3f4f6;
+  --surface-secondary: #f1f5f9;
   --card: #ffffff;
-  --sidebar: #f9fafb;
+  --sidebar: #ffffff;
   --header: #ffffff;
-  --border: #e5e7eb;
-  --text-primary: #111827;
-  --text-secondary: #4b5563;
-  --text-muted: #9ca3af;
+  --border: #e2e8f0;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #94a3b8;
   --input-bg: #ffffff;
-  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
+  --shadow: 0 1px 3px 0 rgba(0, 0, 0, 0.06);
   --primary-foreground: #ffffff;
 
-  --color-primary-50: #f8fafc;
-  --color-primary-100: #f1f5f9;
-  --color-primary-200: #e2e8f0;
-  --color-primary-300: #cbd5e1;
-  --color-primary-400: #94a3b8;
-  --color-primary-500: #64748b;
-  --color-primary-600: #475569;
-  --color-primary-700: #334155;
-  --color-primary-800: #1e293b;
+  --color-primary-50: #f0f9ff;
+  --color-primary-100: #e0f2fe;
+  --color-primary-200: #bae6fd;
+  --color-primary-300: #7dd3fc;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #0284c7;
+  --color-primary-600: #0369a1;
+  --color-primary-700: #075985;
+  --color-primary-800: #0c4a6e;
+  --color-primary-950: #082f49;
+}
+
+/* 2. Dark Theme (Vercel / Obsidian Dark) */
+.theme-dark {
+  --background: #090d16;
+  --surface: #111827;
+  --surface-secondary: #1f2937;
+  --card: #151e2e;
+  --sidebar: #0d1320;
+  --header: #111827;
+  --border: #243044;
+  --text-primary: #f8fafc;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  --input-bg: #111827;
+  --shadow: 0 4px 12px 0 rgba(0, 0, 0, 0.35);
+  --primary-foreground: #090d16;
+
+  --color-primary-50: #1e293b;
+  --color-primary-100: #334155;
+  --color-primary-200: #475569;
+  --color-primary-300: #94a3b8;
+  --color-primary-400: #cbd5e1;
+  --color-primary-500: #f1f5f9;
+  --color-primary-600: #f8fafc;
+  --color-primary-700: #ffffff;
+  --color-primary-800: #ffffff;
   --color-primary-950: #0f172a;
 }
 
-/* 2. Theme Dark */
-.theme-dark {
-  --background: #0B0F19;
-  --surface: #111827;
-  --surface-secondary: #1f2937;
-  --card: #1A2235;
-  --sidebar: #0F172A;
-  --header: #111827;
-  --border: #263244;
-  --text-primary: #F8FAFC;
-  --text-secondary: #CBD5E1;
-  --text-muted: #94A3B8;
-  --input-bg: #111827;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-  --primary-foreground: #0B0F19;
-
-  --color-primary-50: #1f2937;
-  --color-primary-100: #374151;
-  --color-primary-200: #4b5563;
-  --color-primary-300: #9ca3af;
-  --color-primary-400: #d1d5db;
-  --color-primary-500: #f3f4f6;
-  --color-primary-600: #f9fafb;
-  --color-primary-700: #ffffff;
-  --color-primary-800: #ffffff;
-  --color-primary-950: #111827;
-}
-
-/* 3. Theme Blue */
-.theme-blue {
-  --background: #0B0F19;
-  --surface: #111827;
-  --surface-secondary: #1F2937;
-  --card: #1A2235;
-  --sidebar: #0F172A;
-  --header: #111827;
-  --border: #263244;
-  --text-primary: #F8FAFC;
-  --text-secondary: #cbd5e1;
-  --text-muted: #9ca3af;
-  --input-bg: #1f2937;
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.2);
-  --primary-foreground: #0B0F19;
-
-  --color-primary-50: #082f49;
-  --color-primary-100: #0c4a6e;
-  --color-primary-200: #0369a1;
-  --color-primary-300: #0284c7;
-  --color-primary-400: #0ea5e9;
-  --color-primary-500: #38bdf8;
-  --color-primary-600: #7dd3fc;
-  --color-primary-700: #bae6fd;
-  --color-primary-800: #e0f2fe;
-  --color-primary-950: #f0f9ff;
-}
-
-/* 4. Theme Emerald */
-.theme-emerald {
-  --background: #f0faf5;
-  --surface: #ffffff;
-  --surface-secondary: #dcfce7;
-  --card: #ffffff;
-  --sidebar: #f0faf5;
-  --header: #ffffff;
-  --border: #a7f3d0;
-  --text-primary: #064e3b;
-  --text-secondary: #047857;
-  --text-muted: #10b981;
-  --input-bg: #ffffff;
-  --shadow: 0 2px 6px 0 rgba(16, 185, 129, 0.1);
-  --primary-foreground: #ffffff;
-
-  --color-primary-50: #ecfdf5;
-  --color-primary-100: #d1fae5;
-  --color-primary-200: #a7f3d0;
-  --color-primary-300: #6ee7b7;
-  --color-primary-400: #34d399;
-  --color-primary-500: #10b981;
-  --color-primary-600: #059669;
-  --color-primary-700: #047857;
-  --color-primary-800: #065f46;
-  --color-primary-950: #022c22;
-}
-
-/* 5. Theme Purple */
-.theme-purple {
-  --background: #0d0518;
-  --surface: #170c2a;
-  --surface-secondary: #251442;
-  --card: #1d0f35;
-  --sidebar: #0a0413;
-  --header: #170c2a;
-  --border: #3a2066;
-  --text-primary: #f3e8ff;
-  --text-secondary: #d8b4fe;
-  --text-muted: #a855f7;
-  --input-bg: #170c2a;
-  --shadow: 0 4px 12px 0 rgba(168, 85, 247, 0.15);
-  --primary-foreground: #0d0518;
-
-  --color-primary-50: #2e0854;
-  --color-primary-100: #4a048a;
-  --color-primary-200: #581c87;
-  --color-primary-300: #7e22ce;
-  --color-primary-400: #9333ea;
-  --color-primary-500: #c084fc;
-  --color-primary-600: #d8b4fe;
-  --color-primary-700: #e9d5ff;
-  --color-primary-800: #f3e8ff;
-  --color-primary-950: #faf5ff;
-}
-
-/* 6. Theme Orange */
-.theme-orange {
-  --background: #0e0702;
-  --surface: #1e0f06;
-  --surface-secondary: #2f180a;
-  --card: #271408;
-  --sidebar: #0a0501;
-  --header: #1e0f06;
-  --border: #4c2810;
-  --text-primary: #ffedd5;
-  --text-secondary: #fdbb74;
-  --text-muted: #fb923c;
-  --input-bg: #1e0f06;
-  --shadow: 0 4px 12px 0 rgba(249, 115, 22, 0.15);
-  --primary-foreground: #ffffff;
-
-  --color-primary-50: #431407;
-  --color-primary-100: #7c2d12;
-  --color-primary-200: #9a3412;
-  --color-primary-300: #c2410c;
-  --color-primary-400: #ea580c;
-  --color-primary-500: #f97316;
-  --color-primary-600: #fb923c;
-  --color-primary-700: #fdbb74;
-  --color-primary-800: #fed7aa;
-  --color-primary-950: #fff7ed;
-}
-
-/* 7. Theme Rose */
-.theme-rose {
-  --background: #0f020a;
-  --surface: #1b0514;
-  --surface-secondary: #2e0b23;
-  --card: #23081a;
-  --sidebar: #0b0106;
-  --header: #1b0514;
-  --border: #4c123b;
-  --text-primary: #ffe4e6;
-  --text-secondary: #fda4af;
-  --text-muted: #fb7185;
-  --input-bg: #1b0514;
-  --shadow: 0 4px 12px 0 rgba(244, 63, 94, 0.15);
-  --primary-foreground: #ffffff;
-
-  --color-primary-50: #4c0519;
-  --color-primary-100: #881337;
-  --color-primary-200: #9f1239;
-  --color-primary-300: #be123c;
-  --color-primary-400: #e11d48;
-  --color-primary-500: #f43f5e;
-  --color-primary-600: #fb7185;
-  --color-primary-700: #fda4af;
-  --color-primary-800: #fecdd3;
-  --color-primary-950: #fff1f2;
-}
-
-/* 8. Theme Midnight */
+/* 3. Midnight Theme (Stripe Midnight Indigo) */
 .theme-midnight {
-  --background: #040212;
-  --surface: #0b0826;
-  --surface-secondary: #14103c;
-  --card: #100b34;
-  --sidebar: #05031b;
-  --header: #0b0826;
-  --border: #221a5c;
-  --text-primary: #e0e0ff;
-  --text-secondary: #a6a3dc;
-  --text-muted: #7670ad;
-  --input-bg: #0b0826;
-  --shadow: 0 4px 12px 0 rgba(99, 102, 241, 0.2);
+  --background: #090919;
+  --surface: #12122b;
+  --surface-secondary: #1a1a3b;
+  --card: #151533;
+  --sidebar: #0d0d24;
+  --header: #12122b;
+  --border: #262654;
+  --text-primary: #f1f1ff;
+  --text-secondary: #c2c2f0;
+  --text-muted: #8c8cb8;
+  --input-bg: #12122b;
+  --shadow: 0 4px 16px 0 rgba(99, 102, 241, 0.25);
   --primary-foreground: #ffffff;
 
   --color-primary-50: #1e1b4b;
@@ -300,62 +235,341 @@
   --color-primary-950: #e0e7ff;
 }
 
-/* 9. Theme Forest */
-.theme-forest {
-  --background: #050c07;
-  --surface: #0c1a11;
-  --surface-secondary: #142d1d;
-  --card: #0f2216;
-  --sidebar: #07120a;
-  --header: #0c1a11;
-  --border: #1e442c;
-  --text-primary: #f0fdf4;
-  --text-secondary: #86efac;
-  --text-muted: #4ade80;
-  --input-bg: #0c1a11;
-  --shadow: 0 4px 12px 0 rgba(34, 197, 94, 0.2);
-  --primary-foreground: #050c07;
+/* 4. Emerald Theme (Deep Mint & Emerald Dark) */
+.theme-emerald {
+  --background: #06140e;
+  --surface: #0c2117;
+  --surface-secondary: #153325;
+  --card: #0e291d;
+  --sidebar: #091a12;
+  --header: #0c2117;
+  --border: #1e4a35;
+  --text-primary: #ecfdf5;
+  --text-secondary: #a7f3d0;
+  --text-muted: #6ee7b7;
+  --input-bg: #0c2117;
+  --shadow: 0 4px 16px 0 rgba(16, 185, 129, 0.2);
+  --primary-foreground: #06140e;
 
-  --color-primary-50: #052e16;
-  --color-primary-100: #14532d;
-  --color-primary-200: #166534;
-  --color-primary-300: #15803d;
-  --color-primary-400: #16a34a;
-  --color-primary-500: #22c55e;
-  --color-primary-600: #4ade80;
-  --color-primary-700: #86efac;
-  --color-primary-800: #bbf7d0;
-  --color-primary-950: #dcfce7;
+  --color-primary-50: #022c22;
+  --color-primary-100: #065f46;
+  --color-primary-200: #047857;
+  --color-primary-300: #059669;
+  --color-primary-400: #10b981;
+  --color-primary-500: #34d399;
+  --color-primary-600: #6ee7b7;
+  --color-primary-700: #a7f3d0;
+  --color-primary-800: #d1fae5;
+  --color-primary-950: #ecfdf5;
 }
 
-/* 10. Theme Ocean */
+/* 5. Ocean Theme (Deep Pacific Cyan & Teal) */
 .theme-ocean {
-  --background: #010b14;
-  --surface: #031628;
-  --surface-secondary: #062540;
-  --card: #041c33;
-  --sidebar: #021120;
-  --header: #031628;
-  --border: #0f3e64;
-  --text-primary: #e0f2fe;
-  --text-secondary: #7dd3fc;
-  --text-muted: #38bdf8;
-  --input-bg: #031628;
-  --shadow: 0 4px 12px 0 rgba(6, 182, 212, 0.2);
+  --background: #04121a;
+  --surface: #0a202d;
+  --surface-secondary: #102e40;
+  --card: #0c2737;
+  --sidebar: #061722;
+  --header: #0a202d;
+  --border: #1a425c;
+  --text-primary: #f0f9ff;
+  --text-secondary: #bae6fd;
+  --text-muted: #7dd3fc;
+  --input-bg: #0a202d;
+  --shadow: 0 4px 16px 0 rgba(14, 165, 233, 0.2);
   --primary-foreground: #ffffff;
 
-  --color-primary-50: #083344;
-  --color-primary-100: #164e63;
-  --color-primary-200: #155e75;
-  --color-primary-300: #0e7490;
-  --color-primary-400: #0891b2;
-  --color-primary-500: #06b6d4;
-  --color-primary-600: #22d3ee;
-  --color-primary-700: #67e8f9;
-  --color-primary-800: #a5f3fc;
-  --color-primary-950: #cffafe;
+  --color-primary-50: #0c4a6e;
+  --color-primary-100: #0369a1;
+  --color-primary-200: #0284c7;
+  --color-primary-300: #0ea5e9;
+  --color-primary-400: #38bdf8;
+  --color-primary-500: #7dd3fc;
+  --color-primary-600: #bae6fd;
+  --color-primary-700: #e0f2fe;
+  --color-primary-800: #f0f9ff;
+  --color-primary-950: #ffffff;
 }
 
+/* 6. Sapphire Theme (Rich Royal Blue) */
+.theme-sapphire {
+  --background: #070d1d;
+  --surface: #0f1830;
+  --surface-secondary: #172445;
+  --card: #121e3b;
+  --sidebar: #0a1125;
+  --header: #0f1830;
+  --border: #22335e;
+  --text-primary: #eff6ff;
+  --text-secondary: #bfdbfe;
+  --text-muted: #93c5fd;
+  --input-bg: #0f1830;
+  --shadow: 0 4px 16px 0 rgba(37, 99, 235, 0.25);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #1e3a8a;
+  --color-primary-100: #1e40af;
+  --color-primary-200: #1d4ed8;
+  --color-primary-300: #2563eb;
+  --color-primary-400: #3b82f6;
+  --color-primary-500: #60a5fa;
+  --color-primary-600: #93c5fd;
+  --color-primary-700: #bfdbfe;
+  --color-primary-800: #dbeafe;
+  --color-primary-950: #eff6ff;
+}
+
+/* 7. Indigo Theme (Linear Modern Indigo) */
+.theme-indigo {
+  --background: #090a18;
+  --surface: #12142e;
+  --surface-secondary: #1b1e42;
+  --card: #161938;
+  --sidebar: #0d0f22;
+  --header: #12142e;
+  --border: #292d5e;
+  --text-primary: #eef2ff;
+  --text-secondary: #c7d2fe;
+  --text-muted: #a5b4fc;
+  --input-bg: #12142e;
+  --shadow: 0 4px 16px 0 rgba(79, 70, 229, 0.25);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #312e81;
+  --color-primary-100: #3730a3;
+  --color-primary-200: #4338ca;
+  --color-primary-300: #4f46e5;
+  --color-primary-400: #6366f1;
+  --color-primary-500: #818cf8;
+  --color-primary-600: #a5b4fc;
+  --color-primary-700: #c7d2fe;
+  --color-primary-800: #e0e7ff;
+  --color-primary-950: #eef2ff;
+}
+
+/* 8. Purple Theme (Deep Amethyst Violet) */
+.theme-purple {
+  --background: #0e0618;
+  --surface: #190c2a;
+  --surface-secondary: #261440;
+  --card: #1f0e35;
+  --sidebar: #120822;
+  --header: #190c2a;
+  --border: #3b1d60;
+  --text-primary: #faf5ff;
+  --text-secondary: #e9d5ff;
+  --text-muted: #d8b4fe;
+  --input-bg: #190c2a;
+  --shadow: 0 4px 16px 0 rgba(147, 51, 234, 0.25);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #581c87;
+  --color-primary-100: #6b21a8;
+  --color-primary-200: #7e22ce;
+  --color-primary-300: #9333ea;
+  --color-primary-400: #a855f7;
+  --color-primary-500: #c084fc;
+  --color-primary-600: #d8b4fe;
+  --color-primary-700: #e9d5ff;
+  --color-primary-800: #f3e8ff;
+  --color-primary-950: #faf5ff;
+}
+
+/* 9. Rose Theme (Crimson Velvet Dark) */
+.theme-rose {
+  --background: #14050b;
+  --surface: #220914;
+  --surface-secondary: #330f1e;
+  --card: #2a0c19;
+  --sidebar: #19060e;
+  --header: #220914;
+  --border: #4d182e;
+  --text-primary: #fff1f2;
+  --text-secondary: #fecdd3;
+  --text-muted: #fda4af;
+  --input-bg: #220914;
+  --shadow: 0 4px 16px 0 rgba(225, 29, 72, 0.25);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #881337;
+  --color-primary-100: #9f1239;
+  --color-primary-200: #be123c;
+  --color-primary-300: #e11d48;
+  --color-primary-400: #f43f5e;
+  --color-primary-500: #fb7185;
+  --color-primary-600: #fda4af;
+  --color-primary-700: #fecdd3;
+  --color-primary-800: #ffe4e6;
+  --color-primary-950: #fff1f2;
+}
+
+/* 10. Coffee Theme (Warm Espresso Dark) */
+.theme-coffee {
+  --background: #120d0a;
+  --surface: #1f1712;
+  --surface-secondary: #2d221c;
+  --card: #261c16;
+  --sidebar: #17110d;
+  --header: #1f1712;
+  --border: #423229;
+  --text-primary: #fff7ed;
+  --text-secondary: #fed7aa;
+  --text-muted: #fdbb74;
+  --input-bg: #1f1712;
+  --shadow: 0 4px 16px 0 rgba(194, 65, 12, 0.2);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #7c2d12;
+  --color-primary-100: #9a3412;
+  --color-primary-200: #c2410c;
+  --color-primary-300: #ea580c;
+  --color-primary-400: #f97316;
+  --color-primary-500: #fb923c;
+  --color-primary-600: #fdbb74;
+  --color-primary-700: #fed7aa;
+  --color-primary-800: #ffedd5;
+  --color-primary-950: #fff7ed;
+}
+
+/* 11. Forest Theme (Pine & Forest Dark Green) */
+.theme-forest {
+  --background: #07120a;
+  --surface: #0e1e12;
+  --surface-secondary: #162f1c;
+  --card: #112617;
+  --sidebar: #0a180e;
+  --header: #0e1e12;
+  --border: #22452b;
+  --text-primary: #f0fdf4;
+  --text-secondary: #bbf7d0;
+  --text-muted: #86efac;
+  --input-bg: #0e1e12;
+  --shadow: 0 4px 16px 0 rgba(22, 163, 74, 0.2);
+  --primary-foreground: #07120a;
+
+  --color-primary-50: #14532d;
+  --color-primary-100: #166534;
+  --color-primary-200: #15803d;
+  --color-primary-300: #16a34a;
+  --color-primary-400: #22c55e;
+  --color-primary-500: #4ade80;
+  --color-primary-600: #86efac;
+  --color-primary-700: #bbf7d0;
+  --color-primary-800: #dcfce7;
+  --color-primary-950: #f0fdf4;
+}
+
+/* 12. Sunset Theme (Warm Amber & Copper) */
+.theme-sunset {
+  --background: #160a04;
+  --surface: #241208;
+  --surface-secondary: #361c0e;
+  --card: #2c160a;
+  --sidebar: #1c0e05;
+  --header: #241208;
+  --border: #522b16;
+  --text-primary: #fff7ed;
+  --text-secondary: #ffedd5;
+  --text-muted: #fed7aa;
+  --input-bg: #241208;
+  --shadow: 0 4px 16px 0 rgba(217, 119, 6, 0.25);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #78350f;
+  --color-primary-100: #92400e;
+  --color-primary-200: #b45309;
+  --color-primary-300: #d97706;
+  --color-primary-400: #f59e0b;
+  --color-primary-500: #fbbf24;
+  --color-primary-600: #fcd34d;
+  --color-primary-700: #fde68a;
+  --color-primary-800: #fef3c7;
+  --color-primary-950: #fffbeb;
+}
+
+/* 13. Cyber Theme (Futuristic Neon Cyan & Obsidian) */
+.theme-cyber {
+  --background: #050b14;
+  --surface: #0b1524;
+  --surface-secondary: #122138;
+  --card: #0e1b2d;
+  --sidebar: #08101c;
+  --header: #0b1524;
+  --border: #1a3252;
+  --text-primary: #ecfeff;
+  --text-secondary: #a5f3fc;
+  --text-muted: #67e8f9;
+  --input-bg: #0b1524;
+  --shadow: 0 4px 16px 0 rgba(6, 182, 212, 0.3);
+  --primary-foreground: #050b14;
+
+  --color-primary-50: #164e63;
+  --color-primary-100: #155e75;
+  --color-primary-200: #0e7490;
+  --color-primary-300: #0891b2;
+  --color-primary-400: #06b6d4;
+  --color-primary-500: #22d3ee;
+  --color-primary-600: #67e8f9;
+  --color-primary-700: #a5f3fc;
+  --color-primary-800: #cffafe;
+  --color-primary-950: #ecfeff;
+}
+
+/* 14. Slate Theme (Clean Neutral Light Gray SaaS) */
+.theme-slate {
+  --background: #f1f5f9;
+  --surface: #ffffff;
+  --surface-secondary: #e2e8f0;
+  --card: #ffffff;
+  --sidebar: #f8fafc;
+  --header: #ffffff;
+  --border: #cbd5e1;
+  --text-primary: #0f172a;
+  --text-secondary: #334155;
+  --text-muted: #64748b;
+  --input-bg: #ffffff;
+  --shadow: 0 1px 4px 0 rgba(0, 0, 0, 0.07);
+  --primary-foreground: #ffffff;
+
+  --color-primary-50: #f8fafc;
+  --color-primary-100: #f1f5f9;
+  --color-primary-200: #e2e8f0;
+  --color-primary-300: #cbd5e1;
+  --color-primary-400: #94a3b8;
+  --color-primary-500: #475569;
+  --color-primary-600: #334155;
+  --color-primary-700: #1e293b;
+  --color-primary-800: #0f172a;
+  --color-primary-950: #020617;
+}
+
+/* 15. Nord Theme (Nordic Polar Dark - Ice & Storm) */
+.theme-nord {
+  --background: #1a1e24;
+  --surface: #242933;
+  --surface-secondary: #2e3440;
+  --card: #272d38;
+  --sidebar: #1e222a;
+  --header: #242933;
+  --border: #3b4252;
+  --text-primary: #eceff4;
+  --text-secondary: #e5e9f0;
+  --text-muted: #d8dee9;
+  --input-bg: #242933;
+  --shadow: 0 4px 16px 0 rgba(0, 0, 0, 0.3);
+  --primary-foreground: #1a1e24;
+
+  --color-primary-50: #4c566a;
+  --color-primary-100: #5e81ac;
+  --color-primary-200: #81a1c1;
+  --color-primary-300: #88c0d0;
+  --color-primary-400: #8fbcbb;
+  --color-primary-500: #88c0d0;
+  --color-primary-600: #81a1c1;
+  --color-primary-700: #5e81ac;
+  --color-primary-800: #d8dee9;
+  --color-primary-950: #eceff4;
+}
 
 /* DENSITY CUSTOMIZATIONS */
 .density-compact td,
@@ -372,41 +586,11 @@
   padding-top: 0.5rem !important;
   padding-bottom: 0.5rem !important;
 }
-.density-compact .py-5,
-.density-compact .py-6 {
-  padding-top: 0.75rem !important;
-  padding-bottom: 0.75rem !important;
-}
-.density-compact .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 0.75rem !important;
-}
-.density-compact .gap-6 {
-  gap: 0.75rem !important;
-}
 
 .density-wide td,
 .density-wide th {
   padding-top: 1.25rem !important;
   padding-bottom: 1.25rem !important;
-}
-.density-wide .px-6 {
-  padding-left: 2rem !important;
-  padding-right: 2rem !important;
-}
-.density-wide .py-4 {
-  padding-top: 1.5rem !important;
-  padding-bottom: 1.5rem !important;
-}
-.density-wide .py-5,
-.density-wide .py-6 {
-  padding-top: 2rem !important;
-  padding-bottom: 2rem !important;
-}
-.density-wide .space-y-6 > :not([hidden]) ~ :not([hidden]) {
-  margin-top: 2rem !important;
-}
-.density-wide .gap-6 {
-  gap: 2rem !important;
 }
 
 /* BORDER RADIUS MODIFIERS */
@@ -414,48 +598,14 @@
 .borders-rounded * {
   border-radius: 0.75rem !important;
 }
-.borders-rounded input, 
-.borders-rounded button, 
-.borders-rounded select, 
-.borders-rounded textarea {
-  border-radius: 0.5rem !important;
-}
-
 .borders-square,
 .borders-square * {
   border-radius: 0px !important;
 }
 
 /* FONT SIZE CUSTOM OPTIONS */
-.font-size-small,
-.font-size-small button,
-.font-size-small p,
-.font-size-small a,
-.font-size-small td,
-.font-size-small span,
-.font-size-small input,
-.font-size-small select,
-.font-size-small textarea {
-  font-size: 0.8rem !important;
-}
-.font-size-small h1 { font-size: 1.5rem !important; }
-.font-size-small h2 { font-size: 1.2rem !important; }
-.font-size-small h3 { font-size: 1rem !important; }
-
-.font-size-large,
-.font-size-large button,
-.font-size-large p,
-.font-size-large a,
-.font-size-large td,
-.font-size-large span,
-.font-size-large input,
-.font-size-large select,
-.font-size-large textarea {
-  font-size: 1.075rem !important;
-}
-.font-size-large h1 { font-size: 2.25rem !important; }
-.font-size-large h2 { font-size: 1.85rem !important; }
-.font-size-large h3 { font-size: 1.45rem !important; }
+.font-size-small { font-size: 0.825rem !important; }
+.font-size-large { font-size: 1.05rem !important; }
 
 /* ANIMATION SWITCH OVERRIDE */
 .animations-disabled,
@@ -463,7 +613,6 @@
   transition: none !important;
   animation: none !important;
 }
-
 
 /* REAL-TIME DYNAMIC STYLING OVERRIDES */
 body {
@@ -518,7 +667,6 @@ header {
 
 /* Text Element Colors */
 .text-slate-900,
-.text-slate-805,
 .text-slate-800,
 .text-slate-100,
 .dark\:text-white,
@@ -527,7 +675,6 @@ header {
 }
 
 .text-slate-700,
-.text-slate-650,
 .text-slate-600,
 .text-slate-500,
 .dark\:text-slate-300,
@@ -536,7 +683,6 @@ header {
 }
 
 .text-slate-400,
-.text-slate-450,
 .dark\:text-slate-500 {
   color: var(--text-muted) !important;
 }
@@ -554,7 +700,8 @@ input:focus,
 select:focus,
 textarea:focus {
   border-color: var(--color-primary-500) !important;
-  box-shadow: 0 0 0 1px var(--color-primary-500) !important;
+  box-shadow: 0 0 0 2px rgba(99, 102, 241, 0.2) !important;
+  outline: none !important;
 }
 
 input:disabled,
@@ -562,28 +709,6 @@ select:disabled,
 textarea:disabled {
   background-color: var(--surface-secondary) !important;
   opacity: 0.65;
-}
-
-/* Overlay & portals dropdowns */
-.absolute.bg-white,
-.absolute.dark\:bg-slate-900 {
-  background-color: var(--surface) !important;
-  border-color: var(--border) !important;
-}
-
-/* Badges and tags overrides */
-.bg-primary-50,
-.dark\:bg-primary-950\/30,
-.dark\:bg-primary-950\/20 {
-  background-color: var(--surface-secondary) !important;
-  color: var(--color-primary-500) !important;
-}
-
-/* Secondary Button Hover fixes */
-.hover\:bg-slate-100:hover,
-.dark\:hover\:bg-slate-800\/60:hover {
-  background-color: var(--surface-secondary) !important;
-  color: var(--text-primary) !important;
 }
 
 /* Primary Button Typography Foreground overrides */

@@ -16,6 +16,7 @@ export const createSaleSchema = z.object({
     surchargeAmount: z.number().min(0).default(0),
     taxAmount: z.number().min(0).default(0),
     totalAmount: z.number().min(0),
+    paymentMethod: z.string().optional(),
     notes: z.string().optional().nullable(),
     status: z.string().optional(),
     items: z

@@ -1,7 +1,22 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 
 export type ThemeMode = 'light' | 'dark';
-export type AccentColor = 'light' | 'dark' | 'blue' | 'emerald' | 'purple' | 'orange' | 'rose' | 'midnight' | 'forest' | 'ocean';
+export type AccentColor = 
+  | 'light' 
+  | 'dark' 
+  | 'midnight' 
+  | 'emerald' 
+  | 'ocean' 
+  | 'sapphire' 
+  | 'indigo' 
+  | 'purple' 
+  | 'rose' 
+  | 'coffee' 
+  | 'forest' 
+  | 'sunset' 
+  | 'cyber' 
+  | 'slate' 
+  | 'nord';
 export type InterfaceDensity = 'compact' | 'normal' | 'wide';
 export type BorderStyle = 'rounded' | 'medium' | 'square';
 export type FontSize = 'small' | 'normal' | 'large';
@@ -23,7 +38,7 @@ interface AppearanceContextType {
 
 const defaultPreferences: AppearancePreferences = {
   themeMode: 'dark',
-  accentColor: 'blue',
+  accentColor: 'indigo',
   density: 'normal',
   borders: 'medium',
   animations: true,
@@ -89,7 +104,7 @@ export const AppearanceProvider: React.FC<{ children: React.ReactNode }> = ({ ch
     setPreferences((prev) => {
       const next = { ...prev, [key]: value };
       if (key === 'accentColor') {
-        const lightThemes = ['light', 'emerald'];
+        const lightThemes = ['light', 'slate'];
         next.themeMode = lightThemes.includes(value as string) ? 'light' : 'dark';
       }
       return next;

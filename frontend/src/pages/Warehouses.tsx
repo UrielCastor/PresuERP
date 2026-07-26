@@ -24,6 +24,7 @@ import {
 import { useAuth } from '../contexts/AuthContext';
 import { warehouseApi, Warehouse as WarehouseType } from '../services/warehouse.service';
 import { Button } from '../components/ui/Button';
+import { Input } from '../components/ui/Input';
 import { PageHeader } from '../components/ui/PageHeader';
 import { EmptyStateGuide } from '../components/ui/EmptyStateGuide';
 
@@ -259,14 +260,12 @@ export const Warehouses: React.FC = () => {
 
       {/* Filters and Search */}
       <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="relative flex-1 max-w-md">
-          <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400 dark:text-slate-500" />
-          <input
-            type="text"
+        <div className="flex-1 max-w-md">
+          <Input
             placeholder="Buscar por nombre, código o responsable..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="w-full pl-10 pr-4 py-2 border border-slate-350 dark:border-slate-800 rounded-lg bg-transparent text-sm text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
+            leftIcon={Search}
           />
         </div>
 

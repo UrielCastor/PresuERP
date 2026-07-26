@@ -78,37 +78,7 @@ export const saleApi = {
     return res.data.data;
   },
 
-  create: async (data: {
-    customerId?: string | null;
-    cashSessionId?: string | null;
-    documentTypeId?: string | null;
-    warehouseId: string;
-    subtotal: number;
-    discountType?: 'FIXED' | 'PERCENTAGE';
-    discountValue?: number;
-    discountAmount?: number;
-    surchargeType?: 'NONE' | 'FIXED' | 'PERCENTAGE';
-    surchargeValue?: number;
-    surchargeAmount?: number;
-    taxAmount?: number;
-    totalAmount: number;
-    notes?: string | null;
-    status?: string;
-    items: {
-      productId: string;
-      quantity: number;
-      unitPrice: number;
-      discountAmount?: number;
-      taxAmount?: number;
-      totalAmount: number;
-    }[];
-    payments?: {
-      paymentMethodId?: string | null;
-      amount: number;
-      transactionReference?: string | null;
-      details?: string | null;
-    }[];
-  }) => {
+  create: async (data: any) => {
     const res = await api.post('/sales', data);
     return res.data.data;
   },

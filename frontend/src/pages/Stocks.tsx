@@ -326,8 +326,22 @@ export const Stocks: React.FC = () => {
             </select>
           </div>
 
-          <div className="flex items-center justify-end text-xs text-slate-500 dark:text-slate-400">
-            Mostrando {filteredStocks.length} combinaciones de stock
+          <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+            {(searchTerm.trim() || selectedWarehouse !== 'ALL' || selectedCategory !== 'ALL' || selectedSupplier !== 'ALL' || selectedStatus !== 'ALL') ? (
+              <button
+                onClick={() => {
+                  setSearchTerm('');
+                  setSelectedWarehouse('ALL');
+                  setSelectedCategory('ALL');
+                  setSelectedSupplier('ALL');
+                  setSelectedStatus('ALL');
+                }}
+                className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 transition-colors"
+              >
+                Limpiar filtros
+              </button>
+            ) : <span />}
+            <span>Mostrando {filteredStocks.length} combinaciones de stock</span>
           </div>
         </div>
       </div>

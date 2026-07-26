@@ -3,6 +3,60 @@ import { ActivityLogRepository } from '../repositories/activityLog.repository';
 import { BadRequestError, ConflictError, NotFoundError } from '../utils/appError';
 import { prisma } from '../config/db';
 
+export interface CashSessionTotalsDTO {
+  openingBalance: number;
+  cashTotal: number;
+  mercadoPagoTotal: number;
+  transferTotal: number;
+  debitCardTotal: number;
+  creditCardTotal: number;
+  digitalTotal: number;
+  manualIncomes: number;
+  manualExpenses: number;
+  expectedCashBalance: number;
+  totalVendido: number;
+  grandTotal: number;
+}
+
+export interface CashMovementDTO {
+  id: string;
+  type: string;
+  amount: number;
+  reason: string;
+  referenceType?: string | null;
+  referenceId?: string | null;
+  paymentMethod?: string | null;
+  createdAt: string;
+  createdByName?: string;
+}
+
+export interface CashSessionSummaryDTO {
+  id: string;
+  businessId: string;
+  cashRegisterId: string;
+  cashRegister: {
+    id: string;
+    name: string;
+    code: string;
+  };
+  openedById: string;
+  openedBy?: {
+    id: string;
+    name: string;
+    email?: string;
+  };
+  closedById?: string | null;
+  openedAt: string;
+  closedAt?: string | null;
+  openingBalance: number;
+  closingBalance: number;
+  closingDifference: number;
+  status: string;
+  totals: CashSessionTotalsDTO;
+  cashMovements: CashMovementDTO[];
+  sales?: any[];
+}
+
 export function normalizePaymentMethodCode(methodOrReason?: any): string {
   if (!methodOrReason) return 'CASH';
   let str = '';
@@ -24,8 +78,10 @@ export function normalizePaymentMethodCode(methodOrReason?: any): string {
   return 'CASH';
 }
 
-export function calculateSessionTotals(session: any) {
+export function calculateSessionTotals(session: any): CashSessionTotalsDTO {
   const openingBalance = Number(session.openingBalance || 0);
+  const movements = session.cashMovements || [];
+
   let cashTotal = 0;
   let mercadoPagoTotal = 0;
   let transferTotal = 0;
@@ -34,7 +90,6 @@ export function calculateSessionTotals(session: any) {
   let manualIncomes = 0;
   let manualExpenses = 0;
 
-  const movements = session.cashMovements || [];
   movements.forEach((m: any) => {
     const amt = Number(m.amount || 0);
     const pm = normalizePaymentMethodCode(m.paymentMethod || m.reason);
@@ -75,7 +130,9 @@ export function calculateSessionTotals(session: any) {
   });
 
   const expectedCashBalance = openingBalance + cashTotal;
-  const grandTotal = expectedCashBalance + mercadoPagoTotal + transferTotal + debitCardTotal + creditCardTotal;
+  const digitalTotal = mercadoPagoTotal + transferTotal + debitCardTotal + creditCardTotal;
+  const totalVendido = Math.max(0, (cashTotal - manualIncomes) + digitalTotal);
+  const grandTotal = expectedCashBalance + digitalTotal;
 
   return {
     openingBalance,
@@ -84,10 +141,52 @@ export function calculateSessionTotals(session: any) {
     transferTotal,
     debitCardTotal,
     creditCardTotal,
+    digitalTotal,
     manualIncomes,
     manualExpenses,
     expectedCashBalance,
+    totalVendido,
     grandTotal,
+  };
+}
+
+export function mapToCashSessionSummaryDTO(session: any): CashSessionSummaryDTO {
+  const totals = calculateSessionTotals(session);
+  return {
+    id: session.id,
+    businessId: session.businessId,
+    cashRegisterId: session.cashRegisterId,
+    cashRegister: {
+      id: session.cashRegister?.id || session.cashRegisterId,
+      name: session.cashRegister?.name || 'Caja Principal',
+      code: session.cashRegister?.code || 'CAJA-01',
+    },
+    openedById: session.openedById,
+    openedBy: session.openedBy ? {
+      id: session.openedBy.id,
+      name: session.openedBy.name,
+      email: session.openedBy.email,
+    } : undefined,
+    closedById: session.closedById || null,
+    openedAt: session.openedAt instanceof Date ? session.openedAt.toISOString() : String(session.openedAt),
+    closedAt: session.closedAt ? (session.closedAt instanceof Date ? session.closedAt.toISOString() : String(session.closedAt)) : null,
+    openingBalance: Number(session.openingBalance || 0),
+    closingBalance: Number(session.closingBalance || 0),
+    closingDifference: Number(session.closingDifference || 0),
+    status: session.status || 'CLOSED',
+    totals,
+    cashMovements: (session.cashMovements || []).map((m: any) => ({
+      id: m.id,
+      type: m.type,
+      amount: Number(m.amount || 0),
+      reason: m.reason,
+      referenceType: m.referenceType || null,
+      referenceId: m.referenceId || null,
+      paymentMethod: m.paymentMethod || null,
+      createdAt: m.createdAt instanceof Date ? m.createdAt.toISOString() : String(m.createdAt),
+      createdByName: m.createdByUser?.name || m.createdBy?.name || undefined,
+    })),
+    sales: session.sales || [],
   };
 }
 
@@ -145,7 +244,8 @@ export class CashService {
         }
       });
 
-      return session;
+      const sessionWithDetails = await this.cashRepo.getSessionWithDetails(session.id, data.businessId);
+      return mapToCashSessionSummaryDTO(sessionWithDetails || session);
     });
   }
 
@@ -168,8 +268,8 @@ export class CashService {
     const expectedBalance = totals.expectedCashBalance;
     const difference = data.countedBalance - expectedBalance;
 
-    return prisma.$transaction(async (tx: any) => {
-      const closedSession = await this.cashRepo.closeSession(session.id, {
+    await prisma.$transaction(async (tx: any) => {
+      await this.cashRepo.closeSession(session.id, {
         closedById: data.userId,
         closedAt: new Date(),
         closingBalance: data.countedBalance,
@@ -187,9 +287,10 @@ export class CashService {
           newValues: JSON.stringify({ expectedBalance, countedBalance: data.countedBalance, difference, totals }),
         }
       });
-
-      return { ...closedSession, totals };
     });
+
+    const closedWithDetails = await this.cashRepo.getSessionWithDetails(session.id, data.businessId);
+    return mapToCashSessionSummaryDTO(closedWithDetails || sessionDetails);
   }
 
   async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) {
@@ -244,31 +345,29 @@ export class CashService {
     });
   }
 
-  async getActiveSession(businessId: string, userId: string) {
-    const session = await this.cashRepo.findActiveSessionByUser(userId, businessId);
-    if (!session) return null;
-    const sessionDetails = await this.cashRepo.getSessionWithDetails(session.id, businessId);
-    if (!sessionDetails) return null;
-    const totals = calculateSessionTotals(sessionDetails);
-    return { ...sessionDetails, totals };
+  async getActiveSession(businessId: string, userId: string): Promise<CashSessionSummaryDTO | null> {
+    const sessionDetails = await this.cashRepo.findActiveSessionWithDetails(businessId, userId);
+    if (!sessionDetails) {
+      return null;
+    }
+
+    return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
-  async getHistory(businessId: string) {
+  async getHistory(businessId: string): Promise<CashSessionSummaryDTO[]> {
     const sessions = await this.cashRepo.listSessions(businessId);
     return Promise.all(
       sessions.map(async (s: any) => {
         const details = await this.cashRepo.getSessionWithDetails(s.id, businessId);
-        const totals = details ? calculateSessionTotals(details) : null;
-        return { ...s, totals };
+        return mapToCashSessionSummaryDTO(details || s);
       })
     );
   }
 
-  async getSessionHistoryDetail(sessionId: string, businessId: string) {
+  async getSessionHistoryDetail(sessionId: string, businessId: string): Promise<CashSessionSummaryDTO> {
     const sessionDetails = await this.cashRepo.getSessionWithDetails(sessionId, businessId);
     if (!sessionDetails) throw new NotFoundError('Sesión no encontrada');
-    const totals = calculateSessionTotals(sessionDetails);
-    return { ...sessionDetails, totals };
+    return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
   async getRegisters(businessId: string) {
