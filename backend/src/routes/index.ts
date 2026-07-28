@@ -22,7 +22,6 @@ import businessIntegrationRoutes from './business-integration.routes';
 import paymentAdjustmentRuleRoutes from './payment-adjustment-rule.routes';
 import customerRoutes from './customer.routes';
 import fiscalRoutes from './fiscal.routes';
-import { BusinessIntegrationController } from '../controllers/business-integration.controller';
 import { requireAuth } from '../middlewares/auth.middleware';
 
 console.log('🔥 routes/index.ts cargado');
@@ -40,11 +39,8 @@ router.use('/auth', authRoutes);
 // System SaaS endpoints (Strict SUPER_ADMIN)
 router.use('/system', systemRoutes);
 
-// Public business webhook (no authentication required)
-router.post('/business/integrations/mercado-pago/webhook', new BusinessIntegrationController().webhook);
-
-// Protected module routes
-router.use('/business/integrations', requireAuth, businessIntegrationRoutes);
+// Integration module routes (Webhook is public inside businessIntegrationRoutes, rest is protected)
+router.use('/business/integrations', businessIntegrationRoutes);
 router.use('/businesses', requireAuth, businessRoutes);
 router.use('/settings', requireAuth, settingsRoutes);
 

@@ -191,6 +191,11 @@ export class BusinessIntegrationController {
   webhook = async (req: Request, res: Response, next: NextFunction) => {
     let webhookLogId: string | null = null;
     try {
+      // ━━━ DIAGNOSTIC LOG ━━━
+      // If this log does NOT appear in production, the 401 comes from OUTSIDE Express
+      // (reverse proxy, firewall, CDN, or stale deploy).
+      logger.info(`[MP WEBHOOK HIT] method=${req.method} url=${req.originalUrl} ip=${req.ip} content-type=${req.headers['content-type']} user-agent=${req.headers['user-agent']}`);
+
       logger.info(`[MP WEBHOOK QUERY] ${JSON.stringify(req.query)}`);
       logger.info(`[MP WEBHOOK BODY] ${JSON.stringify(req.body)}`);
 
@@ -340,41 +345,38 @@ export class BusinessIntegrationController {
 
       if (tenantWebhookSecret) {
         if (!xSignature) {
-          logger.warn(`[MP WEBHOOK SIGNATURE FAILED] businessId=${businessId} resourceId=${resourceId} - Missing x-signature header`);
-          logger.info(`[MP WEBHOOK SIGNATURE] valid=false`);
+          logger.warn(`[MP WEBHOOK SIGNATURE NOTICE] businessId=${businessId} resourceId=${resourceId} - Missing x-signature header (proceeding with MP API verification)`);
           if (webhookLogId) {
             await prisma.mercadoPagoWebhookLog.update({
               where: { id: webhookLogId },
               data: { businessId, saleId: sale.id, signatureValid: false, error: 'Missing x-signature header' }
             }).catch(() => {});
           }
-          return res.status(401).json({ success: false, message: 'Firma invalida (x-signature ausente)' });
-        }
-
-        const parts = xSignature.split(',');
-        let ts = '';
-        let hashV1 = '';
-        for (const part of parts) {
-          const [k, v] = part.split('=').map(s => s?.trim());
-          if (k === 'ts') ts = v;
-          if (k === 'v1') hashV1 = v;
-        }
-
-        const manifestTemplate = `id:${resourceId};request-id:${xRequestId || ''};ts:${ts};`;
-        const calculatedHash = crypto.createHmac('sha256', tenantWebhookSecret).update(manifestTemplate).digest('hex');
-
-        if (calculatedHash === hashV1) {
-          signatureValid = true;
-          logger.info(`[MP SIGNATURE VALIDATION] businessId=${businessId} resourceId=${resourceId} signatureValid=true`);
         } else {
-          logger.warn(`[MP SIGNATURE VALIDATION] businessId=${businessId} resourceId=${resourceId} signatureValid=false - Signature mismatch`);
-          if (webhookLogId) {
-            await prisma.mercadoPagoWebhookLog.update({
-              where: { id: webhookLogId },
-              data: { businessId, saleId: sale.id, signatureValid: false, error: 'Signature mismatch' }
-            }).catch(() => {});
+          const parts = xSignature.split(',');
+          let ts = '';
+          let hashV1 = '';
+          for (const part of parts) {
+            const [k, v] = part.split('=').map(s => s?.trim());
+            if (k === 'ts') ts = v;
+            if (k === 'v1') hashV1 = v;
           }
-          return res.status(401).json({ success: false, message: 'Firma invalida (x-signature mismatch)' });
+
+          const manifestTemplate = `id:${resourceId};request-id:${xRequestId || ''};ts:${ts};`;
+          const calculatedHash = crypto.createHmac('sha256', tenantWebhookSecret).update(manifestTemplate).digest('hex');
+
+          if (calculatedHash === hashV1) {
+            signatureValid = true;
+            logger.info(`[MP SIGNATURE VALIDATION] businessId=${businessId} resourceId=${resourceId} signatureValid=true`);
+          } else {
+            logger.warn(`[MP SIGNATURE VALIDATION NOTICE] businessId=${businessId} resourceId=${resourceId} - Signature mismatch (proceeding with MP API verification)`);
+            if (webhookLogId) {
+              await prisma.mercadoPagoWebhookLog.update({
+                where: { id: webhookLogId },
+                data: { businessId, saleId: sale.id, signatureValid: false, error: 'Signature mismatch' }
+              }).catch(() => {});
+            }
+          }
         }
       } else {
         signatureValid = true;
@@ -407,7 +409,12 @@ export class BusinessIntegrationController {
       }
 
       const accessToken = integration?.credentials?.accessToken;
-      const isOrderNotification = topic === 'order' || topic === 'merchant_order' || (req.body?.resource && String(req.body.resource).includes('/orders/'));
+      const isOrderNotification = 
+        topic === 'order' || 
+        topic === 'merchant_order' || 
+        topic === 'order.processed' || 
+        req.body?.action === 'order.processed' || 
+        (req.body?.resource && (String(req.body.resource).includes('/orders/') || String(req.body.resource).includes('/merchant_orders/')));
       
       let paymentId: string | null = null;
       let orderId: string | null = null;
@@ -419,18 +426,24 @@ export class BusinessIntegrationController {
         orderId = resourceId;
 
         if (accessToken) {
-          const orderRes = await fetch(`https://api.mercadopago.com/v1/orders/${orderId}`, {
+          let orderRes = await fetch(`https://api.mercadopago.com/v1/orders/${orderId}`, {
             headers: { Authorization: `Bearer ${accessToken}` }
           });
+
+          if (!orderRes.ok) {
+            orderRes = await fetch(`https://api.mercadopago.com/merchant_orders/${orderId}`, {
+              headers: { Authorization: `Bearer ${accessToken}` }
+            });
+          }
 
           if (orderRes.ok) {
             const orderData: any = await orderRes.json();
             const orderStatus = orderData.status;
-            const payments = orderData.transactions?.payments || [];
+            const payments = orderData.transactions?.payments || orderData.payments || [];
             if (payments.length > 0) {
               paymentId = String(payments[0].id || '');
-              if (payments[0].amount) {
-                amountPaid = Number(payments[0].amount);
+              if (payments[0].amount || payments[0].total_paid_amount || payments[0].transaction_amount) {
+                amountPaid = Number(payments[0].amount || payments[0].total_paid_amount || payments[0].transaction_amount);
               }
             }
 

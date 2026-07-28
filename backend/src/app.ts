@@ -7,8 +7,15 @@ import { env } from './config/env';
 import { logger } from './config/logger';
 import { errorHandler } from './middlewares/error.middleware';
 import apiRoutes from './routes';
+import mpWebhookRoute from './routes/mp-webhook.routes';
 
 const app = express();
+
+// ━━━ Mercado Pago Webhook — MUST be mounted BEFORE Helmet/CORS/auth ━━━
+// MP sends server-to-server POST without JWT, Origin header, or cookies.
+// Mounting here guarantees no global middleware can reject the request (401/403/CORS error).
+// The route has its own body parser inline.
+app.use('/api/v1/business/integrations/mercado-pago/webhook', mpWebhookRoute);
 
 // Security HTTP headers
 app.use(helmet());

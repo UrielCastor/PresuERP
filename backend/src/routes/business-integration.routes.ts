@@ -1,8 +1,15 @@
 import { Router } from 'express';
 import { BusinessIntegrationController } from '../controllers/business-integration.controller';
+import { requireAuth } from '../middlewares/auth.middleware';
 
 const router = Router();
 const controller = new BusinessIntegrationController();
+
+// 1. Webhook endpoint MUST BE PUBLIC (No authentication middleware / No JWT required)
+router.post('/mercado-pago/webhook', controller.webhook);
+
+// 2. Integration management endpoints require authentication
+router.use(requireAuth);
 
 router.get('/', controller.getIntegrations);
 router.put('/mercado-pago', controller.saveMercadoPago);
@@ -12,3 +19,4 @@ router.post('/mercado-pago/create-qr', controller.createQrOrder);
 router.get('/mercado-pago/payment-status/:saleId', controller.getPaymentStatus);
 
 export default router;
+
