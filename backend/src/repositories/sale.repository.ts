@@ -31,27 +31,13 @@ export class SaleRepository {
 
     const skip = (page - 1) * limit;
 
-    let saleIdsForWarehouse: string[] | undefined = undefined;
-
-    if (warehouseId) {
-      const movements = await prisma.stockMovement.findMany({
-        where: { businessId, warehouseId, referenceType: 'SALE' },
-        select: { referenceId: true },
-      });
-      saleIdsForWarehouse = Array.from(
-        new Set(movements.map((m) => m.referenceId).filter((id): id is string => Boolean(id)))
-      );
-    }
-
     const where: Prisma.SaleWhereInput = {
       businessId,
       ...(customerId && { customerId }),
       ...(cashSessionId && { cashSessionId }),
       ...(documentTypeId && { documentTypeId }),
       ...(status && { status }),
-      ...(warehouseId && {
-        id: { in: saleIdsForWarehouse && saleIdsForWarehouse.length > 0 ? saleIdsForWarehouse : ['__NO_MATCH__'] },
-      }),
+      ...(warehouseId && { warehouseId }),
       ...((startDate || endDate) && {
         createdAt: {
           ...(startDate && { gte: startDate }),

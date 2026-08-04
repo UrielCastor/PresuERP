@@ -1,13 +1,13 @@
 import api from './api';
 
 export const cashApi = {
-  getRegisters: async () => {
-    const { data } = await api.get('/cash/registers');
+  getRegisters: async (params?: any) => {
+    const { data } = await api.get('/cash/registers', { params });
     return data.data;
   },
 
-  getActiveSession: async () => {
-    const { data } = await api.get('/cash/active');
+  getActiveSession: async (params?: any) => {
+    const { data } = await api.get('/cash/active', { params });
     return data.data;
   },
 
@@ -21,17 +21,17 @@ export const cashApi = {
     return data.data;
   },
 
-  openSession: async (payload: { cashRegisterId: string; openingBalance: number; notes?: string }) => {
+  openSession: async (payload: { warehouseId: string; cashRegisterId: string; openingBalance: number; notes?: string }) => {
     const { data } = await api.post('/cash/open', payload);
     return data.data;
   },
 
-  closeSession: async (payload: { countedBalance: number; notes?: string }) => {
+  closeSession: async (payload: { countedBalance: number; notes?: string; warehouseId?: string }) => {
     const { data } = await api.post('/cash/close', payload);
     return data.data;
   },
 
-  registerMovement: async (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) => {
+  registerMovement: async (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string }) => {
     const { data } = await api.post('/cash/movement', payload);
     return data.data;
   }

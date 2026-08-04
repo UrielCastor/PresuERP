@@ -8,6 +8,7 @@ import { Profile } from '../pages/Profile';
 import { Settings } from '../pages/Settings';
 import { Users } from '../pages/Users';
 import { Products } from '../pages/Products';
+import { PriceListsPage } from '../pages/PriceListsPage';
 import { Categories } from '../pages/Categories';
 import { Suppliers } from '../pages/Suppliers';
 import { Warehouses } from '../pages/Warehouses';
@@ -19,18 +20,17 @@ import { Customers } from '../pages/customers/Customers';
 import { POS } from '../pages/POS';
 import { Cash } from '../pages/Cash';
 import { Reports } from '../pages/Reports';
-import { Businesses } from '../pages/Businesses';
 import { CompanyProfile } from '../pages/CompanyProfile';
 import { Audit } from '../pages/Audit';
-import { FiscalSettings } from '../pages/FiscalSettings';
 import { NotFound } from '../pages/NotFound';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   permission?: string;
+  permissions?: string[];
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission }) => {
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission, permissions }) => {
   const { isAuthenticated, isLoading, hasPermission } = useAuth();
 
   if (isLoading) {
@@ -45,8 +45,35 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission })
     return <Navigate to="/login" replace />;
   }
 
-  if (permission && !hasPermission(permission)) {
-    return <Navigate to="/dashboard" replace />;
+  const hasAccess = 
+    (!permission || hasPermission(permission)) &&
+    (!permissions || permissions.some(p => hasPermission(p)));
+
+  if (!hasAccess) {
+    return (
+      <DashboardLayout>
+        <div className="min-h-[70vh] flex flex-col items-center justify-center text-center px-4">
+          <h1 className="text-9xl font-black text-slate-200 dark:text-slate-800 tracking-widest animate-pulse">
+            403
+          </h1>
+          <div className="bg-red-500 text-white px-2.5 py-0.5 text-sm font-semibold rounded rotate-12 absolute shadow-sm">
+            Acceso Restringido
+          </div>
+          <h2 className="text-2xl font-bold mt-4 text-slate-800 dark:text-slate-100">
+            Módulo Exclusivo de Administrador
+          </h2>
+          <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-md">
+            Esta sección está reservada para el rol de Administrator. Tu rol actual no cuenta con los privilegios requeridos para ver o editar estos parámetros.
+          </p>
+          <button
+            onClick={() => window.location.href = '/dashboard'}
+            className="mt-8 px-6 py-2.5 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-md hover:shadow-lg"
+          >
+            Regresar al Dashboard
+          </button>
+        </div>
+      </DashboardLayout>
+    );
   }
 
   return <DashboardLayout>{children}</DashboardLayout>;
@@ -93,15 +120,6 @@ export const AppRoutes: React.FC = () => {
         }
       />
 
-      {/* Auditoría del Sistema para Administradores */}
-      <Route
-        path="/system/audit"
-        element={
-          <ProtectedRoute permission="AUDIT_VIEW">
-            <Audit />
-          </ProtectedRoute>
-        }
-      />
 
       {/* SaaS System Area */}
       <Route path="/system" element={<SystemRoute />}>
@@ -155,6 +173,14 @@ export const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute permission="products:read">
             <Products />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/price-lists"
+        element={
+          <ProtectedRoute permission="products:read">
+            <PriceListsPage />
           </ProtectedRoute>
         }
       />
@@ -216,7 +242,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/customers"
         element={
-          <ProtectedRoute permission="sales:read">
+          <ProtectedRoute permission="customers:read">
             <Customers />
           </ProtectedRoute>
         }
@@ -224,7 +250,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/pos"
         element={
-          <ProtectedRoute permission="sales:create">
+          <ProtectedRoute permission="sales:write">
             <POS />
           </ProtectedRoute>
         }
@@ -245,23 +271,70 @@ export const AppRoutes: React.FC = () => {
           </ProtectedRoute>
         }
       />
+      <Route
+        path="/audit"
+        element={
+          <ProtectedRoute permission="AUDIT_VIEW">
+            <Audit />
+          </ProtectedRoute>
+        }
+      />
 
 
 
       <Route
         path="/settings/company"
         element={
-          <ProtectedRoute>
+          <ProtectedRoute permission="settings:read">
             <CompanyProfile />
           </ProtectedRoute>
         }
       />
-
       <Route
-        path="/settings/fiscal"
+        path="/settings/pos"
         element={
-          <ProtectedRoute permission="FISCAL_VIEW">
-            <FiscalSettings />
+          <ProtectedRoute permission="settings:pos:read">
+            <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/system"
+        element={
+          <ProtectedRoute permission="settings:read">
+            <Navigate to="/settings" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/subscription"
+        element={
+          <ProtectedRoute permission="settings:read">
+            <Navigate to="/settings" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/company"
+        element={
+          <ProtectedRoute permission="settings:read">
+            <Navigate to="/settings/company" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/roles"
+        element={
+          <ProtectedRoute permission="users:read">
+            <Navigate to="/users" replace />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/permissions"
+        element={
+          <ProtectedRoute permission="users:read">
+            <Navigate to="/users" replace />
           </ProtectedRoute>
         }
       />

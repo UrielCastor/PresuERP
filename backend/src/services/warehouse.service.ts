@@ -1,13 +1,38 @@
 import { WarehouseRepository } from '../repositories/warehouse.repository';
 import { ActivityLogRepository } from '../repositories/activityLog.repository';
 import { ConflictError, NotFoundError } from '../utils/appError';
+import { prisma } from '../config/db';
 
 export class WarehouseService {
   private warehouseRepo = new WarehouseRepository();
   private activityLogRepo = new ActivityLogRepository();
 
-  async list(businessId: string) {
-    return this.warehouseRepo.list(businessId);
+  async list(businessId: string, userId?: string) {
+    const allWarehouses = await this.warehouseRepo.list(businessId);
+    if (!userId) return allWarehouses;
+
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: { isStaff: true },
+    });
+
+    // isStaff = true -> Access to all warehouses
+    if (user?.isStaff) {
+      return allWarehouses;
+    }
+
+    // isStaff = false -> Access ONLY to authorized userWarehouses
+    const userWarehouses = await prisma.userWarehouse.findMany({
+      where: { userId },
+      select: { warehouseId: true },
+    });
+
+    if (userWarehouses.length === 0) {
+      return [];
+    }
+
+    const allowedIds = new Set(userWarehouses.map((uw) => uw.warehouseId));
+    return allWarehouses.filter((w) => allowedIds.has(w.id));
   }
 
   async findById(id: string, businessId: string) {

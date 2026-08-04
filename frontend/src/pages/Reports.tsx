@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Tabs } from '../components/ui/Tabs';
 import { Card, CardContent } from '../components/ui/Card';
@@ -9,12 +10,18 @@ import { MetricTrend } from '../components/ui/MetricTrend';
 import { ShoppingCart, ShoppingBag, Banknote, Package, Box, LineChart as LineChartIcon, Users, CreditCard, DollarSign, TrendingUp, TrendingDown, AlertCircle, Building2, Layers, ShieldCheck, History, List, Activity, Eye, CheckCircle2, XCircle, RefreshCw, Search } from 'lucide-react';
 import { LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import { ReportService } from '../services/report.service';
+import { warehouseApi } from '../services/warehouse.service';
 import { Modal, Button } from '../components/ui';
 import { useAuth } from '../contexts/AuthContext';
 
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#f43f5e', '#8b5cf6'];
 
+import { getInitialWarehouseId } from '../utils/warehouse';
+
 export const Reports: React.FC = () => {
+  const { user } = useAuth();
+  const defaultWhId = getInitialWarehouseId(user) || undefined;
+
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('tab') || 'overview';
@@ -23,6 +30,30 @@ export const Reports: React.FC = () => {
   const [dateFrom, setDateFrom] = useState(new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString());
   const [dateTo, setDateTo] = useState(new Date().toISOString());
   const [loading, setLoading] = useState(true);
+
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(
+    () => (user?.isStaff ? 'ALL' : defaultWhId || 'ALL')
+  );
+
+  useEffect(() => {
+    if (!user?.isStaff && defaultWhId && (selectedWarehouse === 'ALL' || !selectedWarehouse)) {
+      setSelectedWarehouse(defaultWhId);
+    }
+  }, [defaultWhId, user]);
+
+  console.log('[REPORTS] estado del depósito:', {
+    selectedWarehouse,
+    defaultWhId,
+    'user.isStaff': user?.isStaff,
+    'user.defaultWarehouseId': user?.defaultWarehouseId,
+    'user.defaultWarehouse': user?.defaultWarehouse,
+    'user.userWarehouses': user?.userWarehouses,
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: warehouseApi.list,
+  });
 
   const [salesData, setSalesData] = useState<any>(null);
   const [purchaseData, setPurchaseData] = useState<any>(null);
@@ -79,12 +110,16 @@ export const Reports: React.FC = () => {
 
   useEffect(() => {
     fetchActiveReport();
-  }, [activeTab, dateFrom, dateTo]);
+  }, [activeTab, dateFrom, dateTo, selectedWarehouse]);
 
   const fetchActiveReport = async () => {
     setLoading(true);
     try {
-       const params = { dateFrom, dateTo };
+       const params: any = {
+         dateFrom,
+         dateTo,
+         warehouseId: selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined,
+       };
        if (activeTab === 'overview') setExecutiveData(await ReportService.getExecutiveSummary(params));
        if (activeTab === 'overview' || activeTab === 'sales') setSalesData(await ReportService.getSales(params));
        if (activeTab === 'overview' || activeTab === 'purchases') setPurchaseData(await ReportService.getPurchases(params));
@@ -104,11 +139,18 @@ export const Reports: React.FC = () => {
   };
 
   const handleClearFilters = () => {
+    setSelectedWarehouse('ALL');
     handleDateRangeChange('this_month');
   };
 
   const handleExport = (type: 'CSV' | 'XLSX' | 'PDF') => {
-    ReportService.exportReport({ report: activeTab, type, dateFrom, dateTo });
+    ReportService.exportReport({
+      report: activeTab,
+      type,
+      dateFrom,
+      dateTo,
+      warehouseId: selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined,
+    });
   };
 
   const renderOverview = () => {
@@ -152,11 +194,36 @@ export const Reports: React.FC = () => {
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-           <StatCard title="Ingresos Totales (Ventas)" value={`$ ${Number(financialData.totalSales || 0).toLocaleString()}`} icon={TrendingUp} />
-           <StatCard title="Costos (Compras Grales)" value={`$ ${Number(financialData.totalPurchases || 0).toLocaleString()}`} icon={TrendingDown} />
-           <StatCard title="Ganancia Bruta" value={`$ ${Number(financialData.grossMargin || 0).toLocaleString()}`} icon={DollarSign} className="border-emerald-200" />
+           <StatCard title="Ingresos Totales (Ventas)" value={`$ ${Number(financialData.totalSales || 0).toLocaleString()}`} icon={TrendingUp} className="border-emerald-200" />
+           <StatCard title="Costos (Compras Grales)" value={`$ ${Number(financialData.totalPurchases || 0).toLocaleString()}`} icon={TrendingDown} className="border-rose-200" />
+           <StatCard title="Ganancia Bruta" value={`$ ${Number(financialData.grossMargin || 0).toLocaleString()}`} icon={DollarSign} className="border-indigo-200" />
            <StatCard title="Margen (%)" value={`${financialData.totalSales > 0 ? ((financialData.grossMargin / financialData.totalSales)*100).toFixed(2) : 0}%`} icon={LineChartIcon} />
         </div>
+
+        <ChartCard title="Evolución Financiera" subtitle="Comparativa diaria de Ingresos (Ventas) vs Costos (Compras)">
+           <div className="h-72">
+             <ResponsiveContainer width="100%" height="100%">
+               <AreaChart data={financialData.dailyFinancial || []}>
+                 <defs>
+                   <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
+                     <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
+                     <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                   </linearGradient>
+                   <linearGradient id="colorPurchases" x1="0" y1="0" x2="0" y2="1">
+                     <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
+                     <stop offset="95%" stopColor="#f43f5e" stopOpacity={0}/>
+                   </linearGradient>
+                 </defs>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                 <XAxis dataKey="day" axisLine={false} tickLine={false} tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, {month:'short', day:'numeric'})} />
+                 <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val/1000}k`} />
+                 <RechartsTooltip formatter={(value: any, name: any) => [`$ ${Number(value).toLocaleString()}`, name === 'sales' ? 'Ventas' : 'Compras']} />
+                 <Area type="monotone" dataKey="sales" name="sales" stroke="#10b981" fillOpacity={1} fill="url(#colorSales)" />
+                 <Area type="monotone" dataKey="purchases" name="purchases" stroke="#f43f5e" fillOpacity={1} fill="url(#colorPurchases)" />
+               </AreaChart>
+             </ResponsiveContainer>
+           </div>
+        </ChartCard>
       </div>
     );
   };
@@ -166,11 +233,104 @@ export const Reports: React.FC = () => {
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
-        {/* Visual content from earlier */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-           <StatCard title="Ventas Totales" value={`$ ${Number(salesData.totalAmount || 0).toLocaleString()}`} icon={DollarSign} />
+        
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+           <StatCard title="Ventas Totales" value={`$ ${Number(salesData.totalAmount || 0).toLocaleString()}`} icon={DollarSign} className="border-emerald-200" />
            <StatCard title="Cantidad Operaciones" value={salesData.totalSales || 0} icon={ShoppingCart} />
            <StatCard title="Ticket Promedio" value={`$ ${Number(salesData.averageTicket || 0).toLocaleString()}`} icon={CreditCard} />
+        </div>
+
+        <ChartCard title="Tendencia de Ventas" subtitle="Evolución diaria de facturación">
+           <div className="h-72">
+             <ResponsiveContainer width="100%" height="100%">
+               <AreaChart data={salesData.salesByDay || []}>
+                 <defs>
+                   <linearGradient id="colorTotal" x1="0" y1="0" x2="0" y2="1">
+                     <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.8}/>
+                     <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                   </linearGradient>
+                 </defs>
+                 <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                 <XAxis dataKey="day" axisLine={false} tickLine={false} tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, {month:'short', day:'numeric'})} />
+                 <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val/1000}k`} />
+                 <RechartsTooltip formatter={(value: any) => [`$ ${Number(value).toLocaleString()}`, 'Facturación']} />
+                 <Area type="monotone" dataKey="total" stroke="#0ea5e9" fillOpacity={1} fill="url(#colorTotal)" />
+               </AreaChart>
+             </ResponsiveContainer>
+           </div>
+        </ChartCard>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <Card>
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 font-bold text-slate-900 dark:text-white flex items-center justify-between">
+              <span>🏆 Productos Más Vendidos</span>
+              <span className="text-xs font-normal text-slate-400">Top 10 por facturación</span>
+            </div>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-2.5">Producto</th>
+                      <th className="px-4 py-2.5 text-center">Cantidad</th>
+                      <th className="px-4 py-2.5 text-right">Facturación</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(salesData.topProducts || []).slice(0, 10).map((p: any, i: number) => (
+                      <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800/60">
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">
+                          <div>{p.productName}</div>
+                          <div className="text-[10px] text-slate-400">SKU: {p.sku}</div>
+                        </td>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-600 dark:text-slate-300">{p.quantity} u.</td>
+                        <td className="px-4 py-3 text-right font-bold text-emerald-600 dark:text-emerald-400">$ {Number(p.amount).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {(!salesData.topProducts || salesData.topProducts.length === 0) && (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin datos de productos vendidos</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <div className="p-4 border-b border-slate-100 dark:border-slate-800 font-bold text-slate-900 dark:text-white flex items-center justify-between">
+              <span>👤 Principales Clientes</span>
+              <span className="text-xs font-normal text-slate-400">Top por compras</span>
+            </div>
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left">
+                  <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 text-xs text-slate-500 uppercase">
+                    <tr>
+                      <th className="px-4 py-2.5">Cliente</th>
+                      <th className="px-4 py-2.5 text-center">Compras</th>
+                      <th className="px-4 py-2.5 text-right">Monto Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(salesData.topCustomers || []).slice(0, 10).map((c: any, i: number) => (
+                      <tr key={i} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/30 border-b border-slate-100 dark:border-slate-800/60">
+                        <td className="px-4 py-3 font-medium text-slate-900 dark:text-white">{c.customerName}</td>
+                        <td className="px-4 py-3 text-center font-semibold text-slate-600 dark:text-slate-300">{c.count} tks</td>
+                        <td className="px-4 py-3 text-right font-bold text-indigo-600 dark:text-indigo-400">$ {Number(c.amount).toLocaleString()}</td>
+                      </tr>
+                    ))}
+                    {(!salesData.topCustomers || salesData.topCustomers.length === 0) && (
+                      <tr>
+                        <td colSpan={3} className="px-4 py-6 text-center text-slate-400">Sin compras registradas</td>
+                      </tr>
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -276,7 +436,7 @@ export const Reports: React.FC = () => {
               <table className="w-full text-sm text-left">
                 <thead className="bg-slate-50 border-b">
                   <tr>
-                    <th className="px-6 py-3">Producto / SKU</th>
+                    <th className="px-6 py-3">Producto / Código Interno</th>
                     <th className="px-6 py-3">Depósito</th>
                     <th className="px-6 py-3">Categoría</th>
                     <th className="px-6 py-3 text-right">Disponible</th>
@@ -606,7 +766,7 @@ export const Reports: React.FC = () => {
                 <thead className="bg-slate-50 border-b">
                   <tr>
                     <th className="px-6 py-3">Fecha</th>
-                    <th className="px-6 py-3">Producto / SKU</th>
+                    <th className="px-6 py-3">Producto / Código Interno</th>
                     <th className="px-6 py-3">Depósito</th>
                     <th className="px-6 py-3">Tipo</th>
                     <th className="px-6 py-3">Cantidad</th>
@@ -737,12 +897,54 @@ export const Reports: React.FC = () => {
     );
   }
 
+  const selectedWarehouseObj = warehouses.find((w: any) => w.id === selectedWarehouse);
+  const warehouseBadgeText = selectedWarehouseObj
+    ? `Depósito: ${selectedWarehouseObj.name}`
+    : 'Consolidado Global (Todos los depósitos)';
+
   return (
     <div className="space-y-6 pb-20">
-      <PageHeader
-        title="Centro Analítico BI"
-        subtitle="Visualiza métricas, exporta datos y audita rentabilidad."
-      />
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <PageHeader
+          title="Centro Analítico BI"
+          subtitle="Visualiza métricas, exporta datos y audita rentabilidad."
+        />
+        <div className="flex items-center gap-3 bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+          <Building2 className="w-5 h-5 text-primary-500 shrink-0" />
+          <div className="flex flex-col">
+            <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">
+              Filtrar por Depósito
+            </span>
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => setSelectedWarehouse(e.target.value)}
+              disabled={warehouses.length === 0}
+              className="bg-transparent text-xs md:text-sm font-extrabold text-slate-900 dark:text-white focus:outline-none cursor-pointer pr-2 disabled:opacity-50"
+            >
+              {warehouses.length === 0 ? (
+                <option value="">Sin depósitos autorizados</option>
+              ) : (
+                <>
+                  {user?.isStaff && <option value="ALL">🏢 Todos los depósitos (Consolidado Global)</option>}
+                  {warehouses.map((w: any) => (
+                    <option key={w.id} value={w.id}>
+                      🏭 {w.name}
+                    </option>
+                  ))}
+                </>
+              )}
+            </select>
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between px-1">
+        <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-black bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+          <Building2 className="w-3.5 h-3.5 text-indigo-500" />
+          {warehouseBadgeText}
+        </span>
+      </div>
+
       <Card className="bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
         <Tabs
           variant="underline"

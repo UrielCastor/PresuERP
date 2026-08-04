@@ -1,8 +1,11 @@
 import app, { printRegisteredRoutes } from './app';
+// Reload trigger for product-price-updates routes
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { prisma } from './config/db';
 import { AuthService } from './services/auth.service';
+import { initTokenCleanupJob, stopTokenCleanupJob } from './jobs/tokenCleanup.job';
+import { initSubscriptionCleanupJob, stopSubscriptionCleanupJob } from './jobs/subscriptionCleanup.job';
 
 async function main() {
   // Test DB connection
@@ -13,6 +16,10 @@ async function main() {
     // Seed new permissions and role mapping for all businesses
     await AuthService.bootstrapPermissions();
     logger.info('🔑 Permissions and role assignments successfully bootstrapped');
+
+    // Initialize daily background maintenance jobs
+    initTokenCleanupJob();
+    initSubscriptionCleanupJob();
   } catch (error) {
     logger.error('❌ Failed to connect to the database:', error);
     process.exit(1);
@@ -27,6 +34,8 @@ const server = app.listen(env.PORT, "0.0.0.0", () => {
 
   const shutdown = async () => {
     logger.info('Shutting down server gracefully...');
+    stopTokenCleanupJob();
+    stopSubscriptionCleanupJob();
     server.close(async () => {
       await prisma.$disconnect();
       logger.info('Database connections closed.');

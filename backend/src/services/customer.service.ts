@@ -1,5 +1,6 @@
 import { CustomerRepository } from '../repositories/customer.repository';
 import { BadRequestError, NotFoundError } from '../utils/appError';
+import { prisma } from '../config/db';
 
 export class CustomerService {
   private repo: CustomerRepository;
@@ -45,6 +46,15 @@ export class CustomerService {
       }
     }
 
+    if (data.defaultPriceListId) {
+      const priceList = await prisma.priceList.findFirst({
+        where: { id: data.defaultPriceListId, businessId },
+      });
+      if (!priceList) {
+        throw new BadRequestError('La lista de precios predeterminada seleccionada no pertenece a esta empresa o no existe.');
+      }
+    }
+
     const docVal = data.document ? data.document.trim() : null;
 
     return this.repo.create({
@@ -63,6 +73,8 @@ export class CustomerService {
       allowCreditAccount: Boolean(data.allowCreditAccount),
       creditLimit: data.creditLimit ? Number(data.creditLimit) : 0,
       currentDebt: data.currentDebt ? Number(data.currentDebt) : 0,
+      defaultPriceListId: data.defaultPriceListId || null,
+      autoApplyPriceList: data.autoApplyPriceList !== undefined ? Boolean(data.autoApplyPriceList) : true,
       active: true,
       isActive: true,
     });
@@ -79,6 +91,17 @@ export class CustomerService {
       const duplicate = await this.repo.findByDocument(data.document.trim(), businessId);
       if (duplicate && duplicate.id !== id && duplicate.active) {
         throw new BadRequestError(`Ya existe otro cliente registrado con el documento ${data.document}`);
+      }
+    }
+
+    if (data.defaultPriceListId !== undefined) {
+      if (data.defaultPriceListId) {
+        const priceList = await prisma.priceList.findFirst({
+          where: { id: data.defaultPriceListId, businessId },
+        });
+        if (!priceList) {
+          throw new BadRequestError('La lista de precios predeterminada seleccionada no pertenece a esta empresa o no existe.');
+        }
       }
     }
 
@@ -101,6 +124,8 @@ export class CustomerService {
     if (data.allowCreditAccount !== undefined) updateData.allowCreditAccount = Boolean(data.allowCreditAccount);
     if (data.creditLimit !== undefined) updateData.creditLimit = Number(data.creditLimit);
     if (data.currentDebt !== undefined) updateData.currentDebt = Number(data.currentDebt);
+    if (data.defaultPriceListId !== undefined) updateData.defaultPriceListId = data.defaultPriceListId || null;
+    if (data.autoApplyPriceList !== undefined) updateData.autoApplyPriceList = Boolean(data.autoApplyPriceList);
     if (data.active !== undefined) {
       updateData.active = Boolean(data.active);
       updateData.isActive = Boolean(data.active);

@@ -315,7 +315,7 @@ export const helpRegistry: Record<string, HelpInfo> = {
     faqs: [
       {
         question: '¿Puedo establecer restricciones horarias?',
-        answer: 'La administración de accesos del empleado se rige por su rol, pero la sesión activa expira según políticas de inactividad.'
+        answer: 'La administración de accesos del usuario se rige por su rol, pero la sesión activa expira según políticas de inactividad.'
       }
     ],
     guideSteps: [

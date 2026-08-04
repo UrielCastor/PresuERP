@@ -239,7 +239,7 @@ Al realizar el análisis del proyecto, se confirman las siguientes integraciones
 
 ### Dependencias Principales del Backend (`erp/backend/package.json`)
 *   `@prisma/client`: Gestor directo de relaciones de persistencia relacional SQL.
-*   `bcryptjs`: Hasheo unidireccional de claves de seguridad de empleados.
+*   `bcryptjs`: Hasheo unidireccional de claves de seguridad de usuarios.
 *   `cors` / `helmet`: Cabeceras de seguridad y control de peticiones cruzadas originadas en el cliente Vite.
 *   `dotenv` / `zod`: Carga limpia y validación estricta de variables de entorno de servidor.
 *   `express`: Micro-framework router REST HTTP.

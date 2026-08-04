@@ -1,21 +1,40 @@
 import { prisma } from '../config/db';
 
 export class StockRepository {
+  private mapProductSuppliers(product: any) {
+    if (!product) return product;
+    const suppliers = product.productSuppliers && product.productSuppliers.length > 0
+      ? product.productSuppliers.map((ps: any) => ps.supplier || ps)
+      : (product.supplier ? [product.supplier] : []);
+    return {
+      ...product,
+      suppliers,
+    };
+  }
+
   async findAll(businessId: string) {
-    // For global find all, we might want to just return real stocks, 
-    // or return everything. Usually findAll in stock is rarely used raw.
-    // Let's implement LEFT JOIN for findAll as well (per product, summing stock or listing all warehouse combinations)
-    // Actually, findByWarehouse is the main one used in the UI. 
-    return (prisma.stock as any).findMany({
+    const items = await (prisma.stock as any).findMany({
       where: { businessId },
       include: {
-        product: true,
+        product: {
+          include: {
+            category: { select: { id: true, name: true } },
+            supplier: { select: { id: true, name: true } },
+            productSuppliers: {
+              include: { supplier: { select: { id: true, name: true } } },
+            },
+          },
+        },
         warehouse: true,
       },
       orderBy: {
         product: { name: 'asc' },
       },
     });
+    return items.map((item: any) => ({
+      ...item,
+      product: item.product ? this.mapProductSuppliers(item.product) : null,
+    }));
   }
 
   async findByWarehouse(warehouseId: string, businessId: string) {
@@ -25,6 +44,11 @@ export class StockRepository {
     const products = await prisma.product.findMany({
       where: { businessId, status: 'ACTIVE' },
       include: {
+        category: { select: { id: true, name: true } },
+        supplier: { select: { id: true, name: true } },
+        productSuppliers: {
+          include: { supplier: { select: { id: true, name: true } } },
+        },
         stocks: {
           where: { warehouseId },
         },
@@ -35,10 +59,12 @@ export class StockRepository {
     return products.map(p => {
       const stock = p.stocks?.[0];
       const { stocks, ...cleanProduct } = p;
+      const mappedProduct = this.mapProductSuppliers(cleanProduct);
+
       if (stock) {
         return {
           ...stock,
-          product: cleanProduct,
+          product: mappedProduct,
           warehouse
         };
       }
@@ -53,37 +79,54 @@ export class StockRepository {
         maximumStock: 0,
         createdAt: new Date(),
         updatedAt: new Date(),
-        product: cleanProduct,
+        product: mappedProduct,
         warehouse
       };
     });
   }
 
+  private productInclude = {
+    category: { select: { id: true, name: true } },
+    supplier: { select: { id: true, name: true } },
+    productSuppliers: {
+      include: { supplier: { select: { id: true, name: true } } },
+    },
+  };
+
   async findByProduct(productId: string, businessId: string) {
-    return (prisma.stock as any).findMany({
+    const items = await (prisma.stock as any).findMany({
       where: { productId, businessId },
       include: {
-        product: true,
+        product: {
+          include: this.productInclude,
+        },
         warehouse: true,
       },
       orderBy: {
         warehouse: { name: 'asc' },
       },
     });
+    return items.map((item: any) => ({
+      ...item,
+      product: item.product ? this.mapProductSuppliers(item.product) : null,
+    }));
   }
 
   async findOne(id: string, businessId: string) {
-    return (prisma.stock as any).findFirst({
+    const item = await (prisma.stock as any).findFirst({
       where: { id, businessId },
       include: {
-        product: true,
+        product: {
+          include: this.productInclude,
+        },
         warehouse: true,
       },
     });
+    return item ? { ...item, product: item.product ? this.mapProductSuppliers(item.product) : null } : null;
   }
 
   async findByWarehouseAndProduct(warehouseId: string, productId: string, businessId: string) {
-    return (prisma.stock as any).findUnique({
+    const item = await (prisma.stock as any).findUnique({
       where: {
         warehouseId_productId_businessId: {
           warehouseId,
@@ -92,10 +135,13 @@ export class StockRepository {
         },
       },
       include: {
-        product: true,
+        product: {
+          include: this.productInclude,
+        },
         warehouse: true,
       },
     });
+    return item ? { ...item, product: item.product ? this.mapProductSuppliers(item.product) : null } : null;
   }
 
   async create(data: {

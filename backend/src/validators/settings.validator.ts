@@ -62,6 +62,8 @@ export const updatePOSSettingsSchema = z.object({
   showTicketPreview: z.boolean().optional(),
   allowMixedPayments: z.boolean().optional(),
   autoRounding: z.boolean().optional(),
+  autoPriceRounding: z.boolean().optional(),
+  autoRoundingMode: z.enum(['CASH_ONLY', 'ALL_METHODS']).optional(),
 });
 
 export const updatePrintSettingsSchema = z.object({

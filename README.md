@@ -97,5 +97,5 @@ npm run dev
 El sistema ha sido estructurado desde el día 1 para actuar como una plataforma SaaS:
 1. **Regla de Oro**: Ningún endpoint puede realizar un `find`, `update` o `delete` sobre entidades de base de datos sin incluir el filtro `businessId`.
 2. **Obtención de Datos**: El `businessId` se lee directamente del token JWT decodificado en la cabecera `Authorization` gracias al middleware `requireAuth`.
-3. **Registro Corporativo**: Al registrar una nueva empresa mediante `/api/v1/auth/register`, el sistema inicializa transaccionalmente la empresa en la BD, genera los roles fundamentales (`Administrator`, `Supervisor`, `Cajero`, `Empleado`), asocia la matriz de permisos y crea el usuario gerente de manera completamente segura.
+3. **Registro Corporativo**: Al registrar una nueva empresa mediante `/api/v1/auth/register`, el sistema inicializa transaccionalmente la empresa en la BD, genera los roles fundamentales (`Administrator`, `Supervisor`, `Cajero`), asocia la matriz de permisos y crea el usuario gerente de manera completamente segura.
 # PresuERP

@@ -2,7 +2,8 @@ import { prisma } from '../config/db';
 import { calculateSessionTotals } from '../services/cash.service';
 
 export class DashboardRepository {
-  async getSalesTotal(businessId: string, startDate: Date, endDate: Date): Promise<number> {
+  async getSalesTotal(businessId: string, startDate: Date, endDate: Date, warehouseId?: string): Promise<number> {
+    const warehouseFilter = warehouseId && warehouseId !== 'ALL' ? { warehouseId } : undefined;
     const aggregate = await prisma.sale.aggregate({
       _sum: {
         totalAmount: true,
@@ -12,6 +13,7 @@ export class DashboardRepository {
       },
       where: {
         businessId,
+        ...(warehouseFilter && { warehouseId: warehouseFilter.warehouseId }),
         createdAt: {
           gte: startDate,
           lte: endDate,
@@ -25,29 +27,23 @@ export class DashboardRepository {
     const totalSales = Number(aggregate._sum.totalAmount || 0);
     const salesCount = aggregate._count._all || 0;
 
-    console.log('[DASHBOARD QUERY]', {
-      salesCount,
-      totalSales,
-      startDate,
-      endDate,
-      businessId
-    });
-
     return totalSales;
   }
 
-  async getNewCustomersCount(businessId: string, startDate: Date): Promise<number> {
-    return prisma.customer.count({
-      where: {
-        businessId,
-        createdAt: {
-          gte: startDate,
-        },
+  async getNewCustomersCount(businessId: string, startDate: Date, warehouseId?: string): Promise<number> {
+    const where: any = {
+      businessId,
+      createdAt: {
+        gte: startDate,
       },
-    });
+    };
+    if (warehouseId && warehouseId !== 'ALL') {
+      where.sales = { some: { warehouseId } };
+    }
+    return prisma.customer.count({ where });
   }
 
-  async getStockSummary(businessId: string) {
+  async getStockSummary(businessId: string, warehouseId?: string) {
     const totalProducts = await prisma.product.count({
       where: {
         businessId,
@@ -55,26 +51,51 @@ export class DashboardRepository {
       },
     });
 
-    const productsWithoutStock = await prisma.product.count({
-      where: {
-        businessId,
-        status: 'ACTIVE',
-        OR: [
-          {
-            stocks: {
-              none: {}
-            }
-          },
-          {
-            stocks: {
-              every: {
-                quantity: { lte: 0 }
+    let productsWithoutStock = 0;
+    if (warehouseId && warehouseId !== 'ALL') {
+      productsWithoutStock = await prisma.product.count({
+        where: {
+          businessId,
+          status: 'ACTIVE',
+          OR: [
+            {
+              stocks: {
+                none: { warehouseId }
+              }
+            },
+            {
+              stocks: {
+                every: {
+                  warehouseId,
+                  quantity: { lte: 0 }
+                }
               }
             }
-          }
-        ]
-      },
-    });
+          ]
+        },
+      });
+    } else {
+      productsWithoutStock = await prisma.product.count({
+        where: {
+          businessId,
+          status: 'ACTIVE',
+          OR: [
+            {
+              stocks: {
+                none: {}
+              }
+            },
+            {
+              stocks: {
+                every: {
+                  quantity: { lte: 0 }
+                }
+              }
+            }
+          ]
+        },
+      });
+    }
 
     return {
       totalProducts,
@@ -82,12 +103,13 @@ export class DashboardRepository {
     };
   }
 
-  async getActiveCashRegister(businessId: string) {
-    // Buscar la sesión activa en cualquier caja
+  async getActiveCashRegister(businessId: string, warehouseId?: string) {
+    const registerWhere = warehouseId && warehouseId !== 'ALL' ? { warehouseId } : undefined;
     const activeSession = await prisma.cashSession.findFirst({
       where: {
         businessId,
         status: 'OPEN',
+        ...(registerWhere && { cashRegister: registerWhere }),
       },
       include: {
         cashRegister: true,
@@ -109,9 +131,13 @@ export class DashboardRepository {
     };
   }
 
-  async getRecentSales(businessId: string, limit: number = 5) {
+  async getRecentSales(businessId: string, limit: number = 5, warehouseId?: string) {
+    const where: any = { businessId };
+    if (warehouseId && warehouseId !== 'ALL') {
+      where.warehouseId = warehouseId;
+    }
     const sales = await prisma.sale.findMany({
-      where: { businessId },
+      where,
       orderBy: { createdAt: 'desc' },
       take: limit,
       include: {

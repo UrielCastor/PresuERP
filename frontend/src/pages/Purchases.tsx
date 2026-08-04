@@ -9,6 +9,7 @@ import {
   User, Warehouse, DollarSign, Activity, CreditCard, Clock,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { getInitialWarehouseId } from '../utils/warehouse';
 import { purchaseApi, Purchase, PurchaseItem, OtherTax } from '../services/purchase.service';
 import { supplierApi } from '../services/supplier.service';
 import { warehouseApi } from '../services/warehouse.service';
@@ -52,7 +53,7 @@ type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
 
 // ─── Component ─────────────────────────────────────────────────────────────
 export const Purchases: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -199,11 +200,24 @@ export const Purchases: React.FC = () => {
     enabled: !!watchedSupplierId,
   });
 
-  // --- Buscador Mejorado Logica ---
-  const filteredProducts = React.useMemo(() => {
-    if (!searchVal.trim()) return products;
-    const query = searchVal.toLowerCase();
+  // --- Buscador Inteligente & Filtro por Proveedor en Compras ---
+  const supplierProducts = React.useMemo(() => {
+    if (!watchedSupplierId) return [];
     return (products as any[]).filter(p => {
+      if (p.suppliers && Array.isArray(p.suppliers) && p.suppliers.length > 0) {
+        return p.suppliers.some((s: any) => s.id === watchedSupplierId);
+      }
+      if (p.productSuppliers && Array.isArray(p.productSuppliers) && p.productSuppliers.length > 0) {
+        return p.productSuppliers.some((ps: any) => ps.supplierId === watchedSupplierId);
+      }
+      return p.supplierId === watchedSupplierId;
+    });
+  }, [products, watchedSupplierId]);
+
+  const filteredProducts = React.useMemo(() => {
+    if (!searchVal.trim()) return supplierProducts;
+    const query = searchVal.trim().toLowerCase();
+    return supplierProducts.filter(p => {
       return (
         p.name?.toLowerCase().includes(query) ||
         (p.sku && p.sku.toLowerCase().includes(query)) ||
@@ -211,7 +225,7 @@ export const Purchases: React.FC = () => {
         (p.description && p.description.toLowerCase().includes(query))
       );
     });
-  }, [products, searchVal]);
+  }, [supplierProducts, searchVal]);
 
   const selectProduct = (prod: any) => {
     const isAdded = watchedItems.some(i => i.productId === prod.id);
@@ -219,31 +233,49 @@ export const Purchases: React.FC = () => {
       alert('Este producto ya fue agregado a la compra.');
       return;
     }
-    handleProductSelect(prod.id);
-    setSearchVal(prod.name);
+    const cost = Number(prod.purchasePrice) || 0;
+    append({ productId: prod.id, quantity: 1, unitCost: cost, discount: 0 });
+    setSearchVal('');
     setIsOpen(false);
     setFocusedIndex(-1);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
-    if (!isOpen) {
-      if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
-        setIsOpen(true);
-      }
-      return;
-    }
-
     if (e.key === 'ArrowDown') {
       e.preventDefault();
+      if (!isOpen) setIsOpen(true);
       setFocusedIndex(prev => (prev < filteredProducts.length - 1 ? prev + 1 : 0));
     } else if (e.key === 'ArrowUp') {
       e.preventDefault();
+      if (!isOpen) setIsOpen(true);
       setFocusedIndex(prev => (prev > 0 ? prev - 1 : filteredProducts.length - 1));
     } else if (e.key === 'Enter') {
       e.preventDefault();
-      if (focusedIndex >= 0 && focusedIndex < filteredProducts.length) {
-        const prod = filteredProducts[focusedIndex];
-        selectProduct(prod);
+      const cleanQuery = searchVal.trim().toLowerCase();
+      if (!cleanQuery) return;
+
+      // 1. Coincidencia exacta por código de barras, código interno o id
+      let targetProduct = supplierProducts.find(
+        (p: any) =>
+          (p.barcode && p.barcode.trim().toLowerCase() === cleanQuery) ||
+          (p.sku && p.sku.trim().toLowerCase() === cleanQuery) ||
+          (p.id && p.id.trim().toLowerCase() === cleanQuery)
+      );
+
+      // 2. Elemento seleccionado con flechas en la lista
+      if (!targetProduct && focusedIndex >= 0 && focusedIndex < filteredProducts.length) {
+        targetProduct = filteredProducts[focusedIndex];
+      }
+
+      // 3. Coincidencia única en el filtro por nombre
+      if (!targetProduct && filteredProducts.length === 1) {
+        targetProduct = filteredProducts[0];
+      }
+
+      if (targetProduct) {
+        selectProduct(targetProduct);
+      } else {
+        alert('Producto no encontrado para el proveedor seleccionado');
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false);
@@ -327,7 +359,7 @@ export const Purchases: React.FC = () => {
   const handleOpenCreateForm = () => {
     setEditingPurchase(null); setApiError(null);
     reset({
-      supplierId: '', warehouseId: (warehouses as any[]).find(w => w.isMain)?.id || '',
+      supplierId: '', warehouseId: getInitialWarehouseId(user, warehouses as any[]) || (warehouses as any[]).find(w => w.isMain)?.id || '',
       documentType: 'FACTURA', documentNumber: '', expectedDate: '', notes: '',
       hasInvoiceTaxes: false, vatRate: 21, vatAmount: 0, otherTaxes: [], 
       discount: 0, invoicedTotal: undefined, items: [],
@@ -957,7 +989,7 @@ export const Purchases: React.FC = () => {
                                   )}
                                 </div>
                                 <div className="grid grid-cols-2 gap-x-2 text-[10px] text-slate-400">
-                                  <span>SKU: {p.sku || 'N/D'}</span>
+                                  <span>Cód. Int: {p.sku || 'N/D'}</span>
                                   <span>Proveedor: {p.supplier?.name || 'N/D'}</span>
                                   <span>Último Precio: {fmt(Number(p.purchasePrice) || 0)}</span>
                                   <span>Stock actual: {stockTotal} u.</span>
@@ -1014,7 +1046,7 @@ export const Purchases: React.FC = () => {
                             <tr key={item.id} className="hover:bg-slate-50/20">
                               <td className="py-2.5 px-3">
                                 <span className="font-semibold text-slate-900 dark:text-white">{product?.name || 'Cargando...'}</span>
-                                {product?.sku && <span className="block text-xs font-mono text-slate-500">SKU: {product.sku}</span>}
+                                {product?.sku && <span className="block text-xs font-mono text-slate-500">Cód. Int: {product.sku}</span>}
                               </td>
                               <td className="py-2.5 px-3 text-right"><input type="number" min={1} {...register(`items.${index}.quantity` as const, { valueAsNumber: true })} className="w-16 text-right rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1 py-0.5 text-sm" /></td>
                               <td className="py-2.5 px-3 text-right"><input type="number" step="0.01" min={0} {...register(`items.${index}.unitCost` as const, { valueAsNumber: true })} className="w-24 text-right rounded border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-1 py-0.5 text-sm" /></td>

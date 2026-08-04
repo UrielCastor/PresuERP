@@ -352,7 +352,6 @@ export const SystemUsers: React.FC = () => {
                   <option value="Administrator">Administrador</option>
                   <option value="Supervisor">Supervisor</option>
                   <option value="Cajero">Cajero</option>
-                  <option value="Empleado">Empleado</option>
                 </select>
               </div>
 

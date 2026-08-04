@@ -19,3 +19,5 @@ export * from './ConfirmDialog';
 export * from './Loading';
 export * from './Tabs';
 export * from './Alert';
+export * from './POSItemCard';
+

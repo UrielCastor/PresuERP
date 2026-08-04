@@ -63,26 +63,26 @@ export const Modal: React.FC<ModalProps> = ({
 
       {/* Content wrapper */}
       <div
-        className={`relative w-full ${sizeClasses[size]} flex flex-col rounded-xl border border-slate-200 bg-white shadow-xl dark:border-slate-800 dark:bg-slate-950 overflow-hidden transform scale-100 transition-all duration-300 ${className}`}
+        className={`relative w-full ${sizeClasses[size]} flex flex-col rounded-2xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 shadow-2xl overflow-hidden transform scale-100 transition-all duration-300 ${className}`}
       >
         {/* Header */}
-        <div className={`flex items-center justify-between border-b border-slate-100 px-6 py-4 dark:border-slate-850 flex-shrink-0 ${headerClassName}`}>
-          <div className="text-lg font-semibold text-slate-900 dark:text-white">
+        <div className={`flex items-center justify-between border-b border-slate-100 dark:border-slate-800 px-6 py-4 flex-shrink-0 ${headerClassName}`}>
+          <div className="text-lg font-bold text-slate-900 dark:text-white">
             {title}
           </div>
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close modal">
-            <X className="h-5 w-5" />
+            <X className="h-5 w-5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200" />
           </Button>
         </div>
 
         {/* Body */}
-        <div className={`flex-1 overflow-y-auto min-h-0 px-6 py-6 text-sm text-slate-600 dark:text-slate-300 ${bodyClassName}`}>
+        <div className={`flex-1 overflow-y-auto min-h-0 px-6 py-5 text-xs sm:text-sm text-slate-600 dark:text-slate-300 ${bodyClassName}`}>
           {children}
         </div>
 
         {/* Footer */}
         {footer && (
-          <div className="flex items-center justify-end gap-3 border-t border-slate-100 bg-slate-50 px-6 py-4 dark:border-slate-850 dark:bg-slate-900/50 flex-shrink-0">
+          <div className="flex items-center justify-end gap-3 border-t border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50 px-6 py-3.5 flex-shrink-0">
             {footer}
           </div>
         )}

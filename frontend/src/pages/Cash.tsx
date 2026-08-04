@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { cashApi } from '../services/cash.service';
+import { warehouseApi } from '../services/warehouse.service';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Button } from '../components/ui/Button';
@@ -39,7 +40,11 @@ import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { SessionDetailModal } from '../components/cash/SessionDetailModal';
 
+import { useAuth } from '../contexts/AuthContext';
+import { getInitialWarehouseId } from '../utils/warehouse';
+
 export const Cash: React.FC = () => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'operacion' | 'historial'>('operacion');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -47,34 +52,48 @@ export const Cash: React.FC = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: warehouseApi.list,
+  });
+
   // Modales
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
+  const [openWarehouseId, setOpenWarehouseId] = useState<string>('');
+  const [openRegisterId, setOpenRegisterId] = useState<string>('');
+  const [openBalance, setOpenBalance] = useState('');
+  const [openNotes, setOpenNotes] = useState('');
+
   // Queries
   const { data: activeSession, isLoading: loadingSession } = useQuery({
-    queryKey: ['cash', 'active'],
-    queryFn: cashApi.getActiveSession,
+    queryKey: ['cash', 'active', openWarehouseId],
+    queryFn: () => cashApi.getActiveSession(openWarehouseId ? { warehouseId: openWarehouseId } : undefined),
     refetchOnMount: 'always',
     staleTime: 0,
   });
 
+  useEffect(() => {
+    if (warehouses.length > 0 && !openWarehouseId) {
+      const initialWhId = getInitialWarehouseId(user, warehouses);
+      if (initialWhId) {
+        setOpenWarehouseId(initialWhId);
+      }
+    }
+  }, [warehouses, openWarehouseId, user]);
+
   const { data: registers } = useQuery({
-    queryKey: ['cash', 'registers'],
-    queryFn: cashApi.getRegisters,
-    enabled: !activeSession,
+    queryKey: ['cash', 'registers', openWarehouseId],
+    queryFn: () => cashApi.getRegisters({ warehouseId: openWarehouseId || undefined }),
+    enabled: !activeSession && Boolean(openWarehouseId),
   });
 
   const { data: history, isLoading: loadingHistory } = useQuery({
     queryKey: ['cash', 'history'],
-    queryFn: cashApi.getHistory,
+    queryFn: () => cashApi.getHistory(),
     enabled: activeTab === 'historial',
   });
-
-  // State Apertura
-  const [openRegisterId, setOpenRegisterId] = useState('');
-  const [openBalance, setOpenBalance] = useState('');
-  const [openNotes, setOpenNotes] = useState('');
 
   // State Movimiento Manual
   const [movType, setMovType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
@@ -97,7 +116,8 @@ export const Cash: React.FC = () => {
   });
 
   const closeMutation = useMutation({
-    mutationFn: cashApi.closeSession,
+    mutationFn: (payload: { countedBalance: number; notes?: string }) =>
+      cashApi.closeSession({ ...payload, warehouseId: activeSession?.warehouseId || openWarehouseId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -108,7 +128,8 @@ export const Cash: React.FC = () => {
   });
 
   const movementMutation = useMutation({
-    mutationFn: cashApi.registerMovement,
+    mutationFn: (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) =>
+      cashApi.registerMovement({ ...payload, warehouseId: activeSession?.warehouseId || openWarehouseId }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -193,28 +214,42 @@ export const Cash: React.FC = () => {
     <div className="space-y-6">
       {/* 1. Header con Bar de Estado y Acciones Rápidas */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-              Caja Financiera
-            </h1>
-            {activeSession ? (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 animate-pulse">
-                <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                TURNO ABIERTO
-              </span>
-            ) : (
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                CAJA CERRADA
-              </span>
-            )}
+        <div className="flex flex-col md:flex-row md:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-3">
+              <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+                Caja Financiera
+              </h1>
+              {activeSession ? (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 animate-pulse">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
+                  TURNO ABIERTO
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
+                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
+                  CAJA CERRADA
+                </span>
+              )}
+            </div>
+            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
+              {activeSession
+                ? `Operando en ${activeSession.cashRegister?.name || 'Caja'} (${activeSession.cashRegister?.code}) • Apertura: ${format(new Date(activeSession.openedAt), 'HH:mm - dd MMM', { locale: es })}`
+                : 'Selecciona una caja e ingresa el fondo inicial para iniciar un nuevo turno.'}
+            </p>
           </div>
-          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-            {activeSession
-              ? `Operando en ${activeSession.cashRegister?.name || 'Caja'} (${activeSession.cashRegister?.code}) • Apertura: ${format(new Date(activeSession.openedAt), 'HH:mm - dd MMM', { locale: es })}`
-              : 'Selecciona una caja e ingresa el fondo inicial para iniciar un nuevo turno.'}
-          </p>
+
+          {activeSession && (
+            <div className="flex items-center gap-2.5 bg-slate-100 dark:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
+              <Building2 className="w-4 h-4 text-emerald-500 shrink-0" />
+              <div className="flex flex-col">
+                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Depósito</span>
+                <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
+                  🏭 {activeSession.warehouse?.name || activeSession.cashRegister?.warehouse?.name}
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Pestañas de Vista y Botones de Acción Inmediata */}
@@ -290,14 +325,32 @@ export const Cash: React.FC = () => {
             </CardHeader>
             <CardContent className="pt-6 space-y-4">
               <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300">
-                Selecciona la caja registrada que deseas operar e ingresa el efectivo en billetes del fondo de cambio.
+                Selecciona el depósito y la caja registradora correspondiente e ingresa el monto inicial del turno.
               </p>
               
+              <Select
+                label="Depósito *"
+                value={openWarehouseId}
+                onChange={(e: any) => {
+                  setOpenWarehouseId(e.target.value);
+                  setOpenRegisterId('');
+                }}
+                leftIcon={Building2}
+              >
+                <option value="">Selecciona un depósito...</option>
+                {warehouses.map((w: any) => (
+                  <option key={w.id} value={w.id}>
+                    🏭 {w.name}
+                  </option>
+                ))}
+              </Select>
+
               <Select
                 label="Caja Registradora *"
                 value={openRegisterId}
                 onChange={(e: any) => setOpenRegisterId(e.target.value)}
                 leftIcon={Building2}
+                disabled={!openWarehouseId}
               >
                 <option value="">Selecciona una caja registrada...</option>
                 {registers?.map((r: any) => (
@@ -308,7 +361,7 @@ export const Cash: React.FC = () => {
               </Select>
 
               <Input
-                label="Fondo Inicial ($ ARS) *"
+                label="Monto Inicial ($ ARS) *"
                 type="number"
                 step="0.01"
                 min="0"
@@ -333,12 +386,13 @@ export const Cash: React.FC = () => {
                 className="w-full mt-4 font-bold tracking-wide"
                 onClick={() =>
                   openMutation.mutate({
+                    warehouseId: openWarehouseId,
                     cashRegisterId: openRegisterId,
                     openingBalance: Number(openBalance),
                     notes: openNotes,
                   })
                 }
-                disabled={!openRegisterId || openBalance === '' || openMutation.isPending}
+                disabled={!openWarehouseId || !openRegisterId || openBalance === '' || openMutation.isPending}
                 isLoading={openMutation.isPending}
               >
                 Iniciar Turno y Abrir Caja

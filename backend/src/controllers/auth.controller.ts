@@ -46,7 +46,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
       res.status(200).json({
@@ -71,7 +71,7 @@ export class AuthController {
         httpOnly: true,
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'strict',
-        maxAge: 7 * 24 * 60 * 60 * 1000,
+        maxAge: 30 * 24 * 60 * 60 * 1000, // 30 days
       });
 
       res.status(200).json({
@@ -87,12 +87,19 @@ export class AuthController {
 
   logout = async (req: Request, res: Response, next: NextFunction): Promise<void> => {
     try {
-      const token = req.body.token || req.cookies?.refreshToken;
-      if (token) {
-        await this.authService.logout(token);
+      const token = req.body?.token || req.cookies?.refreshToken;
+      const userId = (req as any).user?.id;
+
+      if (token || userId) {
+        await this.authService.logout(token, userId);
       }
 
-      res.clearCookie('refreshToken');
+      res.clearCookie('refreshToken', {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'strict',
+      });
+
       res.status(200).json({
         status: 'success',
         message: 'Logged out successfully',

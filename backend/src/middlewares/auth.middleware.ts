@@ -31,10 +31,14 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
       isStaff: decoded.isStaff,
     };
 
+
     return next();
-  } catch (error) {
-    if (error instanceof jwt.TokenExpiredError) {
+  } catch (error: any) {
+    if (error instanceof jwt.TokenExpiredError || error?.name === 'TokenExpiredError') {
       return next(new UnauthorizedError('Access token has expired'));
+    }
+    if (error instanceof jwt.JsonWebTokenError || error?.name === 'JsonWebTokenError') {
+      return next(new UnauthorizedError('Invalid access token signature'));
     }
     return next(new UnauthorizedError('Authentication failed'));
   }
@@ -46,10 +50,16 @@ export const requirePermission = (permission: string) => {
       return next(new UnauthorizedError());
     }
 
-    const { permissions, role } = req.user;
+    const { permissions, role, isStaff } = req.user;
 
-    // Super Admin, Admin or Owner roles bypass permission checks
-    if (role && ['Administrator', 'Administrador', 'ADMIN', 'OWNER', 'SUPER_ADMIN', 'Owner'].includes(role)) {
+    // Staff (SuperAdmin SaaS) bypasses all permission checks
+    if (isStaff) {
+      return next();
+    }
+
+    // Tenant Administrator bypasses permission checks.
+    // This ensures new permissions work without re-running seeds.
+    if (role && role === 'Administrator') {
       return next();
     }
 
@@ -85,4 +95,30 @@ export const requireSystemAdmin = (req: Request, res: Response, next: NextFuncti
   }
 
   return next();
+};
+
+export const requireAnyPermission = (requiredPermissions: string[]) => {
+  return (req: Request, res: Response, next: NextFunction) => {
+    if (!req.user) {
+      return next(new UnauthorizedError());
+    }
+
+    const { permissions, role, isStaff } = req.user;
+
+    // Staff (SuperAdmin SaaS) and Tenant Administrator bypass checks
+    if (isStaff) {
+      return next();
+    }
+
+    if (role && role === 'Administrator') {
+      return next();
+    }
+
+    const hasAny = requiredPermissions.some(perm => permissions.includes(perm));
+    if (!hasAny) {
+      return next(new ForbiddenError('You do not have permission to perform this action'));
+    }
+
+    return next();
+  };
 };

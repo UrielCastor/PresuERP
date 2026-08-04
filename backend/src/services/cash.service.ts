@@ -1,6 +1,6 @@
 import { CashRepository } from '../repositories/cash.repository';
 import { ActivityLogRepository } from '../repositories/activityLog.repository';
-import { BadRequestError, ConflictError, NotFoundError } from '../utils/appError';
+import { BadRequestError, ConflictError, NotFoundError, ForbiddenError } from '../utils/appError';
 import { prisma } from '../config/db';
 
 export interface CashSessionTotalsDTO {
@@ -34,11 +34,21 @@ export interface CashSessionSummaryDTO {
   id: string;
   businessId: string;
   cashRegisterId: string;
+  warehouseId?: string | null;
   cashRegister: {
     id: string;
     name: string;
     code: string;
+    warehouseId?: string | null;
+    warehouse?: {
+      id: string;
+      name: string;
+    } | null;
   };
+  warehouse?: {
+    id: string;
+    name: string;
+  } | null;
   openedById: string;
   openedBy?: {
     id: string;
@@ -98,41 +108,27 @@ export function calculateSessionTotals(session: any): CashSessionTotalsDTO {
       return;
     }
 
-    if (m.referenceType === 'MANUAL') {
-      if (m.type === 'IN') {
-        manualIncomes += amt;
-        cashTotal += amt;
-      } else if (m.type === 'OUT') {
-        manualExpenses += amt;
-        cashTotal -= amt;
-      }
-    } else {
-      const mult = m.type === 'OUT' ? -1 : 1;
-      switch (pm) {
-        case 'MERCADO_PAGO':
-          mercadoPagoTotal += amt * mult;
-          break;
-        case 'TRANSFER':
-          transferTotal += amt * mult;
-          break;
-        case 'DEBIT_CARD':
-          debitCardTotal += amt * mult;
-          break;
-        case 'CREDIT_CARD':
-          creditCardTotal += amt * mult;
-          break;
-        case 'CASH':
-        default:
-          cashTotal += amt * mult;
-          break;
-      }
+    if (m.type === 'IN') {
+      if (m.referenceType === 'MANUAL') manualIncomes += amt;
+      if (pm === 'CASH') cashTotal += amt;
+      else if (pm === 'MERCADO_PAGO') mercadoPagoTotal += amt;
+      else if (pm === 'TRANSFER') transferTotal += amt;
+      else if (pm === 'DEBIT_CARD') debitCardTotal += amt;
+      else if (pm === 'CREDIT_CARD') creditCardTotal += amt;
+    } else if (m.type === 'OUT') {
+      if (m.referenceType === 'MANUAL') manualExpenses += amt;
+      if (pm === 'CASH') cashTotal -= amt;
+      else if (pm === 'MERCADO_PAGO') mercadoPagoTotal -= amt;
+      else if (pm === 'TRANSFER') transferTotal -= amt;
+      else if (pm === 'DEBIT_CARD') debitCardTotal -= amt;
+      else if (pm === 'CREDIT_CARD') creditCardTotal -= amt;
     }
   });
 
-  const expectedCashBalance = openingBalance + cashTotal;
+  const expectedCashBalance = Math.max(0, openingBalance + cashTotal);
   const digitalTotal = mercadoPagoTotal + transferTotal + debitCardTotal + creditCardTotal;
-  const totalVendido = Math.max(0, (cashTotal - manualIncomes) + digitalTotal);
-  const grandTotal = expectedCashBalance + digitalTotal;
+  const totalVendido = Math.max(0, cashTotal + digitalTotal);
+  const grandTotal = openingBalance + totalVendido;
 
   return {
     openingBalance,
@@ -152,14 +148,28 @@ export function calculateSessionTotals(session: any): CashSessionTotalsDTO {
 
 export function mapToCashSessionSummaryDTO(session: any): CashSessionSummaryDTO {
   const totals = calculateSessionTotals(session);
+  const resolvedWarehouse = session.warehouse || session.cashRegister?.warehouse;
+
+  const warehouseDTO = resolvedWarehouse ? {
+    id: resolvedWarehouse.id,
+    name: resolvedWarehouse.name,
+  } : null;
+
   return {
     id: session.id,
     businessId: session.businessId,
     cashRegisterId: session.cashRegisterId,
+    warehouseId: session.warehouseId || session.cashRegister?.warehouseId || null,
+    warehouse: warehouseDTO,
     cashRegister: {
       id: session.cashRegister?.id || session.cashRegisterId,
-      name: session.cashRegister?.name || 'Caja Principal',
-      code: session.cashRegister?.code || 'CAJA-01',
+      name: session.cashRegister?.name || '',
+      code: session.cashRegister?.code || '',
+      warehouseId: session.cashRegister?.warehouseId || null,
+      warehouse: session.cashRegister?.warehouse ? {
+        id: session.cashRegister.warehouse.id,
+        name: session.cashRegister.warehouse.name,
+      } : warehouseDTO,
     },
     openedById: session.openedById,
     openedBy: session.openedBy ? {
@@ -194,32 +204,83 @@ export class CashService {
   private cashRepo = new CashRepository();
   private activityLogRepo = new ActivityLogRepository();
 
-  async openSession(data: { businessId: string; userId: string; cashRegisterId: string; openingBalance: number; notes?: string }) {
-    if (data.openingBalance < 0) {
+  async openSession(data: {
+    businessId: string;
+    userId: string;
+    cashRegisterId: string;
+    warehouseId: string;
+    openingBalance: number;
+    notes?: string;
+  }) {
+    if (!data.warehouseId) {
+      throw new BadRequestError('El depósito es obligatorio para abrir la caja.');
+    }
+    if (!data.cashRegisterId) {
+      throw new BadRequestError('La caja registradora es obligatoria para abrir el turno.');
+    }
+    if (data.openingBalance === undefined || data.openingBalance === null || data.openingBalance < 0) {
       throw new BadRequestError('El saldo inicial no puede ser negativo.');
     }
 
-    const [existingUserSession, existingBoxSession] = await Promise.all([
-      this.cashRepo.findActiveSessionByUser(data.userId, data.businessId),
-      this.cashRepo.findActiveSessionByRegister(data.cashRegisterId, data.businessId),
-    ]);
-
-    if (existingUserSession) {
-      throw new ConflictError('Ya posees una sesión de caja abierta. Ciérrala antes de abrir una nueva.');
+    const warehouse = await prisma.warehouse.findFirst({
+      where: { id: data.warehouseId, businessId: data.businessId, status: 'ACTIVE' },
+    });
+    if (!warehouse) {
+      throw new NotFoundError('Depósito no encontrado o inactivo.');
     }
 
+    const userWarehouses = await prisma.userWarehouse.findMany({
+      where: { userId: data.userId },
+    });
+    if (userWarehouses.length > 0) {
+      const allowed = userWarehouses.some((uw) => uw.warehouseId === data.warehouseId);
+      if (!allowed) {
+        throw new ForbiddenError(`No tienes permisos autorizados para operar en el depósito "${warehouse.name}".`);
+      }
+    }
+
+    let register = await prisma.cashRegister.findFirst({
+      where: { id: data.cashRegisterId, businessId: data.businessId },
+    });
+    if (!register) {
+      throw new NotFoundError('Caja registradora no encontrada.');
+    }
+
+    if (!register.warehouseId || register.warehouseId !== data.warehouseId) {
+      await prisma.cashRegister.update({
+        where: { id: register.id },
+        data: { warehouseId: data.warehouseId },
+      });
+    }
+
+    const [existingBoxSession, existingWarehouseSession] = await Promise.all([
+      this.cashRepo.findActiveSessionByRegister(data.cashRegisterId, data.businessId),
+      prisma.cashSession.findFirst({
+        where: {
+          businessId: data.businessId,
+          warehouseId: data.warehouseId,
+          status: 'OPEN',
+        },
+      }),
+    ]);
+
     if (existingBoxSession) {
-      throw new ConflictError('Esta caja registradora ya se encuentra en uso por otra sesión.');
+      throw new ConflictError('Esta caja registradora ya se encuentra en uso por otra sesión activa.');
+    }
+
+    if (existingWarehouseSession) {
+      throw new ConflictError(`Ya existe una sesión de caja abierta en el depósito "${warehouse.name}". Debes cerrarla antes de abrir una nueva.`);
     }
 
     return prisma.$transaction(async (tx: any) => {
       const session = await this.cashRepo.openSession({
         businessId: data.businessId,
         cashRegisterId: data.cashRegisterId,
+        warehouseId: data.warehouseId,
         openedById: data.userId,
         openingBalance: data.openingBalance,
         status: 'OPEN',
-      });
+      }, tx);
 
       if (data.openingBalance > 0) {
         await this.cashRepo.createMovement({
@@ -240,23 +301,37 @@ export class CashService {
           entityName: 'CashSession',
           entityId: session.id,
           actionType: 'OPEN_CASH_REGISTER',
-          newValues: JSON.stringify({ openingBalance: data.openingBalance }),
+          newValues: JSON.stringify({ openingBalance: data.openingBalance, warehouseId: data.warehouseId }),
         }
       });
 
-      const sessionWithDetails = await this.cashRepo.getSessionWithDetails(session.id, data.businessId);
+      let sessionWithDetails = await this.cashRepo.getSessionWithDetails(session.id, data.businessId, tx);
+      if (sessionWithDetails && !sessionWithDetails.warehouse && warehouse) {
+        (sessionWithDetails as any).warehouse = warehouse;
+      }
       return mapToCashSessionSummaryDTO(sessionWithDetails || session);
     });
   }
 
-  async closeSession(data: { businessId: string; userId: string; countedBalance: number; notes?: string }) {
+  async closeSession(data: { businessId: string; userId: string; countedBalance: number; notes?: string; warehouseId?: string }) {
     if (data.countedBalance < 0) {
       throw new BadRequestError('El saldo contado no puede ser negativo.');
     }
 
-    const session = await this.cashRepo.findActiveSessionByUser(data.userId, data.businessId);
+    const session = await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
     if (!session) {
-      throw new ConflictError('No tienes ninguna sesión de caja abierta.');
+      throw new ConflictError('No existe ninguna sesión de caja abierta en este depósito.');
+    }
+
+    // Security check: verify user is authorized for session's warehouse
+    if (session.warehouseId) {
+      const userWarehouses = await prisma.userWarehouse.findMany({ where: { userId: data.userId } });
+      if (userWarehouses.length > 0) {
+        const allowed = userWarehouses.some((uw) => uw.warehouseId === session.warehouseId);
+        if (!allowed) {
+          throw new ForbiddenError('No tienes permisos autorizados para operar en la caja de esta sucursal.');
+        }
+      }
     }
 
     const sessionDetails = await this.cashRepo.getSessionWithDetails(session.id, data.businessId);
@@ -293,7 +368,7 @@ export class CashService {
     return mapToCashSessionSummaryDTO(closedWithDetails || sessionDetails);
   }
 
-  async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) {
+  async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string }) {
     if (!data.concept || !data.concept.trim()) {
       throw new BadRequestError('El motivo del movimiento es obligatorio.');
     }
@@ -302,9 +377,19 @@ export class CashService {
       throw new BadRequestError('El monto del movimiento debe ser mayor a cero.');
     }
 
-    const session = await this.cashRepo.findActiveSessionByUser(data.userId, data.businessId);
+    const session = await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
     if (!session) {
-      throw new ConflictError('Debes tener una caja abierta para registrar movimientos manuales.');
+      throw new ConflictError('No existe una caja abierta en esta sucursal para registrar movimientos manuales.');
+    }
+
+    if (session.warehouseId) {
+      const userWarehouses = await prisma.userWarehouse.findMany({ where: { userId: data.userId } });
+      if (userWarehouses.length > 0) {
+        const allowed = userWarehouses.some((uw) => uw.warehouseId === session.warehouseId);
+        if (!allowed) {
+          throw new ForbiddenError('No tienes permisos autorizados para operar en la caja de esta sucursal.');
+        }
+      }
     }
 
     const dbType = data.type === 'INCOME' ? 'IN' : 'OUT';
@@ -345,17 +430,34 @@ export class CashService {
     });
   }
 
-  async getActiveSession(businessId: string, userId: string): Promise<CashSessionSummaryDTO | null> {
-    const sessionDetails = await this.cashRepo.findActiveSessionWithDetails(businessId, userId);
+  async getActiveSession(businessId: string, userId: string, warehouseId?: string): Promise<CashSessionSummaryDTO | null> {
+    let sessionDetails = await this.cashRepo.findActiveSessionWithDetails(businessId, userId, warehouseId);
     if (!sessionDetails) {
       return null;
+    }
+
+    if (!sessionDetails.warehouseId || !sessionDetails.warehouse) {
+      let targetWarehouseId = sessionDetails.cashRegister?.warehouseId;
+      if (!targetWarehouseId) {
+        const mainWh = await prisma.warehouse.findFirst({ where: { businessId, isMain: true } })
+          || await prisma.warehouse.findFirst({ where: { businessId } });
+        targetWarehouseId = mainWh ? mainWh.id : null;
+      }
+
+      if (targetWarehouseId) {
+        await prisma.cashSession.update({
+          where: { id: sessionDetails.id },
+          data: { warehouseId: targetWarehouseId }
+        });
+        sessionDetails = await this.cashRepo.findActiveSessionWithDetails(businessId, userId, warehouseId);
+      }
     }
 
     return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
-  async getHistory(businessId: string): Promise<CashSessionSummaryDTO[]> {
-    const sessions = await this.cashRepo.listSessions(businessId);
+  async getHistory(businessId: string, warehouseId?: string): Promise<CashSessionSummaryDTO[]> {
+    const sessions = await this.cashRepo.listSessions(businessId, {}, warehouseId);
     return Promise.all(
       sessions.map(async (s: any) => {
         const details = await this.cashRepo.getSessionWithDetails(s.id, businessId);
@@ -370,16 +472,18 @@ export class CashService {
     return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
-  async getRegisters(businessId: string) {
-    let registers = await this.cashRepo.listRegisters(businessId);
+  async getRegisters(businessId: string, warehouseId?: string) {
+    let registers = await this.cashRepo.listRegisters(businessId, warehouseId);
     
-    // Lazy creation fallback for existing tenants that missed provisioning
+    // Lazy creation fallback for existing tenants / warehouses that missed provisioning
     if (registers.length === 0) {
+      const codeSuffix = warehouseId && warehouseId !== 'ALL' ? warehouseId.slice(-4).toUpperCase() : '01';
       const newRegister = await prisma.cashRegister.create({
         data: {
           businessId,
+          warehouseId: warehouseId && warehouseId !== 'ALL' ? warehouseId : undefined,
           name: 'Caja Principal',
-          code: 'CAJA-01',
+          code: `CAJA-${codeSuffix}`,
           isActive: true,
         },
       });
@@ -391,7 +495,7 @@ export class CashService {
         entityName: 'CashRegister',
         entityId: newRegister.id,
         actionType: 'CREATE_SYSTEM_DEFAULT',
-        newValues: JSON.stringify({ name: 'Caja Principal' }),
+        newValues: JSON.stringify({ name: 'Caja Principal', warehouseId }),
       } as any);
     }
     

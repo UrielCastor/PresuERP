@@ -38,6 +38,7 @@ export class UserController {
   static async create(req: any, res: any, next: any) {
     try {
       const operator = req.user;
+      console.log('🔥 [BACKEND USER CREATE REQ.BODY]', JSON.stringify(req.body, null, 2));
       const result = await userService.create(
         req.body,
         operator,
@@ -58,6 +59,7 @@ export class UserController {
     try {
       const id = req.params.id;
       const operator = req.user;
+      console.log(`🔥 [BACKEND USER UPDATE ${id} REQ.BODY]`, JSON.stringify(req.body, null, 2));
       const result = await userService.update(
         id,
         req.body,

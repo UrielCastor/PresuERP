@@ -75,9 +75,16 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
         isRefreshing = false;
         
-        // Clear auth since refresh failed
+        // Clear auth and notify backend logout if possible
+        try {
+          await axios.post('/api/v1/auth/logout', {}, { withCredentials: true });
+        } catch (e) {
+          // ignore error if token is already expired/invalidated
+        }
+
         localStorage.removeItem('accessToken');
         localStorage.removeItem('user');
+        sessionStorage.clear();
         window.location.href = '/login';
         
         return Promise.reject(refreshError);

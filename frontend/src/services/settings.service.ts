@@ -68,6 +68,8 @@ export interface POSSettingsData {
   showTicketPreview?: boolean;
   allowMixedPayments?: boolean;
   autoRounding?: boolean;
+  autoPriceRounding?: boolean;
+  autoRoundingMode?: 'CASH_ONLY' | 'ALL_METHODS';
 }
 
 export interface PrintSettingsData {

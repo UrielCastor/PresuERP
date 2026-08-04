@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Plus, Edit2, Trash2, Search, X, Loader2, Truck, AlertTriangle, CheckCircle, XCircle } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Loader2, Truck, AlertTriangle, CheckCircle, XCircle, MoreVertical } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { supplierApi, Supplier } from '../services/supplier.service';
 import { Button } from '../components/ui/Button';
@@ -31,6 +31,7 @@ export const Suppliers: React.FC = () => {
   const [editingSupplier, setEditingSupplier] = useState<Supplier | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<Supplier | null>(null);
   const [apiError, setApiError] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const canCreate = hasPermission('suppliers:create');
   const canUpdate = hasPermission('suppliers:update');
@@ -143,279 +144,399 @@ export const Suppliers: React.FC = () => {
       (s.email && s.email.toLowerCase().includes(searchTerm.toLowerCase())) ||
       (s.contactName && s.contactName.toLowerCase().includes(searchTerm.toLowerCase()))
   );
-
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Proveedores"
-        subtitle="Gestiona los proveedores de productos y materiales de la empresa."
-        action={
-          canCreate ? (
-            <Button onClick={handleOpenCreateModal} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo Proveedor
-            </Button>
-          ) : undefined
-        }
-      />
+      {/* 1. ENCABEZADO ESTILO POS */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl leading-none">🏭</span>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              Proveedores
+            </h1>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+            Gestiona los proveedores de productos y materiales de tu empresa.
+          </p>
+        </div>
 
-      {/* Search */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex items-center justify-between gap-4">
-        <div className="flex-1 max-w-md">
-          <Input
-            placeholder="Buscar por nombre, CUIT, email o contacto..."
+        {canCreate && (
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleOpenCreateModal}
+              leftIcon={<Plus className="h-4 w-4" />}
+              className="text-xs font-bold shadow-md rounded-xl"
+            >
+              + Nuevo Proveedor
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 2. BARRA DE HERRAMIENTAS ESTILO POS */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3.5 items-stretch md:items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-400 dark:text-slate-500 pointer-events-none" />
+          <input
+            type="text"
+            placeholder="Buscar por nombre, Código, CUIT, email o teléfono..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            leftIcon={Search}
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
           />
         </div>
-        <div className="text-xs text-slate-500 dark:text-slate-400">
-          Total: {filteredSuppliers.length} proveedores
+
+        <div className="flex items-center justify-between md:justify-end gap-3">
+          {searchTerm.trim() && (
+            <button
+              onClick={() => setSearchTerm('')}
+              className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-2 py-1 transition-colors"
+            >
+              Limpiar búsqueda
+            </button>
+          )}
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400">
+            Total: {filteredSuppliers.length} {filteredSuppliers.length === 1 ? 'proveedor' : 'proveedores'}
+          </div>
         </div>
       </div>
 
-      {/* Table */}
+      {/* 3. CARDS RESPONSIVE DE PROVEEDORES */}
       {isLoading ? (
-        <div className="min-h-[200px] flex items-center justify-center bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="min-h-[250px] flex items-center justify-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
         </div>
       ) : filteredSuppliers.length === 0 ? (
-        <EmptyStateGuide
-          title="No hay proveedores registrados"
-          description={
-            searchTerm
-              ? 'Prueba variando los parámetros de búsqueda.'
-              : 'Comienza registrando tu primer proveedor para asociarlo a tus compras y stocks.'
-          }
-          onAction={(!searchTerm && canCreate) ? handleOpenCreateModal : undefined}
-          actionText="Nuevo Proveedor"
-        />
+        <div className="min-h-[280px] flex flex-col items-center justify-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-center">
+          <Truck className="h-12 w-12 text-slate-300 dark:text-slate-700 mb-3" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">No existen proveedores registrados</h3>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+            {searchTerm
+              ? 'No se encontraron proveedores que coincidan con la búsqueda.'
+              : 'Comienza registrando tu primer proveedor para asociarlo a tus compras y stocks.'}
+          </p>
+          {!searchTerm && canCreate && (
+            <Button onClick={handleOpenCreateModal} className="mt-4 flex items-center gap-2 text-xs font-bold rounded-xl shadow-md">
+              <Plus className="h-4 w-4" />
+              Crear primer proveedor
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Proveedor</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">CUIT / RUT</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Contacto</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estado</th>
-                  {(canUpdate || canDelete) && (
-                    <th className="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Acciones</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {filteredSuppliers.map((supplier) => (
-                  <tr key={supplier.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-920/40 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 bg-indigo-50 dark:bg-indigo-950/30 rounded-lg flex items-center justify-center text-indigo-600 dark:text-indigo-400">
-                          <Truck className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white">{supplier.name}</div>
-                          {supplier.email && (
-                            <div className="text-xs text-slate-500 dark:text-slate-400">{supplier.email}</div>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-slate-700 dark:text-slate-300">
-                      {supplier.taxId || '-'}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap">
-                      <div className="text-sm text-slate-900 dark:text-white">{supplier.contactName || '-'}</div>
-                      {supplier.phone && (
-                        <div className="text-xs text-slate-500 dark:text-slate-400">{supplier.phone}</div>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${
-                          supplier.isActive
-                            ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400'
-                            : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
-                        }`}
-                      >
-                        {supplier.isActive ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                        {supplier.isActive ? 'Activo' : 'Inactivo'}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+          {filteredSuppliers.map((supplier) => {
+            const isInactive = !supplier.isActive;
+
+            return (
+              <div
+                key={supplier.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 relative group"
+              >
+                {/* Header Card: Fila Superior con Nombre & Badge Estado + Subtítulo Email */}
+                <div className="space-y-1.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg leading-none">🏭</span>
+                      <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug truncate">
+                        {supplier.name}
+                      </h3>
+                    </div>
+
+                    {!isInactive ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Activo
                       </span>
-                    </td>
-                    {(canUpdate || canDelete) && (
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <div className="flex justify-end gap-2">
-                          {canUpdate && (
-                            <button
-                              onClick={() => handleOpenEditModal(supplier)}
-                              className="p-1.5 text-slate-400 hover:text-primary-600 dark:text-slate-500 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                              title="Editar"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => setDeleteTarget(supplier)}
-                              className="p-1.5 text-slate-400 hover:text-red-600 dark:text-slate-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
-                              title="Eliminar"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800/50 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                        Inactivo
+                      </span>
                     )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </div>
+
+                  {/* Subtítulo Email */}
+                  <div className="flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400 min-h-[20px]">
+                    <span className="shrink-0">✉️</span>
+                    <span className="truncate">{supplier.email || <span className="italic text-slate-400">—</span>}</span>
+                  </div>
+                </div>
+
+                {/* Información: Grilla con CUIT, Contacto, Teléfono */}
+                <div className="grid grid-cols-3 gap-2 text-center bg-slate-50/80 dark:bg-slate-950/60 p-3 rounded-xl border border-slate-200/60 dark:border-slate-800/60">
+                  <div className="flex flex-col items-center justify-center min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-0.5 truncate">
+                      <span>🏷️</span> CUIT
+                    </span>
+                    <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200 truncate w-full">
+                      {supplier.taxId || '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-0.5 truncate">
+                      <span>👤</span> Contacto
+                    </span>
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate w-full">
+                      {supplier.contactName || '—'}
+                    </span>
+                  </div>
+
+                  <div className="flex flex-col items-center justify-center min-w-0">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1 mb-0.5 truncate">
+                      <span>📞</span> Teléfono
+                    </span>
+                    <span className="text-xs font-bold font-mono text-slate-800 dark:text-slate-200 truncate w-full">
+                      {supplier.phone || '—'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Acciones: Botón Principal Ancho (Editar Proveedor) + Menú Tres Puntos (⋮) */}
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                  {canUpdate && (
+                    <Button
+                      onClick={() => handleOpenEditModal(supplier)}
+                      className="flex-1 text-xs font-bold py-2 rounded-xl shadow-2xs flex items-center justify-center gap-1.5"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Editar Proveedor
+                    </Button>
+                  )}
+
+                  {/* Menú Tres Puntos (⋮) */}
+                  {(canUpdate || canDelete) && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === supplier.id ? null : supplier.id);
+                        }}
+                        className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                        title="Más acciones"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuId === supplier.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20"
+                            onClick={() => setOpenMenuId(null)}
+                          />
+                          <div className="absolute right-0 bottom-full mb-1 z-30 w-48 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 text-xs divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in zoom-in-95 duration-100">
+                            {canUpdate && (
+                              <div className="py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    handleOpenEditModal(supplier);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-blue-500" />
+                                  Editar Proveedor
+                                </button>
+                              </div>
+                            )}
+
+                            {canDelete && (
+                              <div className="py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    setDeleteTarget(supplier);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 font-medium"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                  Eliminar Proveedor
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Create/Edit Modal */}
+      {/* Create/Edit Modal Estilo Editar Producto */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
-            <button
-              onClick={handleCloseModal}
-              className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5 flex flex-col max-h-[90vh] transition-all duration-300">
+            {/* Header del Modal */}
+            <div className="flex-none pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+              <button
+                onClick={handleCloseModal}
+                className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
 
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white pr-6">
-              {editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              Registra los datos del proveedor para asociarlo a productos.
-            </p>
-
-            <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
-              {apiError && (
-                <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-lg text-sm text-red-655 dark:text-red-450 font-medium">
-                  {apiError}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Nombre <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    {...register('name')}
-                    placeholder="Ej: Distribuidora Norte"
-                    className={`w-full px-3.5 py-2.5 bg-transparent border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                      errors.name ? 'border-red-500 focus:ring-red-500' : 'border-slate-350 dark:border-slate-800'
-                    }`}
-                  />
-                  {errors.name && (
-                    <p className="mt-1 text-xs text-red-500 font-medium">{errors.name.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    CUIT / RUT / RFC
-                  </label>
-                  <input
-                    type="text"
-                    {...register('taxId')}
-                    placeholder="Ej: 30-12345678-9"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl leading-none">🏭</span>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white pr-6">
+                  {editingSupplier ? 'Editar Proveedor' : 'Nuevo Proveedor'}
+                </h2>
               </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Registra la información corporativa, fiscal y de contacto del proveedor.
+              </p>
+            </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Email
-                  </label>
-                  <input
-                    type="email"
-                    {...register('email')}
-                    placeholder="contacto@proveedor.com"
-                    className={`w-full px-3.5 py-2.5 bg-transparent border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                      errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-350 dark:border-slate-800'
-                    }`}
-                  />
-                  {errors.email && (
-                    <p className="mt-1 text-xs text-red-500 font-medium">{errors.email.message}</p>
-                  )}
-                </div>
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto pr-1">
+              <form id="supplier-form" onSubmit={handleSubmit(onSubmit)} className="space-y-3.5 pt-1">
+                {apiError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-lg text-xs text-red-600 dark:text-red-400 font-medium">
+                    {apiError}
+                  </div>
+                )}
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Teléfono
-                  </label>
-                  <input
-                    type="text"
-                    {...register('phone')}
-                    placeholder="Ej: +54 11 1234-5678"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
-              </div>
+                {/* CARD 1: 📦 INFORMACIÓN GENERAL */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    <span className="text-base leading-none">📦</span>
+                    <span>Información General</span>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Persona de Contacto
-                  </label>
-                  <input
-                    type="text"
-                    {...register('contactName')}
-                    placeholder="Ej: Juan Pérez"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Nombre o Razón Social <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      {...register('name')}
+                      placeholder="Ej: Distribuidora Norte S.A."
+                      className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
+                        errors.name ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700'
+                      }`}
+                    />
+                    {errors.name && (
+                      <p className="mt-1 text-xs text-red-500 font-medium">{errors.name.message}</p>
+                    )}
+                  </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Estado
-                  </label>
-                  <select
-                    {...register('isActive', { setValueAs: (v) => v === 'true' || v === true })}
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-705 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  >
-                    <option value="true">Activo</option>
-                    <option value="false">Inactivo</option>
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Dirección
-                </label>
-                <input
-                  type="text"
-                  {...register('address')}
-                  placeholder="Ej: Av. Siempreviva 742"
-                  className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                />
-              </div>
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Guardando...
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        CUIT / RUT / Identificador Fiscal
+                      </label>
+                      <input
+                        type="text"
+                        {...register('taxId')}
+                        placeholder="Ej: 30-12345678-9"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
                     </div>
-                  ) : (
-                    'Guardar Proveedor'
-                  )}
-                </Button>
-              </div>
-            </form>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Estado
+                      </label>
+                      <select
+                        {...register('isActive', { setValueAs: (v) => v === 'true' || v === true })}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      >
+                        <option value="true">Activo</option>
+                        <option value="false">Inactivo</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: 📞 CONTACTO & COMUNICACIÓN */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    <span className="text-base leading-none">📞</span>
+                    <span>Contacto & Comunicación</span>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Correo Electrónico
+                      </label>
+                      <input
+                        type="email"
+                        {...register('email')}
+                        placeholder="contacto@proveedor.com"
+                        className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
+                          errors.email ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
+                      />
+                      {errors.email && (
+                        <p className="mt-1 text-xs text-red-500 font-medium">{errors.email.message}</p>
+                      )}
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Teléfono / Celular
+                      </label>
+                      <input
+                        type="text"
+                        {...register('phone')}
+                        placeholder="Ej: +54 11 1234-5678"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Persona de Contacto
+                    </label>
+                    <input
+                      type="text"
+                      {...register('contactName')}
+                      placeholder="Ej: Juan Pérez (Gerente Comercial)"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    />
+                  </div>
+                </div>
+
+                {/* CARD 3: 📍 DIRECCIÓN */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-2 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    <span className="text-base leading-none">📍</span>
+                    <span>Ubicación & Dirección</span>
+                  </div>
+                  <input
+                    type="text"
+                    {...register('address')}
+                    placeholder="Ej: Av. Industrial 4500, Parque Industrial"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+              </form>
+            </div>
+
+            {/* Modal Footer - Fixed */}
+            <div className="flex-none pt-3 mt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting} className="text-xs px-4 rounded-lg">
+                Cancelar
+              </Button>
+              <Button type="submit" form="supplier-form" disabled={isSubmitting} className="text-xs px-6 font-bold shadow-md rounded-lg">
+                {isSubmitting ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Guardando...
+                  </div>
+                ) : (
+                  editingSupplier ? 'Guardar Cambios' : 'Crear Proveedor'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}

@@ -36,7 +36,7 @@ export const auditFieldLabels: Record<string, string> = {
   expectedBalance: 'Saldo Esperado',
   difference: 'Diferencia',
   barcode: 'Código de barras',
-  sku: 'SKU / Código',
+  sku: 'Código Interno',
 };
 
 export function translateAuditEvent(log: any): HumanAuditEvent {

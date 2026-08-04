@@ -120,12 +120,21 @@ export class StockMovementService {
 
       const stockAfter = stockBefore + qtyOffset;
 
-      // Negative stock policy validation
+      // Negative stock policy validation: 1) Business/POS settings 2) Individual product override
       if (stockAfter < 0) {
         const settings = await (txClient.businessSettings as any).findUnique({
           where: { businessId: data.businessId },
         });
-        const allowNegative = settings?.allowNegativeStock ?? false;
+        const posSettings = await (txClient.pOSSettings as any).findUnique({
+          where: { businessId: data.businessId },
+        });
+        const allowNegative = Boolean(
+          settings?.allowNegativeStock ||
+          posSettings?.allowNegativeStock ||
+          posSettings?.allowSaleWithoutStock ||
+          (product as any)?.allowSaleWithoutStock
+        );
+
         if (!allowNegative) {
           throw new BadRequestError(
             `Operación abortada por stock insuficiente en ${warehouse.name} para '${product.name}' (Disponible: ${stockBefore}, Faltante: ${Math.abs(qtyOffset)})`

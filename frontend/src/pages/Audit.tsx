@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { PageHeader } from '../components/ui/PageHeader';
 import { ReportToolbar } from '../components/ui/ReportToolbar';
 import { ReportService } from '../services/report.service';
+import { warehouseApi } from '../services/warehouse.service';
 import { Modal, Button } from '../components/ui';
 import { translateAuditEvent } from '../utils/auditTranslator';
-import { ShieldCheck, Activity, Eye, List, Search } from 'lucide-react';
+import { ShieldCheck, Activity, Eye, List, Search, Warehouse } from 'lucide-react';
 
 export const Audit: React.FC = () => {
   const [dateRange, setDateRange] = useState('this_month');
@@ -17,10 +19,16 @@ export const Audit: React.FC = () => {
   const [auditSearch, setAuditSearch] = useState('');
   const [auditModule, setAuditModule] = useState('ALL');
   const [auditAction, setAuditAction] = useState('ALL');
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('ALL');
   const [auditPage, setAuditPage] = useState(1);
   const [selectedAuditItem, setSelectedAuditItem] = useState<any>(null);
   const [isAuditModalOpen, setIsAuditModalOpen] = useState(false);
   const [showRawJson, setShowRawJson] = useState(false);
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: warehouseApi.list,
+  });
 
   const handleDateRangeChange = (range: string) => {
     setDateRange(range);
@@ -66,7 +74,7 @@ export const Audit: React.FC = () => {
 
   useEffect(() => {
     fetchAuditLogs();
-  }, [dateFrom, dateTo, auditSearch, auditModule, auditAction, auditPage]);
+  }, [dateFrom, dateTo, auditSearch, auditModule, auditAction, selectedWarehouse, auditPage]);
 
   const fetchAuditLogs = async () => {
     setLoading(true);
@@ -77,6 +85,7 @@ export const Audit: React.FC = () => {
         search: auditSearch.trim() || undefined,
         module: auditModule !== 'ALL' ? auditModule : undefined,
         action: auditAction !== 'ALL' ? auditAction : undefined,
+        warehouseId: selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined,
         page: auditPage,
         limit: 15,
       };
@@ -171,6 +180,22 @@ export const Audit: React.FC = () => {
               <option value="CashSession">Caja</option>
               <option value="Product">Productos</option>
               <option value="User">Usuarios</option>
+            </select>
+
+            <select
+              value={selectedWarehouse}
+              onChange={(e) => {
+                setSelectedWarehouse(e.target.value);
+                setAuditPage(1);
+              }}
+              className="rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 px-3 py-2 text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 font-medium"
+            >
+              <option value="ALL">Todos los Depósitos</option>
+              {warehouses.map((w: any) => (
+                <option key={w.id} value={w.id}>
+                  {w.name}
+                </option>
+              ))}
             </select>
 
             <div className="flex items-center gap-2">

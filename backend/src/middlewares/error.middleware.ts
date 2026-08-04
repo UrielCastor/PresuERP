@@ -13,9 +13,15 @@ export const errorHandler = (
   let message = 'Something went wrong';
   let errors: any = null;
 
-  if (err instanceof AppError) {
-    statusCode = err.statusCode;
+  if (err instanceof AppError || (err && typeof (err as any).statusCode === 'number')) {
+    statusCode = (err as any).statusCode || 500;
     message = err.message;
+  } else if (err.name === 'JsonWebTokenError') {
+    statusCode = 401;
+    message = 'Invalid authentication token';
+  } else if (err.name === 'TokenExpiredError') {
+    statusCode = 401;
+    message = 'Access token has expired';
   } else if (err.name === 'ValidationError') {
     statusCode = 400;
     message = err.message;

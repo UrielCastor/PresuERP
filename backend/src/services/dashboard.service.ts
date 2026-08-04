@@ -4,7 +4,7 @@ import { startOfDay, endOfDay, subDays } from 'date-fns';
 export class DashboardService {
   private dashboardRepo = new DashboardRepository();
 
-  async getDashboardData(businessId: string) {
+  async getDashboardData(businessId: string, warehouseId?: string) {
     const todayStart = startOfDay(new Date());
     const todayEnd = endOfDay(new Date());
     
@@ -22,13 +22,13 @@ export class DashboardService {
       recentSales,
       recentActivity,
     ] = await Promise.all([
-      this.dashboardRepo.getSalesTotal(businessId, todayStart, todayEnd),
-      this.dashboardRepo.getSalesTotal(businessId, yesterdayStart, yesterdayEnd),
-      this.dashboardRepo.getNewCustomersCount(businessId, lastWeekStart),
-      this.dashboardRepo.getStockSummary(businessId),
-      this.dashboardRepo.getActiveCashRegister(businessId),
-      this.dashboardRepo.getRecentSales(businessId),
-      this.dashboardRepo.getRecentActivity(businessId),
+      this.dashboardRepo.getSalesTotal(businessId, todayStart, todayEnd, warehouseId),
+      this.dashboardRepo.getSalesTotal(businessId, yesterdayStart, yesterdayEnd, warehouseId),
+      this.dashboardRepo.getNewCustomersCount(businessId, lastWeekStart, warehouseId),
+      this.dashboardRepo.getStockSummary(businessId, warehouseId),
+      this.dashboardRepo.getActiveCashRegister(businessId, warehouseId),
+      this.dashboardRepo.getRecentSales(businessId, 5, warehouseId),
+      this.dashboardRepo.getRecentActivity(businessId, 5),
     ]);
 
     let percentageChange: number | string = 0;

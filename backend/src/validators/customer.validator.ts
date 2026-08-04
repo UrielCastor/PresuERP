@@ -14,6 +14,8 @@ export const createCustomerSchema = z.object({
   allowCreditAccount: z.boolean().optional(),
   creditLimit: z.coerce.number().min(0, 'El límite de crédito no puede ser negativo').optional(),
   currentDebt: z.coerce.number().optional(),
+  defaultPriceListId: z.string().optional().nullable(),
+  autoApplyPriceList: z.boolean().optional(),
 });
 
 export const updateCustomerSchema = createCustomerSchema.partial();

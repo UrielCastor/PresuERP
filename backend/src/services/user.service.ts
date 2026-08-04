@@ -36,6 +36,19 @@ export class UserService {
       throw new ForbiddenError('Solo el administrador puede asignar roles');
     }
 
+    // Validate role is not Empleado/Employee
+    if (data.roleId) {
+      const targetRole = await prisma.role.findFirst({
+        where: { id: data.roleId, businessId: operator.businessId }
+      });
+      if (!targetRole) {
+        throw new NotFoundError('Rol no encontrado');
+      }
+      if (targetRole.name.toLowerCase() === 'empleado' || targetRole.name.toLowerCase() === 'employee') {
+        throw new ForbiddenError('El rol Empleado ha sido desactivado y no puede ser asignado');
+      }
+    }
+
     // Email uniqueness check
     const existingUser = await this.userRepo.findByEmail(data.email);
     if (existingUser) {
@@ -52,9 +65,27 @@ export class UserService {
       email: data.email,
       password: hashedPassword,
       roleId: data.roleId,
+      defaultWarehouseId: data.defaultWarehouseId || null,
       businessId: operator.businessId,
       isStaff: false,
     } as any);
+
+    const whIds = new Set<string>();
+    if (data.authorizedWarehouseIds && Array.isArray(data.authorizedWarehouseIds)) {
+      data.authorizedWarehouseIds.forEach((id: string) => whIds.add(id));
+    }
+    if (data.defaultWarehouseId) {
+      whIds.add(data.defaultWarehouseId);
+    }
+    if (whIds.size > 0) {
+      await prisma.userWarehouse.createMany({
+        data: Array.from(whIds).map((whId: string) => ({
+          userId: newUser.id,
+          warehouseId: whId,
+        })),
+        skipDuplicates: true,
+      });
+    }
 
     const userWithRole = await this.userRepo.findById(newUser.id, operator.businessId);
 
@@ -84,6 +115,16 @@ export class UserService {
     if (data.roleId && data.roleId !== existing.roleId) {
       if (operator.role !== 'Administrator') {
         throw new ForbiddenError('Solo el administrador puede asignar roles');
+      }
+
+      const targetRole = await prisma.role.findFirst({
+        where: { id: data.roleId, businessId: operator.businessId }
+      });
+      if (!targetRole) {
+        throw new NotFoundError('Rol no encontrado');
+      }
+      if (targetRole.name.toLowerCase() === 'empleado' || targetRole.name.toLowerCase() === 'employee') {
+        throw new ForbiddenError('El rol Empleado ha sido desactivado y no puede ser asignado');
       }
     }
 
@@ -115,12 +156,38 @@ export class UserService {
     if (data.name !== undefined) updateData.name = data.name;
     if (data.email !== undefined) updateData.email = data.email;
     if (data.roleId !== undefined) updateData.roleId = data.roleId;
+    if (data.defaultWarehouseId !== undefined) updateData.defaultWarehouseId = data.defaultWarehouseId || null;
     if (data.isActive !== undefined) {
       // Prevent deactivating oneself
       if (id === operator.id && data.isActive === false) {
         throw new ConflictError('No puedes desactivar tu propio usuario');
       }
       updateData.isActive = data.isActive;
+    }
+
+    const whIds = new Set<string>();
+    let shouldUpdateWarehouses = false;
+
+    if (data.authorizedWarehouseIds !== undefined && Array.isArray(data.authorizedWarehouseIds)) {
+      shouldUpdateWarehouses = true;
+      data.authorizedWarehouseIds.forEach((whId: string) => whIds.add(whId));
+    }
+    if (data.defaultWarehouseId) {
+      shouldUpdateWarehouses = true;
+      whIds.add(data.defaultWarehouseId);
+    }
+
+    if (shouldUpdateWarehouses) {
+      await prisma.userWarehouse.deleteMany({ where: { userId: id } });
+      if (whIds.size > 0) {
+        await prisma.userWarehouse.createMany({
+          data: Array.from(whIds).map((whId: string) => ({
+            userId: id,
+            warehouseId: whId,
+          })),
+          skipDuplicates: true,
+        });
+      }
     }
 
     let isPasswordUpdate = false;

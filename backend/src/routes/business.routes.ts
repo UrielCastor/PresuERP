@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { BusinessController } from '../controllers/business.controller';
-import { requireAuth, requireSystemAdmin } from '../middlewares/auth.middleware';
+import { requireAuth, requireSystemAdmin, requirePermission } from '../middlewares/auth.middleware';
 import { PlanController } from '../system/plan.controller';
 import { BillingController } from '../system/billing.controller';
 
@@ -13,7 +13,7 @@ router.use(requireAuth);
 
 // Módulo 1 (Tenant Normal) - Sólo su propia empresa
 router.get('/current', controller.getCurrent);
-router.put('/current', controller.updateCurrent);
+router.put('/current', requirePermission('settings:write'), controller.updateCurrent);
 router.get('/subscription', controller.getSubscription);
 
 // Tenant-accessible SaaS plan and checkout endpoints

@@ -190,7 +190,7 @@ export const Kardex: React.FC = () => {
       'ID',
       'Fecha',
       'Producto',
-      'SKU',
+      'Código Interno',
       'Código de Barras',
       'Depósito',
       'Tipo de Movimiento',
@@ -469,7 +469,7 @@ export const Kardex: React.FC = () => {
             <Search className="absolute left-3 top-2.5 h-4.5 w-4.5 text-slate-400 dark:text-slate-500" />
             <input
               type="text"
-              placeholder="Buscar por producto, SKU, motivo, notas..."
+              placeholder="Buscar por producto, Código Interno, motivo, notas..."
               value={searchTerm}
               onChange={(e) => {
                 setSearchTerm(e.target.value);
@@ -589,7 +589,7 @@ export const Kardex: React.FC = () => {
                 <thead>
                   <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
                     <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Fecha / Hora</th>
-                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Producto / SKU</th>
+                    <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Producto / Código Interno</th>
                     <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Depósito</th>
                     <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-center">Tipo</th>
                     <th className="px-5 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider text-right">Cant.</th>
@@ -753,7 +753,7 @@ export const Kardex: React.FC = () => {
                   <option value="">-- Seleccionar Producto --</option>
                   {products.map((p: any) => (
                     <option key={p.id} value={p.id}>
-                      {p.name} ({p.sku || 'S/SKU'})
+                      {p.name} ({p.sku || 'Sin Cód. Int.'})
                     </option>
                   ))}
                 </select>
@@ -881,7 +881,7 @@ export const Kardex: React.FC = () => {
                     {selectedMovement.product?.name}
                   </span>
                   <span className="text-xs text-slate-500 block font-mono">
-                    SKU: {selectedMovement.product?.sku || 'S/S'}
+                    Cód. Int: {selectedMovement.product?.sku || 'S/C'}
                   </span>
                 </div>
                 <div>

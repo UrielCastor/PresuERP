@@ -1,5 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { getInitialWarehouseId } from '../utils/warehouse';
 import {
   Search,
   ShoppingCart,
@@ -29,7 +30,10 @@ import {
   QrCode,
   AlertCircle,
   Loader2,
-  RotateCcw
+  RotateCcw,
+  Gift,
+  Zap,
+  HelpCircle
 } from 'lucide-react';
 import { productApi } from '../services/product.service';
 import { saleApi } from '../services/sale.service';
@@ -45,6 +49,8 @@ import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card'
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { POSItemCard } from '../components/ui/POSItemCard';
+
 import { useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import {
@@ -53,23 +59,63 @@ import {
 } from '../services/paymentAdjustmentRule.service';
 import { getCustomers, Customer } from '../services/customer.service';
 import { CustomerFormModal } from './customers/CustomerFormModal';
+import { priceListService, PriceList } from '../services/priceList.service';
+import { productPriceTierService, ProductPriceTier } from '../services/productPriceTier.service';
+import { promotionService, Promotion } from '../services/promotion.service';
+import { resolveProductPrice, getEffectiveProductPrice, resolveProductPriceDetails } from '../utils/priceUtils';
+import { SettingsService } from '../services/settings.service';
 
 const CATEGORIES = ['Todos', 'Favoritos', 'Más Vendidos', 'Recientes'];
 const POS_DRAFT_KEY = 'presuerp_pos_draft_v1';
 const POS_PREFERENCES_KEY = 'presuerp_pos_prefs_v1';
 
 export const POS: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [searchTerm, setSearchTerm] = useState('');
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const [searchError, setSearchError] = useState<string | null>(null);
   const [activeCategory, setActiveCategory] = useState('Todos');
   const [cart, setCart] = useState<{ product: any; quantity: number }[]>([]);
-  const [selectedWarehouseId, setSelectedWarehouseId] = useState('');
+  const [selectedWarehouseId, setSelectedWarehouseId] = useState<string>(() => getInitialWarehouseId(user) || '');
   const [discountType, setDiscountType] = useState<'FIXED' | 'PERCENTAGE'>('PERCENTAGE');
   const [discountValue, setDiscountValue] = useState<number | string>('');
   const [restoredBanner, setRestoredBanner] = useState<string | null>(null);
+  const [tierNotice, setTierNotice] = useState<{ message: string; visible: boolean } | null>(null);
+  const [isRoundingSessionEnabled, setIsRoundingSessionEnabled] = useState<boolean>(true);
+
+  // Inline Quantity Editing State in Cart
+  const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
+  const [editingQtyInput, setEditingQtyInput] = useState<string>('');
+
+const isKgProduct = (p: any) => {
+  const u = String(p?.unitOfMeasure || '').toUpperCase();
+  return u === 'KG' || u === 'KILOGRAM' || u === 'KILOGRAMO';
+};
+
+  const startQtyEdit = (productId: string, currentQty: number, productObj?: any) => {
+    setEditingQtyProductId(productId);
+    const isKg = productObj ? isKgProduct(productObj) : false;
+    setEditingQtyInput(isKg ? Number(currentQty).toFixed(3) : String(currentQty));
+  };
+
+  const cancelQtyEdit = () => {
+    setEditingQtyProductId(null);
+  };
+
+  const confirmQtyEdit = (productId: string, productObj?: any) => {
+    const isKg = productObj ? isKgProduct(productObj) : false;
+    const parsed = parseFloat(editingQtyInput);
+    if (!isNaN(parsed) && parsed > 0) {
+      const finalQty = isKg ? Math.round(parsed * 1000) / 1000 : Math.round(parsed);
+      if (finalQty > 0) {
+        updateQuantity(productId, finalQty);
+      }
+    }
+    setEditingQtyProductId(null);
+  };
 
   // Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
@@ -82,6 +128,123 @@ export const POS: React.FC = () => {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+
+  // Price List Selection State
+  const [selectedPriceListId, setSelectedPriceListId] = useState<string>('');
+  const [pendingPriceListId, setPendingPriceListId] = useState<string | null>(null);
+  const [isPriceListModalOpen, setIsPriceListModalOpen] = useState<boolean>(false);
+
+  const { data: priceLists = [] } = useQuery({
+    queryKey: ['priceLists'],
+    queryFn: priceListService.getAll,
+  });
+
+  const activePriceList = useMemo(
+    () => priceLists.find((pl: PriceList) => pl.id === selectedPriceListId),
+    [priceLists, selectedPriceListId]
+  );
+
+  // FUNCIÓN CENTRAL ÚNICA: Sincronización Total de Precios en POS
+  const syncPriceListChange = useCallback((priceListId: string) => {
+    setSelectedPriceListId(priceListId);
+
+    // Recalcular inmediatamente el 100% de los items en el carrito preservando la tarifa base del producto
+    setCart((prevCart) => {
+      if (prevCart.length === 0) return prevCart;
+      return prevCart.map((item) => {
+        const baseProduct = {
+          ...item.product,
+          basePrice: item.product.basePrice !== undefined ? item.product.basePrice : Number(item.product.salePrice || 0),
+        };
+        const updatedPrice = getEffectiveProductPrice(baseProduct, priceListId, item.quantity);
+        return {
+          ...item,
+          product: {
+            ...baseProduct,
+            salePrice: updatedPrice,
+          },
+        };
+      });
+    });
+  }, []);
+
+  // 1. Fallback si la lista de precios seleccionada ya no existe o es nula
+  useEffect(() => {
+    if (priceLists.length > 0) {
+      const exists = priceLists.some((pl: PriceList) => pl.id === selectedPriceListId);
+      if (!exists || !selectedPriceListId) {
+        const defaultList = priceLists.find((pl: PriceList) => pl.isDefault === true) || priceLists[0];
+        if (defaultList && defaultList.id !== selectedPriceListId) {
+          syncPriceListChange(defaultList.id);
+        }
+      }
+    }
+  }, [priceLists, selectedPriceListId, syncPriceListChange]);
+
+  // 2. Recálculo reactivo automático de ítems del carrito ante cualquier cambio en selectedPriceListId o priceLists
+  useEffect(() => {
+    if (!selectedPriceListId) return;
+    setCart((prevCart) => {
+      if (prevCart.length === 0) return prevCart;
+      return prevCart.map((item) => {
+        const baseProduct = {
+          ...item.product,
+          basePrice: item.product.basePrice !== undefined ? item.product.basePrice : Number(item.product.salePrice || 0),
+        };
+        const updatedPrice = getEffectiveProductPrice(baseProduct, selectedPriceListId, item.quantity);
+        return {
+          ...item,
+          product: {
+            ...baseProduct,
+            salePrice: updatedPrice,
+          },
+        };
+      });
+    });
+  }, [selectedPriceListId, priceLists]);
+
+  // 3. Sincronización al cambiar el Cliente seleccionado
+  useEffect(() => {
+    if (priceLists.length === 0) return;
+    const defaultList = priceLists.find((pl: PriceList) => pl.isDefault === true) || priceLists[0];
+
+    if (selectedCustomer && selectedCustomer.defaultPriceListId && selectedCustomer.autoApplyPriceList !== false) {
+      const targetList = priceLists.find((pl: PriceList) => pl.id === selectedCustomer.defaultPriceListId);
+      if (targetList) {
+        syncPriceListChange(targetList.id);
+        return;
+      }
+    }
+
+    // Caso 2: Cliente sin lista asignada o Consumidor Final -> Restaurar Lista Minorista (Base)
+    if (defaultList) {
+      syncPriceListChange(defaultList.id);
+    }
+  }, [selectedCustomer, priceLists, syncPriceListChange]);
+
+  const handlePriceListChange = (newListId: string) => {
+    if (newListId === selectedPriceListId) return;
+
+    if (cart.length === 0) {
+      syncPriceListChange(newListId);
+    } else {
+      setPendingPriceListId(newListId);
+      setIsPriceListModalOpen(true);
+    }
+  };
+
+  const confirmPriceListChange = () => {
+    if (pendingPriceListId) {
+      syncPriceListChange(pendingPriceListId);
+    }
+    setPendingPriceListId(null);
+    setIsPriceListModalOpen(false);
+  };
+
+  const cancelPriceListChange = () => {
+    setPendingPriceListId(null);
+    setIsPriceListModalOpen(false);
+  };
 
   // 1. Cargar preferencias y borrador guardado en localStorage al iniciar
   useEffect(() => {
@@ -172,6 +335,30 @@ export const POS: React.FC = () => {
   });
 
   const [showActiveDiscounts, setShowActiveDiscounts] = useState(false);
+  const [showActivePromotions, setShowActivePromotions] = useState(false);
+  const [showHelpPopover, setShowHelpPopover] = useState(false);
+
+  const { data: promotionsList = [] } = useQuery({
+    queryKey: ['promotionsList'],
+    queryFn: () => promotionService.getAll(),
+  });
+
+  const activePromotions = useMemo(() => {
+    const list = Array.isArray(promotionsList) ? promotionsList : [];
+    return list.filter((p: Promotion) => p.isActive === true);
+  }, [promotionsList]);
+
+  const { data: priceTiersList = [] } = useQuery({
+    queryKey: ['productPriceTiersList'],
+    queryFn: () => productPriceTierService.getAll(),
+  });
+
+  const activePriceTiers = useMemo(() => {
+    const list = Array.isArray(priceTiersList) ? priceTiersList : [];
+    return list.filter((pt: ProductPriceTier) => pt.isActive === true);
+  }, [priceTiersList]);
+
+  const totalOffersCount = activePriceTiers.length + activePromotions.length;
 
   const activeAdjustmentRules = useMemo(() => {
     const rawList = Array.isArray(adjustmentRules)
@@ -189,10 +376,16 @@ export const POS: React.FC = () => {
       if (showActiveDiscounts && !target.closest('.discounts-popover-container')) {
         setShowActiveDiscounts(false);
       }
+      if (showActivePromotions && !target.closest('.promotions-popover-container')) {
+        setShowActivePromotions(false);
+      }
+      if (showHelpPopover && !target.closest('.help-popover-container')) {
+        setShowHelpPopover(false);
+      }
     };
     document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [showActiveDiscounts]);
+  }, [showActiveDiscounts, showActivePromotions, showHelpPopover]);
 
   const formatPaymentMethodName = (method: string) => {
     switch (method) {
@@ -221,17 +414,25 @@ export const POS: React.FC = () => {
   const [mpStatusState, setMpStatusState] = useState<'PENDING' | 'APPROVED' | 'FAILED'>('PENDING');
   const [isMPModalOpen, setIsMPModalOpen] = useState(false);
 
-  // Data Fetching
+  const { data: activeSession } = useQuery({
+    queryKey: ['cash', 'active', selectedWarehouseId],
+    queryFn: () => cashApi.getActiveSession(selectedWarehouseId ? { warehouseId: selectedWarehouseId } : undefined),
+  });
+
+  const sessionWarehouseId = activeSession?.warehouseId || activeSession?.warehouse?.id || activeSession?.cashRegister?.warehouseId;
+
+  useEffect(() => {
+    if (sessionWarehouseId && sessionWarehouseId !== selectedWarehouseId) {
+      setSelectedWarehouseId(sessionWarehouseId);
+    }
+  }, [sessionWarehouseId, selectedWarehouseId]);
+
+  // Data Fetching: Filtrar por el deposito de la CashSession activa
   const { data: productsData, isLoading: loadingProducts } = useQuery({
-    queryKey: ['productsListAll'],
-    queryFn: () => productApi.list(),
+    queryKey: ['productsListAll', selectedWarehouseId],
+    queryFn: () => productApi.list(selectedWarehouseId ? { warehouseId: selectedWarehouseId } : undefined),
   });
   const products = productsData || [];
-
-  const { data: activeSession } = useQuery({
-    queryKey: ['cash', 'active'],
-    queryFn: cashApi.getActiveSession,
-  });
 
   // Estado y Apertura de Caja en POS
   const [isOpenCashModalOpen, setIsOpenCashModalOpen] = useState(false);
@@ -293,41 +494,174 @@ export const POS: React.FC = () => {
 
   useEffect(() => {
     if (warehouses.length > 0 && !selectedWarehouseId) {
-      setSelectedWarehouseId(warehouses[0].id);
+      const initialWhId = getInitialWarehouseId(user, warehouses);
+      if (initialWhId) {
+        setSelectedWarehouseId(initialWhId);
+      }
     }
-  }, [warehouses, selectedWarehouseId]);
+  }, [warehouses, selectedWarehouseId, user]);
 
   const getProductStock = (p: any, warehouseId: string) => {
     if (p.stocks && Array.isArray(p.stocks) && warehouseId) {
       const st = p.stocks.find((s: any) => s.warehouseId === warehouseId);
-      if (st !== undefined) return Number(st.quantity);
+      return st !== undefined ? Number(st.quantity) : 0;
     }
     return Number(p.totalStock || 0);
   };
 
   const filteredProducts = useMemo(() => {
+    let result = products.filter((p: any) => p.status === 'ACTIVE');
+
     const term = searchTerm.toLowerCase().trim();
-    if (!term) return products.filter((p: any) => p.status === 'ACTIVE');
-    return products.filter(
-      (p: any) =>
-        p.status === 'ACTIVE' &&
-        (p.name.toLowerCase().includes(term) ||
+    if (term) {
+      result = result.filter(
+        (p: any) =>
+          p.name.toLowerCase().includes(term) ||
           p.barcode?.toLowerCase().includes(term) ||
-          p.sku?.toLowerCase().includes(term))
-    );
-  }, [products, searchTerm]);
+          p.sku?.toLowerCase().includes(term)
+      );
+    }
+
+    if (activeCategory === 'Favoritos') {
+      result = result.filter((p: any) => p.isFavorite);
+    } else if (activeCategory === 'Más Vendidos') {
+      result = [...result].sort((a: any, b: any) => (b.salesCount || 0) - (a.salesCount || 0));
+    } else if (activeCategory === 'Recientes') {
+      result = [...result].sort((a: any, b: any) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime());
+    }
+
+    return result;
+  }, [products, searchTerm, activeCategory]);
 
   // Cart operations
-  const addToCart = (product: any) => {
+  const addToCart = useCallback((product: any) => {
+    const baseProduct = {
+      ...product,
+      basePrice: product.basePrice !== undefined ? product.basePrice : Number(product.salePrice || 0),
+    };
+    const effectivePrice = resolveProductPrice(baseProduct, selectedPriceListId, 1);
+    const productWithPrice = { ...baseProduct, salePrice: effectivePrice };
+
     setCart((prev) => {
       const existing = prev.find((item) => item.product.id === product.id);
       if (existing) {
+        const newQty = existing.quantity + 1;
+        const oldPrice = Number(existing.product.salePrice);
+        const details = resolveProductPriceDetails(existing.product, selectedPriceListId, newQty);
+        const updatedPrice = details.unitPrice;
+
+        if (oldPrice !== updatedPrice) {
+          const noticeMsg = details.promoNotice || `Precio por cantidad aplicado: ${newQty} unidades ($${oldPrice.toLocaleString('es-AR')} ➔ $${updatedPrice.toLocaleString('es-AR')})`;
+          setTierNotice({
+            message: noticeMsg,
+            visible: true,
+          });
+          setTimeout(() => setTierNotice(null), 3500);
+        }
+
         return prev.map((item) =>
-          item.product.id === product.id ? { ...item, quantity: item.quantity + 1 } : item
+          item.product.id === product.id
+            ? { ...item, quantity: newQty, product: { ...existing.product, salePrice: updatedPrice } }
+            : item
         );
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product: productWithPrice, quantity: 1 }];
     });
+  }, [selectedPriceListId]);
+
+  // POS Search Focus & Keydown Management
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      searchInputRef.current?.focus();
+    }, 150);
+    return () => clearTimeout(timer);
+  }, []);
+
+  const performPOSSearch = useCallback((query: string) => {
+    const cleanQuery = query.trim();
+    if (!cleanQuery) return;
+    const lowerQuery = cleanQuery.toLowerCase();
+    const activeProducts = products.filter((p: any) => p.status === 'ACTIVE');
+
+    // 1. Coincidencia exacta: 1) Código de barras, 2) SKU, 3) ID
+    let exactMatch = activeProducts.find(
+      (p: any) => p.barcode && p.barcode.trim().toLowerCase() === lowerQuery
+    );
+
+    if (!exactMatch) {
+      exactMatch = activeProducts.find(
+        (p: any) => p.sku && p.sku.trim().toLowerCase() === lowerQuery
+      );
+    }
+
+    if (!exactMatch) {
+      exactMatch = activeProducts.find(
+        (p: any) => p.id && p.id.trim().toLowerCase() === lowerQuery
+      );
+    }
+
+    const isGlobalAllowWithoutStock = Boolean((posSettingsRes as any)?.allowNegativeStock || (posSettingsRes as any)?.allowSaleWithoutStock);
+    const canSellWithoutStock = (p: any) => isGlobalAllowWithoutStock || Boolean(p.allowSaleWithoutStock);
+
+    if (exactMatch) {
+      const stockNum = getProductStock(exactMatch, selectedWarehouseId);
+      if (stockNum <= 0 && !canSellWithoutStock(exactMatch)) {
+        setSearchError('Producto sin stock disponible');
+        setTimeout(() => setSearchError(null), 3000);
+      } else {
+        addToCart(exactMatch);
+        setSearchTerm('');
+        setSearchError(null);
+      }
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+      return;
+    }
+
+    // 2. Coincidencia por nombre o datos parciales
+    const nameMatches = activeProducts.filter(
+      (p: any) =>
+        p.name.toLowerCase().includes(lowerQuery) ||
+        (p.barcode && p.barcode.toLowerCase().includes(lowerQuery)) ||
+        (p.sku && p.sku.toLowerCase().includes(lowerQuery))
+    );
+
+    if (nameMatches.length === 1) {
+      const singleProduct = nameMatches[0];
+      const stockNum = getProductStock(singleProduct, selectedWarehouseId);
+      if (stockNum <= 0 && !canSellWithoutStock(singleProduct)) {
+        setSearchError('Producto sin stock disponible');
+        setTimeout(() => setSearchError(null), 3000);
+      } else {
+        addToCart(singleProduct);
+        setSearchTerm('');
+        setSearchError(null);
+      }
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    } else if (nameMatches.length > 1) {
+      setSearchError(null);
+    } else {
+      setSearchError('Producto no encontrado');
+      setTimeout(() => setSearchError(null), 3000);
+      setTimeout(() => searchInputRef.current?.focus(), 50);
+    }
+  }, [products, selectedWarehouseId, addToCart]);
+
+  const handleSearchKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter') {
+      e.preventDefault();
+      performPOSSearch(searchTerm);
+    }
   };
 
   const removeFromCart = (productId: string) =>
@@ -335,8 +669,35 @@ export const POS: React.FC = () => {
 
   const updateQuantity = (productId: string, qty: number) => {
     if (qty <= 0) return removeFromCart(productId);
+    const itemInCart = cart.find((i) => i.product.id === productId);
+    const isKg = itemInCart ? isKgProduct(itemInCart.product) : false;
+    const cleanQty = isKg ? Math.round(qty * 1000) / 1000 : Math.round(qty);
+    if (cleanQty <= 0) return removeFromCart(productId);
+
     setCart((prev) =>
-      prev.map((item) => (item.product.id === productId ? { ...item, quantity: qty } : item))
+      prev.map((item) => {
+        if (item.product.id === productId) {
+          const baseProduct = {
+            ...item.product,
+            basePrice: item.product.basePrice !== undefined ? item.product.basePrice : Number(item.product.salePrice || 0),
+          };
+          const oldPrice = Number(item.product.salePrice);
+          const details = resolveProductPriceDetails(baseProduct, selectedPriceListId, cleanQty);
+          const updatedPrice = details.unitPrice;
+
+          if (oldPrice !== updatedPrice && cleanQty >= 1) {
+            const noticeMsg = details.promoNotice || `Precio por cantidad aplicado: ${cleanQty} unidades ($${oldPrice.toLocaleString('es-AR')} ➔ $${updatedPrice.toLocaleString('es-AR')})`;
+            setTierNotice({
+              message: noticeMsg,
+              visible: true,
+            });
+            setTimeout(() => setTierNotice(null), 3500);
+          }
+
+          return { ...item, quantity: cleanQty, product: { ...baseProduct, salePrice: updatedPrice } };
+        }
+        return item;
+      })
     );
   };
 
@@ -368,6 +729,38 @@ export const POS: React.FC = () => {
   const paymentAdjustmentDetails = useMemo(() => {
     return calculatePaymentAdjustment(cartTotal, paymentMethod, adjustmentRules as any);
   }, [paymentMethod, adjustmentRules, cartTotal]);
+
+  const { data: posSettingsRes } = useQuery({
+    queryKey: ['posSettingsData'],
+    queryFn: async () => {
+      const res = await SettingsService.getSettings();
+      return res?.posSettings;
+    },
+  });
+
+  const isGlobalRoundingConfigured = Boolean(
+    posSettingsRes?.autoRounding || (posSettingsRes as any)?.autoPriceRounding
+  );
+
+  const autoRoundingMode = posSettingsRes?.autoRoundingMode || 'CASH_ONLY';
+
+  const isAutoRoundingActive = useMemo(() => {
+    if (!isGlobalRoundingConfigured || !isRoundingSessionEnabled) return false;
+
+    if (autoRoundingMode === 'CASH_ONLY') {
+      return paymentMethod === 'CASH';
+    }
+    return true;
+  }, [isGlobalRoundingConfigured, isRoundingSessionEnabled, paymentMethod, autoRoundingMode]);
+
+  const unroundedFinalTotal = paymentAdjustmentDetails.finalTotal;
+
+  const roundedFinalTotal = useMemo(() => {
+    if (!isAutoRoundingActive || unroundedFinalTotal <= 0) return unroundedFinalTotal;
+    return Math.round(unroundedFinalTotal / 100) * 100;
+  }, [isAutoRoundingActive, unroundedFinalTotal]);
+
+  const roundingAdjustmentAmount = roundedFinalTotal - unroundedFinalTotal;
 
   // Polling effect for Mercado Pago status detection
   useEffect(() => {
@@ -461,7 +854,7 @@ export const POS: React.FC = () => {
       return;
     }
 
-    const finalTotalAmount = paymentAdjustmentDetails.finalTotal;
+    const finalTotalAmount = roundedFinalTotal;
 
     if (paymentMethod === 'CREDIT_ACCOUNT') {
       if (!selectedCustomer) {
@@ -511,7 +904,22 @@ export const POS: React.FC = () => {
       paymentMethod
     });
 
+    console.log('[DEBUG SALE PAYLOAD FRONTEND]', {
+      subtotal,
+      total: cartTotal,
+      paymentAmount: paymentAdjustmentDetails.finalTotal,
+      roundedTotal: roundedFinalTotal,
+      discountAmount,
+      surchargeAmount: paymentAdjustmentDetails.adjustmentAmount,
+      paymentAdjustments: paymentAdjustmentDetails,
+      promotions: tierNotice,
+      finalSaleDiscountAmount,
+      surchargeAmountVal: surchargeAmount,
+      finalTotalAmountSent: finalTotalAmount,
+    });
+
     createSaleMutation.mutate({
+      priceListId: selectedPriceListId || undefined,
       warehouseId: selectedWarehouseId,
       customerId: selectedCustomer ? selectedCustomer.id : undefined,
       paymentMethod,
@@ -558,120 +966,360 @@ export const POS: React.FC = () => {
         </div>
       )}
 
-      {/* 1. HEADER COMPACTO POS (-25% ALTURA DE ESCRITORIO) */}
-      <div className="bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <div className="p-2 rounded-xl bg-primary-50 dark:bg-primary-950 text-primary-600 dark:text-primary-400">
-            <Store className="w-5 h-5" />
-          </div>
-          <div>
-            <div className="flex items-center gap-2">
-              <h1 className="text-base md:text-lg font-black text-slate-900 dark:text-white tracking-tight">
-                POS Mostrador
-              </h1>
-              {activeSession ? (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
-                  <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-                  ABIERTA
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                  CERRADA
-                </span>
-              )}
-            </div>
-          </div>
+      {/* BANNER DISCRETO DE PRECIO ACTUALIZADO POR CANTIDAD */}
+      {tierNotice && tierNotice.visible && (
+        <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 dark:bg-emerald-950/60 dark:border-emerald-800 dark:text-emerald-300 px-4 py-2 rounded-xl text-xs font-bold flex items-center justify-between shadow-sm animate-fadeIn">
+          <span className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-emerald-500" />
+            {tierNotice.message}
+          </span>
+          <button
+            type="button"
+            onClick={() => setTierNotice(null)}
+            className="text-emerald-500 hover:text-emerald-800 dark:hover:text-white"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
+      )}
 
-        {/* Chips de Selección Rápida */}
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Selector / Indicador de Caja Activa */}
+      {/* 1. HEADER COMPACTO POS EN UNA SOLA FILA HORIZONTAL CON POPOVERS UNCLIPPED */}
+      <div className="bg-white dark:bg-slate-900 px-3 py-1.5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-wrap lg:flex-nowrap items-center justify-between gap-1.5 relative z-20">
+        
+        {/* LADO IZQUIERDO: TÍTULO POS Y CONTEXTO OPERATIVO */}
+        <div className="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap scrollbar-none py-0.5 max-w-full text-xs">
+          {/* POS Título Compacto */}
+          <div className="flex items-center gap-1 px-2 py-0.5 rounded-lg bg-primary-50 dark:bg-primary-950 text-primary-600 dark:text-primary-400 border border-primary-100 dark:border-primary-900 shrink-0">
+            <Store className="w-3.5 h-3.5 shrink-0" />
+            <span className="text-xs font-black uppercase tracking-wider">
+              POS
+            </span>
+          </div>
+
+          {/* Caja Activa Badge */}
           {activeSession ? (
-            <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-emerald-200 dark:border-emerald-800 bg-emerald-50 dark:bg-emerald-950/60 text-xs font-bold text-emerald-700 dark:text-emerald-300 shadow-sm">
-              <Wallet className="w-3.5 h-3.5 text-emerald-500" />
-              <span className="truncate max-w-[130px]">
-                {activeSession.cashRegister?.name || 'Caja Principal'}
-              </span>
-              <span className="text-[10px] opacity-75 font-mono">({activeSession.cashRegister?.code || '00001'})</span>
-            </div>
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200/60 dark:border-emerald-800 shrink-0">
+              <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+              {activeSession.cashRegister?.name || 'Caja Principal'} (ABIERTA)
+            </span>
           ) : (
             <button
               type="button"
               onClick={() => setIsOpenCashModalOpen(true)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-950/60 hover:bg-amber-100 dark:hover:bg-amber-900/60 text-xs font-bold text-amber-800 dark:text-amber-300 transition-all shadow-sm"
+              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-lg text-xs font-bold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 hover:bg-amber-100 shrink-0"
             >
-              <Wallet className="w-3.5 h-3.5 text-amber-500" />
-              <span>Sin Caja — [Abrir]</span>
+              <Wallet className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              Sin Caja — [Abrir]
             </button>
           )}
 
-          {/* Selector de Cliente */}
+          {/* Cliente Chip */}
           <button
             type="button"
             onClick={() => setIsCustomerModalOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shadow-sm"
+            className="flex items-center gap-1 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/80 hover:bg-slate-100 text-xs font-bold text-slate-700 dark:text-slate-200 transition-all shrink-0"
           >
-            <User className="w-3.5 h-3.5 text-primary-500" />
-            <span className="truncate max-w-[120px]">
+            <User className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            <span>
               {selectedCustomer ? selectedCustomer.name : 'Consumidor Final'}
             </span>
-            <ChevronDown className="w-3 h-3 text-slate-400" />
+            {selectedCustomer?.defaultPriceList && (
+              <span className="text-[10px] font-extrabold text-amber-600 dark:text-amber-400 px-1.5 py-0.2 rounded bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800">
+                {selectedCustomer.defaultPriceList.name}
+              </span>
+            )}
+            <ChevronDown className="w-3 h-3 text-slate-400 shrink-0" />
           </button>
 
-          {/* Selector de Depósito */}
-          <div className="w-36">
+          {/* Lista de Precios Select */}
+          <div className="w-auto min-w-[115px] shrink-0">
             <Select
-              value={selectedWarehouseId}
-              onChange={(e) => setSelectedWarehouseId(e.target.value)}
-              className="py-1 text-xs font-bold"
+              value={selectedPriceListId}
+              onChange={(e) => handlePriceListChange(e.target.value)}
+              className="py-0.5 px-2 text-xs font-bold bg-slate-50 dark:bg-slate-800/80 border-slate-200 dark:border-slate-700 rounded-lg"
+              title="Lista de Precios"
             >
-              {warehouses.map((w: any) => (
-                <option key={w.id} value={w.id}>
-                  {w.name}
-                </option>
-              ))}
+              {priceLists.length === 0 ? (
+                <option value="">Lista Minorista</option>
+              ) : (
+                priceLists.map((pl: PriceList) => (
+                  <option key={pl.id} value={pl.id}>
+                    {pl.name.replace(/\s*\((Base|Default)\)/gi, '').trim()}
+                  </option>
+                ))
+              )}
             </Select>
           </div>
 
-          {/* Botón Reglas Regalo Popover */}
+          {/* Depósito Badge (Inmutable según CashSession) */}
+          <div
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800 text-xs font-extrabold text-slate-800 dark:text-slate-200 shrink-0"
+            title="Depósito asociado a la caja abierta"
+          >
+            <Building className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+            <span>
+              {activeSession?.warehouse?.name ||
+                activeSession?.cashRegister?.warehouse?.name ||
+                warehouses.find((w: any) => w.id === selectedWarehouseId)?.name ||
+                'Depósito'}
+            </span>
+          </div>
+        </div>
+
+        {/* LADO DERECHO: ACCIONES COMERCIALES Y NAVEGACIÓN */}
+        <div className="flex items-center gap-1.5 whitespace-nowrap shrink-0 relative z-30">
+          {/* Tarjeta Redondeo POS */}
+          {isGlobalRoundingConfigured && (
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={() => setIsRoundingSessionEnabled(!isRoundingSessionEnabled)}
+              className={`flex items-center gap-1 font-bold py-0.5 px-2 text-xs rounded-lg transition-all ${
+                isRoundingSessionEnabled
+                  ? 'border-emerald-200 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/50 text-emerald-900 dark:text-emerald-300 hover:bg-emerald-100'
+                  : 'border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/60 text-slate-500 dark:text-slate-400 hover:bg-slate-100'
+              }`}
+              title={
+                isRoundingSessionEnabled
+                  ? 'Redondeo activado para esta venta (haz clic para desactivar)'
+                  : 'Redondeo desactivado para esta venta (haz clic para activar)'
+              }
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+              <span>Redondeo</span>
+              <span
+                className={`ml-0.5 px-1.5 py-0.2 text-[10px] font-black rounded-full ${
+                  isRoundingSessionEnabled
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-slate-300 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                }`}
+              >
+                {isRoundingSessionEnabled ? 'Activado' : 'Desactivado'}
+              </span>
+            </Button>
+          )}
+
+          {/* Botón 1: Descuentos y Recargos */}
           <div className="relative discounts-popover-container">
             <Button
               variant="outline"
               size="sm"
               onClick={() => setShowActiveDiscounts(!showActiveDiscounts)}
-              className="flex items-center gap-1.5 font-bold py-1 text-xs"
+              className="flex items-center gap-1 font-bold py-0.5 px-2 text-xs border-indigo-200 dark:border-indigo-900 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-900 dark:text-indigo-300 hover:bg-indigo-100 rounded-lg"
             >
-              <Tag className="w-3.5 h-3.5 text-indigo-500" />
-              <span>Reglas</span>
+              <Percent className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+              <span>Descuentos y Recargos</span>
+              {activeAdjustmentRules.length > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] font-black rounded-full bg-indigo-600 text-white">
+                  {activeAdjustmentRules.length}
+                </span>
+              )}
             </Button>
 
             {showActiveDiscounts && (
-              <div className="absolute right-0 mt-2 w-64 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl z-30 p-3 space-y-2 text-xs">
-                <span className="font-extrabold text-slate-800 dark:text-white uppercase tracking-wider block border-b border-slate-100 dark:border-slate-800 pb-1.5">
-                  Reglas de Descuento
-                </span>
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 p-3.5 space-y-3 text-xs whitespace-normal overflow-x-hidden">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="font-black text-slate-900 dark:text-white uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <Percent className="w-4 h-4 text-indigo-500" />
+                    Descuentos y Recargos
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                    {activeAdjustmentRules.length} activas
+                  </span>
+                </div>
+
                 {activeAdjustmentRules.length === 0 ? (
-                  <p className="text-slate-400 italic">No hay reglas activas.</p>
+                  <div className="py-6 text-center text-slate-400 italic font-medium">
+                    No hay reglas de descuento o recargo activas
+                  </div>
                 ) : (
-                  activeAdjustmentRules.map((rule: any) => (
-                    <div
-                      key={rule.id}
-                      className="flex justify-between items-center p-1.5 rounded bg-slate-50 dark:bg-slate-800"
-                    >
-                      <span className="font-semibold text-slate-700 dark:text-slate-200 text-[11px]">
-                        {formatPaymentMethodName(rule.paymentMethod)}:
-                      </span>
-                      <span
-                        className={`font-mono font-bold text-[11px] ${
-                          rule.adjustmentType === 'DISCOUNT' ? 'text-emerald-500' : 'text-amber-500'
-                        }`}
-                      >
-                        {rule.adjustmentType === 'DISCOUNT' ? '-' : '+'}
-                        {rule.value}%
-                      </span>
-                    </div>
-                  ))
+                  <div className="space-y-2 max-h-72 overflow-y-auto overflow-x-hidden pr-1 whitespace-normal">
+                    {activeAdjustmentRules.map((rule: any) => (
+                      <POSItemCard
+                        key={rule.id}
+                        variant="indigo"
+                        dotColor={rule.adjustmentType === 'DISCOUNT' ? 'emerald' : 'amber'}
+                        title={formatPaymentMethodName(rule.paymentMethod)}
+                        badge={
+                          <span
+                            className={`font-mono font-black text-[10px] px-1.5 py-0.5 rounded ${
+                              rule.adjustmentType === 'DISCOUNT'
+                                ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                : 'bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300'
+                            }`}
+                          >
+                            {rule.adjustmentType === 'DISCOUNT' ? 'Descuento -' : 'Recargo +'}
+                            {rule.value}%
+                          </span>
+                        }
+                        description={`Aplica automáticamente a ventas cobradas con ${formatPaymentMethodName(rule.paymentMethod)}`}
+                      />
+                    ))}
+                  </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Botón 2: Ofertas y Combos */}
+          <div className="relative promotions-popover-container">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowActivePromotions(!showActivePromotions)}
+              className="flex items-center gap-1 font-bold py-0.5 px-2 text-xs border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 hover:bg-amber-100 rounded-lg"
+            >
+              <Gift className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+              <span>Ofertas y Combos</span>
+              {totalOffersCount > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.2 text-[10px] font-black rounded-full bg-amber-500 text-white">
+                  {totalOffersCount}
+                </span>
+              )}
+            </Button>
+
+            {showActivePromotions && (
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 p-3.5 space-y-3 text-xs whitespace-normal overflow-x-hidden">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="font-black text-slate-900 dark:text-white uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <Gift className="w-4 h-4 text-amber-500" />
+                    Ofertas Comerciales
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                    {totalOffersCount} activas
+                  </span>
+                </div>
+
+                {totalOffersCount === 0 ? (
+                  <div className="py-6 text-center text-slate-400 italic font-medium">
+                    No hay ofertas comerciales activas
+                  </div>
+                ) : (
+                  <div className="space-y-3 max-h-72 overflow-y-auto overflow-x-hidden pr-1 whitespace-normal">
+                    {/* SECCIÓN 1: Precios por Cantidad */}
+                    {activePriceTiers.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1">
+                          <span className="flex items-center gap-1">
+                            <Tag className="w-3 h-3 text-indigo-500" />
+                            Precios por Cantidad
+                          </span>
+                          <span className="text-[9px] font-bold opacity-75">({activePriceTiers.length})</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {activePriceTiers.map((tier: ProductPriceTier) => (
+                            <POSItemCard
+                              key={tier.id}
+                              variant="emerald"
+                              dotColor="emerald"
+                              title={tier.product?.name || 'Producto'}
+                              code={tier.product?.sku || (tier.product as any)?.barcode}
+                              badge={<span className="text-emerald-600 dark:text-emerald-400">🟢 Activo</span>}
+                              description={
+                                <div className="flex items-center justify-between text-[11px] pt-0.5">
+                                  <span className="text-slate-500 font-medium">
+                                    Compra mínima: <strong>{Number(tier.minQuantity)} unidades</strong>
+                                  </span>
+                                  <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">
+                                    ${Number(tier.price).toLocaleString('es-AR')} c/u
+                                  </span>
+                                </div>
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* SECCIÓN 2: Promociones y Combos */}
+                    {activePromotions.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-black uppercase tracking-wider text-amber-600 dark:text-amber-400 flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-1">
+                          <span className="flex items-center gap-1">
+                            <Zap className="w-3 h-3 text-amber-500" />
+                            Promociones y Combos
+                          </span>
+                          <span className="text-[9px] font-bold opacity-75">({activePromotions.length})</span>
+                        </div>
+                        <div className="space-y-1.5">
+                          {activePromotions.map((promo: Promotion) => (
+                            <POSItemCard
+                              key={promo.id}
+                              variant="amber"
+                              dotColor="emerald"
+                              title={promo.name}
+                              badge={<span className="text-emerald-600 dark:text-emerald-400">🟢 Activo</span>}
+                              description={
+                                <div>
+                                  {promo.type === 'TWO_FOR_ONE' && <span>Lleva {promo.minQuantity} unidades y paga 1</span>}
+                                  {promo.type === 'SECOND_UNIT_DISCOUNT' && <span>Segunda unidad {promo.discountPercentage}% OFF</span>}
+                                  {promo.type === 'SPECIAL_PACK' && <span>Pack de {promo.minQuantity} unidades por ${Number(promo.specialPrice).toLocaleString('es-AR')}</span>}
+                                  {promo.product?.name && (
+                                    <div className="text-[10px] text-slate-400 font-semibold mt-0.5">
+                                      Producto: {promo.product.name}
+                                    </div>
+                                  )}
+                                </div>
+                              }
+                            />
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Botón 3: Ayuda POS */}
+          <div className="relative help-popover-container">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowHelpPopover(!showHelpPopover)}
+              className="flex items-center gap-1 font-bold py-0.5 px-2 text-xs border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-100 rounded-lg"
+            >
+              <HelpCircle className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+              <span>Ayuda</span>
+            </Button>
+
+            {showHelpPopover && (
+              <div className="absolute right-0 top-full mt-2 w-80 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-2xl z-50 p-3.5 space-y-3 text-xs whitespace-normal overflow-x-hidden">
+                <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800 pb-2">
+                  <span className="font-black text-slate-900 dark:text-white uppercase tracking-wider text-xs flex items-center gap-1.5">
+                    <HelpCircle className="w-4 h-4 text-primary-500" />
+                    Ayuda y Teclas Rápidas
+                  </span>
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                    POS System
+                  </span>
+                </div>
+
+                <div className="space-y-2 max-h-72 overflow-y-auto overflow-x-hidden pr-1 whitespace-normal">
+                  <POSItemCard
+                    variant="slate"
+                    dotColor="indigo"
+                    title="Lector Láser de Código"
+                    badge={<kbd className="font-mono bg-slate-200 dark:bg-slate-700 px-1.5 py-0.5 rounded text-[9px] font-bold">F2 / SCAN</kbd>}
+                    description="Escribe o escanea directamente un código de barras para añadir productos al instante."
+                  />
+                  <POSItemCard
+                    variant="slate"
+                    dotColor="emerald"
+                    title="Listas de Precios por Cliente"
+                    badge={<span className="text-emerald-600 dark:text-emerald-400 font-extrabold">Auto</span>}
+                    description="Al seleccionar un cliente, el POS aplica automáticamente su lista de precios predeterminada."
+                  />
+                  <POSItemCard
+                    variant="slate"
+                    dotColor="amber"
+                    title="Descuentos y Medios de Pago"
+                    badge={<span className="text-amber-600 dark:text-amber-400 font-extrabold">Reglas</span>}
+                    description="El recargo o descuento configurado por medio de pago se calcula sobre el total final."
+                  />
+                </div>
               </div>
             )}
           </div>
@@ -681,7 +1329,7 @@ export const POS: React.FC = () => {
             variant="ghost"
             size="sm"
             onClick={() => navigate('/sales')}
-            className="font-bold text-xs py-1"
+            className="font-bold text-xs py-0.5 px-2 text-slate-500 hover:text-slate-900 dark:hover:text-white"
           >
             ← Ventas
           </Button>
@@ -743,14 +1391,23 @@ export const POS: React.FC = () => {
           
           {/* BUSCADOR COMPACTO & CHIPS DE CATEGORÍA */}
           <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm p-3 space-y-2.5">
-            <div className="relative w-full">
-              <Input
-                placeholder="Buscar por nombre, SKU o código de barras (Ctrl+K)..."
+            <div className="relative w-full flex items-center">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4.5 h-4.5 text-slate-400 pointer-events-none z-10" />
+              <input
+                ref={searchInputRef}
+                type="text"
+                placeholder="Buscar por nombre, Código Interno o código de barras"
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                leftIcon={Search}
-                className="text-xs py-1.5 rounded-xl border-slate-300 dark:border-slate-700 shadow-sm"
+                onKeyDown={handleSearchKeyDown}
+                className="w-full h-11 pl-11 pr-4 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500/20 focus:border-primary-500 shadow-sm transition-all font-medium"
               />
+              {searchError && (
+                <div className="absolute left-0 top-full mt-1 z-30 px-3 py-1 bg-rose-600 text-white font-bold text-xs rounded-lg shadow-lg flex items-center gap-1.5 animate-fadeIn">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>{searchError}</span>
+                </div>
+              )}
             </div>
 
             {/* Chips de Categorías Compactos */}
@@ -772,11 +1429,37 @@ export const POS: React.FC = () => {
             </div>
           </Card>
 
-          {/* GRILLA DE TARJETAS DE PRODUCTO DENSAS (MAS VISIBLES SIN SCROLL) */}
+          {/* BANNER INDICADOR VISUAL DE LISTA DE PRECIOS ACTIVA */}
+          {activePriceList && (
+            <div className={`flex items-center justify-between px-3 py-2 rounded-xl border text-xs font-bold transition-all shadow-sm ${
+              !activePriceList.isDefault
+                ? 'bg-amber-50 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-800'
+                : 'bg-slate-50 dark:bg-slate-900/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-800'
+            }`}>
+              <div className="flex items-center gap-2">
+                <Tag className="w-4 h-4 text-amber-500 shrink-0" />
+                <span>
+                  Lista activa: <strong className="font-extrabold text-slate-900 dark:text-white">{activePriceList.name}</strong>
+                </span>
+              </div>
+              {!activePriceList.isDefault ? (
+                <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-200/80 text-amber-950 dark:bg-amber-900 dark:text-amber-100 border border-amber-300 dark:border-amber-700">
+                  <span className="h-1.5 w-1.5 rounded-full bg-amber-600 dark:bg-amber-400 animate-pulse" />
+                  PRECIOS ESPECIALES APLICADOS
+                </span>
+              ) : (
+                <span className="text-[10px] text-slate-400 font-bold uppercase tracking-wider">
+                  Tarifa General Base
+                </span>
+              )}
+            </div>
+          )}
+
+          {/* GRILLA DE TARJETAS DE PRODUCTO DENSAS Y MODERNIZADAS (ALTURA UNIFORME H-40) */}
           {loadingProducts ? (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
               {Array.from({ length: 12 }).map((_, idx) => (
-                <Skeleton key={idx} className="h-28 rounded-xl" />
+                <Skeleton key={idx} className="h-40 rounded-2xl" />
               ))}
             </div>
           ) : filteredProducts.length === 0 ? (
@@ -786,46 +1469,102 @@ export const POS: React.FC = () => {
               icon={Search}
             />
           ) : (
-            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5">
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-3">
               {filteredProducts.map((product: any) => {
+                const isGlobalAllowWithoutStock = Boolean(
+                  (posSettingsRes as any)?.allowNegativeStock || (posSettingsRes as any)?.allowSaleWithoutStock
+                );
+                const canSellThisProduct = isGlobalAllowWithoutStock || Boolean(product?.allowSaleWithoutStock);
+
                 const stockNum = getProductStock(product, selectedWarehouseId);
-                const isOutOfStock = stockNum <= 0;
+                const isOutOfStock = stockNum <= 0 && !canSellThisProduct;
+                const isLowStock = stockNum > 0 && stockNum <= 5;
+                const effectivePrice = getEffectiveProductPrice(product, selectedPriceListId, 1);
+                const basePrice = Number(product.salePrice || 0);
+                const isSpecialPrice = effectivePrice !== basePrice;
+
+                // Prioridad de código: código de barras -> SKU -> ID interno
+                const displayCode = product.barcode || product.sku || product.id || 'N/A';
 
                 return (
                   <div
                     key={product.id}
-                    onClick={() => !isOutOfStock && addToCart(product)}
-                    className={`group rounded-xl p-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm transition-all duration-150 flex flex-col justify-between cursor-pointer ${
+                    onClick={() => {
+                      if (!isOutOfStock) {
+                        addToCart(product);
+                        setTimeout(() => searchInputRef.current?.focus(), 50);
+                      }
+                    }}
+                    className={`group relative h-40 p-3.5 rounded-2xl bg-white dark:bg-slate-900 border transition-all duration-200 ease-in-out flex flex-col justify-between select-none ${
                       isOutOfStock
-                        ? 'opacity-40 cursor-not-allowed'
-                        : 'hover:shadow hover:-translate-y-0.5 active:scale-[0.98] hover:border-primary-500/50'
+                        ? 'opacity-50 cursor-not-allowed border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50'
+                        : 'cursor-pointer border-slate-200/90 dark:border-slate-800 shadow-sm hover:shadow-md hover:shadow-primary-500/10 hover:-translate-y-1 hover:border-primary-500/80 dark:hover:border-primary-500/80 active:scale-[0.98]'
                     }`}
                   >
-                    <div>
-                      <div className="flex justify-between items-start mb-1">
-                        <span className="font-mono text-[9px] text-slate-400 font-bold">
-                          {product.sku || 'SKU N/D'}
+                    {/* ENCABEZADO DE 2 FILAS: FILA 1 (STOCK A LA DERECHA) + FILA 2 (CÓDIGO EN FILA COMPLETA) */}
+                    <div className="space-y-1 w-full min-w-0">
+                      {/* FILA 1: BADGE DE STOCK ALINEADO A LA DERECHA */}
+                      <div className="flex justify-end w-full">
+                        <span
+                          className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-extrabold border shrink-0 whitespace-nowrap ${
+                            isOutOfStock
+                              ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border-rose-200 dark:border-rose-800'
+                              : stockNum <= 0 && canSellThisProduct
+                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                              : isLowStock
+                              ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                              : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isOutOfStock
+                                ? 'bg-rose-500'
+                                : stockNum <= 0 && canSellThisProduct
+                                ? 'bg-amber-500'
+                                : isLowStock
+                                ? 'bg-amber-500'
+                                : 'bg-emerald-500'
+                            }`}
+                          />
+                          {stockNum <= 0
+                            ? (canSellThisProduct ? `Stock: ${stockNum}` : 'Sin stock')
+                            : `Stock: ${stockNum}`}
                         </span>
-                        {isOutOfStock ? (
-                          <span className="text-[9px] font-bold text-rose-500">SIN STOCK</span>
-                        ) : stockNum <= 5 ? (
-                          <span className="text-[9px] font-bold text-amber-500">STK {stockNum}</span>
-                        ) : (
-                          <span className="text-[9px] font-bold text-emerald-500">STK {stockNum}</span>
-                        )}
                       </div>
 
-                      <h4 className="font-bold text-slate-900 dark:text-white text-xs line-clamp-2 leading-snug group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
+                      {/* FILA 2: CÓDIGO DE BARRAS / SKU EN FILA COMPLETA */}
+                      <div className="w-full min-w-0">
+                        <span className="block font-mono text-[10px] font-bold text-slate-400 dark:text-slate-500 truncate w-full" title={displayCode}>
+                          {displayCode}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* CUERPO CENTRAL: NOMBRE DEL PRODUCTO (ELEMENTO PRINCIPAL) */}
+                    <div className="my-auto">
+                      <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-[13px] line-clamp-2 leading-snug tracking-tight group-hover:text-primary-600 dark:group-hover:text-primary-400 transition-colors">
                         {product.name}
                       </h4>
                     </div>
 
-                    <div className="mt-2 pt-1 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center">
-                      <span className="text-xs font-black font-mono text-slate-900 dark:text-white">
-                        {formatCurrency(product.salePrice)}
-                      </span>
-                      <div className="p-1 rounded-md bg-primary-50 dark:bg-primary-950/50 text-primary-600 dark:text-primary-400 group-hover:bg-primary-600 group-hover:text-white transition-colors">
-                        <Plus className="w-3.5 h-3.5" />
+                    {/* PIE DE TARJETA: PRECIO DESTACADO (SIN BOTÓN PLUS REDUNDANTE) */}
+                    <div className="flex items-end justify-between pt-1 border-t border-slate-100 dark:border-slate-800/80">
+                      <div className="flex flex-col w-full">
+                        {isSpecialPrice && (
+                          <span className="text-[10px] font-mono text-slate-400 line-through leading-tight">
+                            {formatCurrency(basePrice)}
+                          </span>
+                        )}
+                        <span
+                          className={`font-mono text-base sm:text-lg font-black tracking-tight leading-none ${
+                            isSpecialPrice
+                              ? 'text-emerald-600 dark:text-emerald-400'
+                              : 'text-primary-600 dark:text-primary-400'
+                          }`}
+                        >
+                          {formatCurrency(effectivePrice)}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -868,47 +1607,110 @@ export const POS: React.FC = () => {
                   icon={ShoppingCart}
                 />
               ) : (
-                cart.map((item) => (
-                  <div
-                    key={item.product.id}
-                    className="p-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1.5 text-xs"
-                  >
-                    <div className="flex justify-between items-start">
-                      <span className="font-bold text-slate-900 dark:text-white line-clamp-1">
-                        {item.product.name}
-                      </span>
-                      <span className="font-mono font-black text-slate-900 dark:text-white ml-2 shrink-0">
-                        {formatCurrency(Number(item.product.salePrice) * item.quantity)}
-                      </span>
-                    </div>
+                cart.map((item) => {
+                  const isKg = isKgProduct(item.product);
+                  const step = isKg ? 0.100 : 1;
 
-                    <div className="flex items-center justify-between pt-0.5">
-                      <div className="inline-flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(item.product.id, item.quantity - 1)}
-                          className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
-                        >
-                          -
-                        </button>
-                        <span className="w-7 text-center font-mono font-bold text-xs select-none">
-                          {item.quantity}
+                  return (
+                    <div
+                      key={item.product.id}
+                      className="p-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-800 rounded-xl space-y-2 text-xs"
+                    >
+                      <div className="flex justify-between items-start gap-2">
+                        <span className="font-bold text-slate-900 dark:text-white line-clamp-1">
+                          {item.product.name}
                         </span>
-                        <button
-                          type="button"
-                          onClick={() => updateQuantity(item.product.id, item.quantity + 1)}
-                          className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded"
-                        >
-                          +
-                        </button>
+                        <span className="font-mono font-black text-slate-900 dark:text-white shrink-0">
+                          {formatCurrency(Number(item.product.salePrice) * item.quantity)}
+                        </span>
                       </div>
 
-                      <span className="text-[10px] text-slate-400 font-mono">
-                        {formatCurrency(item.product.salePrice)} c/u
-                      </span>
+                      <div className="flex items-center justify-between pt-0.5">
+                        {editingQtyProductId === item.product.id ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => updateQuantity(item.product.id, isKg ? Math.round((item.quantity - step) * 1000) / 1000 : item.quantity - 1)}
+                              className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 rounded transition-colors"
+                              title={isKg ? "Reducir 0.100 kg" : "Reducir 1 unidad"}
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min={isKg ? "0.001" : "1"}
+                              step={isKg ? "0.001" : "1"}
+                              autoFocus
+                              value={editingQtyInput}
+                              onChange={(e) => setEditingQtyInput(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') {
+                                  confirmQtyEdit(item.product.id, item.product);
+                                } else if (e.key === 'Escape') {
+                                  cancelQtyEdit();
+                                }
+                              }}
+                              onBlur={() => confirmQtyEdit(item.product.id, item.product)}
+                              className="w-16 text-center font-mono font-bold text-xs bg-white dark:bg-slate-900 border-2 border-primary-500 rounded px-1 py-0.5 text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-400"
+                            />
+                            {isKg && <span className="text-[10px] font-extrabold text-slate-500">kg</span>}
+                            <button
+                              type="button"
+                              onMouseDown={(e) => e.preventDefault()}
+                              onClick={() => confirmQtyEdit(item.product.id, item.product)}
+                              className="px-2 py-0.5 text-[10px] font-black rounded bg-primary-600 hover:bg-primary-700 text-white shadow transition-colors shrink-0"
+                            >
+                              Aceptar
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-1.5">
+                            <div className="inline-flex items-center bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg p-0.5 shadow-sm">
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.product.id, isKg ? Math.round((item.quantity - step) * 1000) / 1000 : item.quantity - 1)}
+                                className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                title={isKg ? "Reducir 0.100 kg" : "Reducir 1 unidad"}
+                              >
+                                -
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => startQtyEdit(item.product.id, item.quantity, item.product)}
+                                className="px-2 h-5 flex items-center justify-center font-mono font-bold text-xs text-slate-900 dark:text-white hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors gap-0.5"
+                                title="Haz clic para ingresar cantidad deseada"
+                              >
+                                <span>{isKg ? item.quantity.toFixed(3) : item.quantity}</span>
+                                {isKg && <span className="text-[10px] font-bold text-slate-500">kg</span>}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateQuantity(item.product.id, isKg ? Math.round((item.quantity + step) * 1000) / 1000 : item.quantity + 1)}
+                                className="w-5 h-5 flex items-center justify-center font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition-colors"
+                                title={isKg ? "Aumentar 0.100 kg" : "Aumentar 1 unidad"}
+                              >
+                                +
+                              </button>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => removeFromCart(item.product.id)}
+                              className="w-6 h-6 flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/60 rounded-lg transition-colors shrink-0"
+                              title="Eliminar del carrito"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          {formatCurrency(item.product.salePrice)} {isKg ? '/kg' : 'c/u'}
+                        </span>
+                      </div>
                     </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </CardContent>
 
@@ -971,10 +1773,19 @@ export const POS: React.FC = () => {
                     <span className="font-mono">-{formatCurrency(discountAmount)}</span>
                   </div>
                 )}
+                {isAutoRoundingActive && roundingAdjustmentAmount !== 0 && (
+                  <div className="flex justify-between text-indigo-600 dark:text-indigo-400 font-semibold">
+                    <span>Redondeo automático:</span>
+                    <span className="font-mono">
+                      {roundingAdjustmentAmount > 0 ? '+' : ''}
+                      {formatCurrency(roundingAdjustmentAmount)}
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between text-sm font-black text-slate-900 dark:text-white pt-1 border-t border-slate-200 dark:border-slate-800">
                   <span>TOTAL COBRAR:</span>
                   <span className="font-mono text-primary-600 dark:text-primary-400">
-                    {formatCurrency(cartTotal)}
+                    {formatCurrency(roundedFinalTotal)}
                   </span>
                 </div>
               </div>
@@ -999,7 +1810,7 @@ export const POS: React.FC = () => {
                   </span>
                 ) : (
                   <span className="flex items-center justify-center gap-2">
-                    <CreditCard className="w-4 h-4" /> COBRAR {formatCurrency(cartTotal)}
+                    <CreditCard className="w-4 h-4" /> COBRAR {formatCurrency(roundedFinalTotal)}
                   </span>
                 )}
               </Button>
@@ -1073,10 +1884,20 @@ export const POS: React.FC = () => {
               </div>
             )}
 
+            {isAutoRoundingActive && roundingAdjustmentAmount !== 0 && (
+              <div className="flex justify-between font-bold text-indigo-600 dark:text-indigo-400">
+                <span>Redondeo automático:</span>
+                <span className="font-mono">
+                  {roundingAdjustmentAmount > 0 ? '+' : ''}
+                  {formatCurrency(roundingAdjustmentAmount)}
+                </span>
+              </div>
+            )}
+
             <div className="border-t border-slate-200 dark:border-slate-700 pt-1.5 flex justify-between font-black text-slate-900 dark:text-white text-sm">
               <span>TOTAL FINAL A COBRAR:</span>
               <span className="font-mono text-primary-600 dark:text-primary-400">
-                {formatCurrency(paymentAdjustmentDetails.finalTotal)}
+                {formatCurrency(roundedFinalTotal)}
               </span>
             </div>
           </div>
@@ -1124,40 +1945,43 @@ export const POS: React.FC = () => {
             </Button>
           </div>
 
-          <div className="max-h-56 overflow-y-auto divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl">
-            <div
+          <div className="max-h-64 overflow-y-auto space-y-2 pr-1">
+            <POSItemCard
+              variant="slate"
+              dotColor="slate"
+              selected={!selectedCustomer}
               onClick={() => {
                 setSelectedCustomer(null);
                 setIsCustomerModalOpen(false);
               }}
-              className="p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors"
-            >
-              <div>
-                <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
-                  CONSUMIDOR FINAL
-                </span>
-                <span className="text-[10px] text-slate-400">Venta genérica sin datos de cliente</span>
-              </div>
-              {!selectedCustomer && <Check className="w-4 h-4 text-emerald-500" />}
-            </div>
+              title="CONSUMIDOR FINAL"
+              badge={!selectedCustomer ? <Check className="w-4 h-4 text-emerald-500" /> : undefined}
+              description="Venta genérica sin datos de cliente registrados."
+            />
 
             {filteredPOSCustomers.map((c) => (
-              <div
+              <POSItemCard
                 key={c.id}
+                variant="emerald"
+                dotColor="emerald"
+                selected={selectedCustomer?.id === c.id}
                 onClick={() => {
                   setSelectedCustomer(c);
                   setIsCustomerModalOpen(false);
                 }}
-                className="p-2.5 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer flex items-center justify-between transition-colors"
-              >
-                <div>
-                  <span className="font-bold text-slate-800 dark:text-slate-100 block text-xs">
-                    {c.name}
-                  </span>
-                  <span className="text-[10px] text-slate-400">CUIT/DNI: {c.document || '-'}</span>
-                </div>
-                {selectedCustomer?.id === c.id && <Check className="w-4 h-4 text-emerald-500" />}
-              </div>
+                title={c.name}
+                badge={
+                  c.defaultPriceList?.name ? (
+                    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200">
+                      <Tag className="w-2.5 h-2.5 text-amber-500 shrink-0" />
+                      {c.defaultPriceList.name}
+                    </span>
+                  ) : selectedCustomer?.id === c.id ? (
+                    <Check className="w-4 h-4 text-emerald-500" />
+                  ) : undefined
+                }
+                code={c.document || '-'}
+              />
             ))}
           </div>
         </div>
@@ -1174,6 +1998,8 @@ export const POS: React.FC = () => {
           }}
         />
       )}
+
+
 
       {/* 6. MODAL DE MERCADO PAGO QR */}
       <Modal
@@ -1244,24 +2070,33 @@ export const POS: React.FC = () => {
             </div>
 
             {/* Selector de Caja / Terminal */}
-            <div>
+            <div className="space-y-1.5">
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
                 Seleccionar Caja / Terminal
               </label>
               {cashRegisters.length === 0 ? (
                 <p className="text-xs text-slate-400 italic">No hay cajas configuradas en la empresa.</p>
               ) : (
-                <Select
-                  value={selectedCashRegisterId}
-                  onChange={(e) => setSelectedCashRegisterId(e.target.value)}
-                  className="w-full text-xs font-bold"
-                >
+                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
                   {cashRegisters.map((reg: any) => (
-                    <option key={reg.id} value={reg.id}>
-                      {reg.name} ({reg.code}) {reg.isOpen ? '• Ya Abierta' : ''}
-                    </option>
+                    <POSItemCard
+                      key={reg.id}
+                      variant={reg.isOpen ? 'amber' : 'emerald'}
+                      dotColor={reg.isOpen ? 'amber' : 'emerald'}
+                      selected={selectedCashRegisterId === reg.id}
+                      onClick={() => setSelectedCashRegisterId(reg.id)}
+                      title={`${reg.name} (${reg.code})`}
+                      badge={
+                        reg.isOpen ? (
+                          <span className="text-amber-600 dark:text-amber-400 font-extrabold">⚠️ Ya Abierta</span>
+                        ) : (
+                          <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">🟢 Disponible</span>
+                        )
+                      }
+                      description={reg.isOpen ? 'Esta caja posee un turno activo. Puedes ingresar para operar.' : 'Caja disponible para iniciar turno.'}
+                    />
                   ))}
-                </Select>
+                </div>
               )}
             </div>
 
@@ -1302,6 +2137,7 @@ export const POS: React.FC = () => {
                 disabled={!selectedCashRegisterId || openCashSessionMutation.isPending}
                 onClick={() => {
                   openCashSessionMutation.mutate({
+                    warehouseId: selectedWarehouseId,
                     cashRegisterId: selectedCashRegisterId,
                     openingBalance: Number(openingBalanceInput) || 0,
                     notes: openingNotesInput,
@@ -1314,6 +2150,32 @@ export const POS: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* Modal de Confirmación de Cambio de Lista de Precios */}
+      <Modal
+        isOpen={isPriceListModalOpen}
+        onClose={cancelPriceListChange}
+        title="Recalcular Carrito por Cambio de Lista"
+      >
+        <div className="space-y-4 py-2">
+          <POSItemCard
+            variant="amber"
+            dotColor="amber"
+            title="Actualización de Precios del Carrito"
+            badge={<span className="text-amber-600 dark:text-amber-400 font-extrabold">⚠️ Requerido</span>}
+            description="Los precios unitarios de los productos actualmente agregados al carrito serán recalculados automáticamente aplicando las tarifas de la nueva lista seleccionada."
+          />
+
+          <div className="flex justify-end gap-3 pt-2 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="outline" onClick={cancelPriceListChange}>
+              Cancelar
+            </Button>
+            <Button variant="primary" onClick={confirmPriceListChange}>
+              Actualizar Precios
+            </Button>
+          </div>
+        </div>
+      </Modal>
     </div>
   );
 };

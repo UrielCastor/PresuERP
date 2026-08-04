@@ -161,7 +161,7 @@ Utilizado exclusivamente para vistas pre-autenticación (tales como `/login`):
 | `Dashboard` | `/dashboard` | Autenticado | `QueryClient` / `settings.service` | Panel principal que recopila datos rápidos de actividad. |
 | `Profile` | `/profile` | Autenticado | `user.service` | Ajustes de cuenta individual del operador conectado. |
 | `Settings` | `/settings` | `settings:read` | `settings.service` | Parámetros de moneda, foliadores e impresión del tenant. |
-| `Users` | `/users` | `users:read` | `user.service` | CRUD de empleados de la empresa y asignación de roles. |
+| `Users` | `/users` | `users:read` | `user.service` | CRUD de usuarios de la empresa y asignación de roles. |
 | `Products` | `/products` | `products:read` | `product.service`, `category.service` | Control de catálogo de mercaderías e importes de precios. |
 | `Categories` | `/categories`| `categories:read` | `category.service` | Administrador de clasificaciones para el catálogo de stock. |
 | `Suppliers` | `/suppliers` | `suppliers:read` | `supplier.service` | Registro del pool de proveedores logísticos del negocio. |

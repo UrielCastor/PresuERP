@@ -11,6 +11,14 @@ export class SettingsService {
     if (!business) {
       throw new NotFoundError('Business not found');
     }
+    if (business.posSettings) {
+      (business.posSettings as any).autoPriceRounding = Boolean(
+        business.posSettings.autoRounding || (business.posSettings as any).autoPriceRounding
+      );
+      if (!(business.posSettings as any).autoRoundingMode) {
+        (business.posSettings as any).autoRoundingMode = 'CASH_ONLY';
+      }
+    }
     return business;
   }
 
@@ -63,7 +71,14 @@ export class SettingsService {
   }
 
   async updatePOSSettings(businessId: string, userId: string, data: any, ip?: string, userAgent?: string) {
-    const result = await this.settingsRepo.updatePOSSettings(businessId, data);
+    const payload = { ...data };
+    if (payload.autoPriceRounding !== undefined) {
+      payload.autoRounding = payload.autoPriceRounding;
+    } else if (payload.autoRounding !== undefined) {
+      payload.autoPriceRounding = payload.autoRounding;
+    }
+
+    const result = await this.settingsRepo.updatePOSSettings(businessId, payload);
 
     await this.auditLogRepo.log({
       businessId,
@@ -75,7 +90,10 @@ export class SettingsService {
       userAgent: userAgent || null,
     });
 
-    return result;
+    return {
+      ...result,
+      autoPriceRounding: result.autoRounding,
+    };
   }
 
   async updatePrintSettings(businessId: string, userId: string, data: any, ip?: string, userAgent?: string) {

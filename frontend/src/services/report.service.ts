@@ -61,7 +61,7 @@ export class ReportService {
     return response.data.data;
   }
 
-  static async exportReport(payload: { report: string; type: string; dateFrom: string; dateTo: string }) {
+  static async exportReport(payload: { report: string; type: string; dateFrom: string; dateTo: string; warehouseId?: string }) {
     const response = await api.post('/reports/export', payload, { responseType: 'blob' });
     const url = window.URL.createObjectURL(new Blob([response.data]));
     const link = document.createElement('a');

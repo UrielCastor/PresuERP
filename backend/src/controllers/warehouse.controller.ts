@@ -6,7 +6,7 @@ const warehouseService = new WarehouseService();
 export class WarehouseController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
-      const items = await warehouseService.list(req.user!.businessId);
+      const items = await warehouseService.list(req.user!.businessId, req.user!.id);
       return res.status(200).json({
         success: true,
         data: items,

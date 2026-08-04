@@ -4,19 +4,37 @@ export class ReportRepository {
   // ==========================================
   // EXECUTIVE SUMMARY REPORTING
   // ==========================================
-  async getExecutiveMetrics(businessId: string) {
+  async getExecutiveMetrics(businessId: string, filters?: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
 
-    const stockRaw = await prisma.$queryRaw<any[]>`
-       SELECT SUM(s.quantity * p."purchasePrice") as "stockValue"
-       FROM "stocks" s
-       JOIN "products" p ON p.id = s."productId"
-       WHERE s."businessId" = ${businessId}
-    `;
-    const stockValue = parseFloat(stockRaw[0]?.stockValue || 0);
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
+
+    let stockValue = 0;
+    if (warehouseId) {
+      const stockRaw = await prisma.$queryRaw<any[]>`
+         SELECT SUM(s.quantity * p."purchasePrice") as "stockValue"
+         FROM "stocks" s
+         JOIN "products" p ON p.id = s."productId"
+         WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId}
+      `;
+      stockValue = parseFloat(stockRaw[0]?.stockValue || 0);
+    } else {
+      const stockRaw = await prisma.$queryRaw<any[]>`
+         SELECT SUM(s.quantity * p."purchasePrice") as "stockValue"
+         FROM "stocks" s
+         JOIN "products" p ON p.id = s."productId"
+         WHERE s."businessId" = ${businessId}
+      `;
+      stockValue = parseFloat(stockRaw[0]?.stockValue || 0);
+    }
+
+    const sessionsWhere: any = { businessId, status: 'OPEN' };
+    if (warehouseId) {
+      sessionsWhere.cashRegister = { warehouseId };
+    }
 
     const activeSessions = await prisma.cashSession.findMany({
-       where: { businessId, status: 'OPEN' }
+       where: sessionsWhere
     });
 
     let cashBalance = 0;
@@ -40,12 +58,15 @@ export class ReportRepository {
     const startOfLastMonth = new Date(now.getFullYear(), now.getMonth() - 1, 1);
     const endOfLastMonth = new Date(now.getFullYear(), now.getMonth(), 0, 23, 59, 59, 999);
 
+    const salesWhere: any = {
+      businessId,
+      status: { not: 'CANCELLED' },
+      createdAt: { gte: startOfThisMonth, lte: now }
+    };
+    if (warehouseId) salesWhere.warehouseId = warehouseId;
+
     const thisMonthSales = await prisma.sale.aggregate({
-      where: {
-        businessId,
-        status: { not: 'CANCELLED' },
-        createdAt: { gte: startOfThisMonth, lte: now }
-      },
+      where: salesWhere,
       _sum: { totalAmount: true },
       _count: { id: true }
     });
@@ -54,21 +75,27 @@ export class ReportRepository {
 
     const validStatuses = ['APPROVED', 'RECEIVED', 'COMPLETED', 'PAID'];
 
+    const thisMonthPurchasesWhere: any = {
+      businessId,
+      status: { in: validStatuses },
+      createdAt: { gte: startOfThisMonth, lte: now }
+    };
+    if (warehouseId) thisMonthPurchasesWhere.warehouseId = warehouseId;
+
+    const lastMonthPurchasesWhere: any = {
+      businessId,
+      status: { in: validStatuses },
+      createdAt: { gte: startOfLastMonth, lte: endOfLastMonth }
+    };
+    if (warehouseId) lastMonthPurchasesWhere.warehouseId = warehouseId;
+
     const thisMonthPurchases = await prisma.purchase.aggregate({
-      where: {
-         businessId,
-         status: { in: validStatuses },
-         createdAt: { gte: startOfThisMonth, lte: now }
-      },
+      where: thisMonthPurchasesWhere,
       _sum: { total: true }
     });
 
     const lastMonthPurchases = await prisma.purchase.aggregate({
-      where: {
-         businessId,
-         status: { in: validStatuses },
-         createdAt: { gte: startOfLastMonth, lte: endOfLastMonth }
-      },
+      where: lastMonthPurchasesWhere,
       _sum: { total: true }
     });
 
@@ -98,15 +125,18 @@ export class ReportRepository {
   async getSalesMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
 
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
+
     const baseWhere: any = {
       businessId,
       status: { not: 'CANCELLED' },
       createdAt: { gte: start, lte: end }
     };
 
-    if (filters.userId) baseWhere.userId = filters.userId;
-    if (filters.cashRegisterId) baseWhere.cashRegisterId = filters.cashRegisterId;
-    if (filters.customerId) baseWhere.customerId = filters.customerId;
+    if (filters?.userId) baseWhere.userId = filters.userId;
+    if (filters?.cashRegisterId) baseWhere.cashRegisterId = filters.cashRegisterId;
+    if (filters?.customerId) baseWhere.customerId = filters.customerId;
+    if (warehouseId) baseWhere.warehouseId = warehouseId;
 
     const metrics = await prisma.sale.aggregate({
       where: baseWhere,
@@ -118,18 +148,83 @@ export class ReportRepository {
     const totalSales = Number(metrics._count?.id || 0);
     const averageTicket = totalSales > 0 ? totalAmount / totalSales : 0;
 
-    const topProductsRaw: any[] = await prisma.$queryRaw`
-      SELECT p.name as "productName", p.sku, SUM(si.quantity) as quantity, SUM(si."totalAmount") as amount
-      FROM "sale_items" si
-      JOIN "sales" s ON s.id = si."saleId"
-      JOIN "products" p ON p.id = si."productId"
-      WHERE s."businessId" = ${businessId}
-        AND s.status != 'CANCELLED'
-        AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-      GROUP BY p.id, p.name, p.sku
-      ORDER BY amount DESC
-      LIMIT 50
-    `;
+    let topProductsRaw: any[] = [];
+    let topCustomersRaw: any[] = [];
+    let salesByDayRaw: any[] = [];
+
+    if (warehouseId) {
+      topProductsRaw = await prisma.$queryRaw`
+        SELECT p.name as "productName", p.sku, SUM(si.quantity) as quantity, SUM(si."totalAmount") as amount
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s."warehouseId" = ${warehouseId}
+          AND s.status != 'CANCELLED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.id, p.name, p.sku
+        ORDER BY amount DESC
+        LIMIT 50
+      `;
+
+      topCustomersRaw = await prisma.$queryRaw`
+        SELECT COALESCE(c.name, 'Consumidor Final') as "customerName", COUNT(s.id) as count, SUM(s."totalAmount") as amount
+        FROM "sales" s
+        LEFT JOIN "customers" c ON c.id = s."customerId"
+        WHERE s."businessId" = ${businessId}
+          AND s."warehouseId" = ${warehouseId}
+          AND s.status != 'CANCELLED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.id, c.name
+        ORDER BY amount DESC
+        LIMIT 50
+      `;
+
+      salesByDayRaw = await prisma.$queryRaw`
+        SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as total
+        FROM "sales"
+        WHERE "businessId" = ${businessId}
+          AND "warehouseId" = ${warehouseId}
+          AND status != 'CANCELLED'
+          AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+        GROUP BY 1 ORDER BY 1
+      `;
+    } else {
+      topProductsRaw = await prisma.$queryRaw`
+        SELECT p.name as "productName", p.sku, SUM(si.quantity) as quantity, SUM(si."totalAmount") as amount
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s.status != 'CANCELLED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.id, p.name, p.sku
+        ORDER BY amount DESC
+        LIMIT 50
+      `;
+
+      topCustomersRaw = await prisma.$queryRaw`
+        SELECT COALESCE(c.name, 'Consumidor Final') as "customerName", COUNT(s.id) as count, SUM(s."totalAmount") as amount
+        FROM "sales" s
+        LEFT JOIN "customers" c ON c.id = s."customerId"
+        WHERE s."businessId" = ${businessId}
+          AND s.status != 'CANCELLED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.id, c.name
+        ORDER BY amount DESC
+        LIMIT 50
+      `;
+
+      salesByDayRaw = await prisma.$queryRaw`
+        SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as total
+        FROM "sales"
+        WHERE "businessId" = ${businessId}
+          AND status != 'CANCELLED'
+          AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+        GROUP BY 1 ORDER BY 1
+      `;
+    }
+
     const topProducts = topProductsRaw.map((tp) => ({
       productName: tp.productName,
       sku: tp.sku || 'S/S',
@@ -137,17 +232,6 @@ export class ReportRepository {
       amount: Number(tp.amount || 0),
     }));
 
-    const topCustomersRaw: any[] = await prisma.$queryRaw`
-      SELECT COALESCE(c.name, 'Consumidor Final') as "customerName", COUNT(s.id) as count, SUM(s."totalAmount") as amount
-      FROM "sales" s
-      LEFT JOIN "customers" c ON c.id = s."customerId"
-      WHERE s."businessId" = ${businessId}
-        AND s.status != 'CANCELLED'
-        AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-      GROUP BY c.id, c.name
-      ORDER BY amount DESC
-      LIMIT 50
-    `;
     const topCustomers = topCustomersRaw.map((tc) => ({
       customerName: tc.customerName,
       count: Number(tc.count || 0),
@@ -163,14 +247,7 @@ export class ReportRepository {
         where: { sale: baseWhere },
         _sum: { amount: true }
       }),
-      salesByDay: await prisma.$queryRaw`
-        SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as total
-        FROM "sales"
-        WHERE "businessId" = ${businessId}
-          AND status != 'CANCELLED'
-          AND "createdAt" >= ${start} AND "createdAt" <= ${end}
-        GROUP BY 1 ORDER BY 1
-      `,
+      salesByDay: salesByDayRaw,
       topProducts,
       topCustomers
     };
@@ -182,9 +259,12 @@ export class ReportRepository {
   async getPurchasesMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
     
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
+
     const baseWhere: any = { businessId, purchaseDate: { gte: start, lte: end } };
     if (filters?.supplierId && filters.supplierId !== 'ALL') baseWhere.supplierId = filters.supplierId;
     if (filters?.status && filters.status !== 'ALL') baseWhere.status = filters.status;
+    if (warehouseId) baseWhere.warehouseId = warehouseId;
 
     const metrics = await prisma.purchase.aggregate({
       where: baseWhere,
@@ -207,16 +287,31 @@ export class ReportRepository {
       uniqueSuppliers: uniqueSuppliers.length
     };
 
-    const flowQuery = await prisma.$queryRawUnsafe<any[]>(`
-        SELECT 
-           DATE_TRUNC('day', "purchaseDate") as day,
-           SUM(total) as amount,
-           COUNT(*) as orders
-        FROM "purchases"
-        WHERE "businessId" = $1 AND "purchaseDate" >= $2 AND "purchaseDate" <= $3
-        GROUP BY DATE_TRUNC('day', "purchaseDate")
-        ORDER BY DATE_TRUNC('day', "purchaseDate") ASC
-    `, businessId, start, end);
+    let flowQuery: any[] = [];
+    if (warehouseId) {
+      flowQuery = await prisma.$queryRawUnsafe<any[]>(`
+          SELECT 
+             DATE_TRUNC('day', "purchaseDate") as day,
+             SUM(total) as amount,
+             COUNT(*) as orders
+          FROM "purchases"
+          WHERE "businessId" = $1 AND "warehouseId" = $4 AND "purchaseDate" >= $2 AND "purchaseDate" <= $3
+          GROUP BY DATE_TRUNC('day', "purchaseDate")
+          ORDER BY DATE_TRUNC('day', "purchaseDate") ASC
+      `, businessId, start, end, warehouseId);
+    } else {
+      flowQuery = await prisma.$queryRawUnsafe<any[]>(`
+          SELECT 
+             DATE_TRUNC('day', "purchaseDate") as day,
+             SUM(total) as amount,
+             COUNT(*) as orders
+          FROM "purchases"
+          WHERE "businessId" = $1 AND "purchaseDate" >= $2 AND "purchaseDate" <= $3
+          GROUP BY DATE_TRUNC('day', "purchaseDate")
+          ORDER BY DATE_TRUNC('day', "purchaseDate") ASC
+      `, businessId, start, end);
+    }
+
     const purchasesByDay = flowQuery.map(d => ({
         day: d.day,
         amount: Number(d.amount || 0),
@@ -539,63 +634,203 @@ export class ReportRepository {
   // ==========================================
   async getFinancialMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
-    const baseWhere = { businessId, createdAt: { gte: start, lte: end } };
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
+
+    const salesWhere: any = { businessId, status: { not: 'CANCELLED' }, createdAt: { gte: start, lte: end } };
+    if (warehouseId) salesWhere.warehouseId = warehouseId;
+
+    const validStatuses = ['APPROVED', 'RECEIVED', 'COMPLETED', 'PAID'];
+    const purchasesWhere: any = { businessId, status: { in: validStatuses }, purchaseDate: { gte: start, lte: end } };
+    if (warehouseId) purchasesWhere.warehouseId = warehouseId;
     
-    const sales = await prisma.sale.aggregate({ where: baseWhere, _sum: { totalAmount: true } });
-    const purchases = await prisma.purchase.aggregate({ where: baseWhere, _sum: { total: true } });
+    const sales = await prisma.sale.aggregate({ where: salesWhere, _sum: { totalAmount: true } });
+    const purchases = await prisma.purchase.aggregate({ where: purchasesWhere, _sum: { total: true } });
     
+    const totalSales = Number(sales._sum.totalAmount || 0);
+    const totalPurchases = Number(purchases._sum.total || 0);
+    const grossMargin = totalSales - totalPurchases;
+
+    let dailyFinancial: any[] = [];
+    if (warehouseId) {
+      dailyFinancial = await prisma.$queryRaw`
+        SELECT 
+          d.day,
+          COALESCE(s.sales_total, 0) as sales,
+          COALESCE(p.purchases_total, 0) as purchases
+        FROM (
+          SELECT DATE_TRUNC('day', "createdAt") as day FROM "sales" WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          UNION
+          SELECT DATE_TRUNC('day', "purchaseDate") as day FROM "purchases" WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
+        ) d
+        LEFT JOIN (
+          SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as sales_total
+          FROM "sales"
+          WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND status != 'CANCELLED' AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          GROUP BY 1
+        ) s ON s.day = d.day
+        LEFT JOIN (
+          SELECT DATE_TRUNC('day', "purchaseDate") as day, SUM("total") as purchases_total
+          FROM "purchases"
+          WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND status IN ('APPROVED', 'RECEIVED', 'COMPLETED', 'PAID') AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
+          GROUP BY 1
+        ) p ON p.day = d.day
+        ORDER BY d.day ASC
+      `;
+    } else {
+      dailyFinancial = await prisma.$queryRaw`
+        SELECT 
+          d.day,
+          COALESCE(s.sales_total, 0) as sales,
+          COALESCE(p.purchases_total, 0) as purchases
+        FROM (
+          SELECT DATE_TRUNC('day', "createdAt") as day FROM "sales" WHERE "businessId" = ${businessId} AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          UNION
+          SELECT DATE_TRUNC('day', "purchaseDate") as day FROM "purchases" WHERE "businessId" = ${businessId} AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
+        ) d
+        LEFT JOIN (
+          SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as sales_total
+          FROM "sales"
+          WHERE "businessId" = ${businessId} AND status != 'CANCELLED' AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          GROUP BY 1
+        ) s ON s.day = d.day
+        LEFT JOIN (
+          SELECT DATE_TRUNC('day', "purchaseDate") as day, SUM("total") as purchases_total
+          FROM "purchases"
+          WHERE "businessId" = ${businessId} AND status IN ('APPROVED', 'RECEIVED', 'COMPLETED', 'PAID') AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
+          GROUP BY 1
+        ) p ON p.day = d.day
+        ORDER BY d.day ASC
+      `;
+    }
+
     return {
-      totalSales: sales._sum.totalAmount || 0,
-      totalPurchases: purchases._sum.total || 0,
-      grossMargin: Number(sales._sum.totalAmount || 0) - Number(purchases._sum.total || 0),
-      netFlow: 0,
+      totalSales,
+      totalPurchases,
+      grossMargin,
+      netFlow: grossMargin,
+      dailyFinancial: dailyFinancial.map(df => ({
+        day: df.day,
+        sales: Number(df.sales || 0),
+        purchases: Number(df.purchases || 0),
+        margin: Number(df.sales || 0) - Number(df.purchases || 0)
+      }))
     };
   }
 
   async getCustomersMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
+
+    const baseWhere: any = { businessId };
+    if (warehouseId) {
+      baseWhere.sales = { some: { warehouseId } };
+    }
+
+    const newCustomersWhere: any = { businessId, createdAt: { gte: start, lte: end } };
+    if (warehouseId) {
+      newCustomersWhere.sales = { some: { warehouseId } };
+    }
+
     return {
-      totalActive: await prisma.customer.count({ where: { businessId } }),
-      newCustomers: await prisma.customer.count({ where: { businessId, createdAt: { gte: start, lte: end } } }),
+      totalActive: await prisma.customer.count({ where: baseWhere }),
+      newCustomers: await prisma.customer.count({ where: newCustomersWhere }),
       ranking: [],
     };
   }
 
   async getProductsMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
+    const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
     
-    const summary = {
-      activeProducts: await prisma.product.count({ where: { businessId, status: 'ACTIVE' } }),
-      totalValuation: await prisma.$queryRaw<any[]>`
+    let totalValuation = 0;
+    if (warehouseId) {
+      const res = await prisma.$queryRaw<any[]>`
+         SELECT SUM(s.quantity * p."purchasePrice") as total
+         FROM "stocks" s JOIN "products" p ON p.id = s."productId"
+         WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId}
+      `;
+      totalValuation = parseFloat(res[0]?.total || 0);
+    } else {
+      const res = await prisma.$queryRaw<any[]>`
          SELECT SUM(s.quantity * p."purchasePrice") as total
          FROM "stocks" s JOIN "products" p ON p.id = s."productId"
          WHERE s."businessId" = ${businessId}
-      `.then(res => parseFloat(res[0]?.total || 0)),
+      `;
+      totalValuation = parseFloat(res[0]?.total || 0);
+    }
+
+    const summary = {
+      activeProducts: await prisma.product.count({ where: { businessId, status: 'ACTIVE' } }),
+      totalValuation,
       withoutMovement: 0,
       averageMargin: 0
     };
 
-    const topSelling: any[] = await prisma.$queryRaw`
-      SELECT p.name, p.sku, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
-      FROM "sale_items" si 
-      JOIN "sales" s ON s.id = si."saleId"
-      JOIN "products" p ON p.id = si."productId"
-      WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-      GROUP BY p.name, p.sku
-      ORDER BY total DESC
-      LIMIT 100
-    `;
+    let topSelling: any[] = [];
+    let categorySales: any[] = [];
+    let marginData: any[] = [];
 
-    const categorySales: any[] = await prisma.$queryRaw`
-      SELECT c.name, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
-      FROM "sale_items" si 
-      JOIN "sales" s ON s.id = si."saleId"
-      JOIN "products" p ON p.id = si."productId"
-      JOIN "categories" c ON c.id = p."categoryId"
-      WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-      GROUP BY c.name
-      ORDER BY total DESC
-    `;
+    if (warehouseId) {
+      topSelling = await prisma.$queryRaw`
+        SELECT p.name, p.sku, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.name, p.sku
+        ORDER BY total DESC
+        LIMIT 100
+      `;
+
+      categorySales = await prisma.$queryRaw`
+        SELECT c.name, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        JOIN "categories" c ON c.id = p."categoryId"
+        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.name
+        ORDER BY total DESC
+      `;
+
+      marginData = await prisma.$queryRaw`
+        SELECT SUM(si."totalAmount") as revenue, SUM(p."purchasePrice" * si.quantity) as cost
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      `;
+    } else {
+      topSelling = await prisma.$queryRaw`
+        SELECT p.name, p.sku, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.name, p.sku
+        ORDER BY total DESC
+        LIMIT 100
+      `;
+
+      categorySales = await prisma.$queryRaw`
+        SELECT c.name, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        JOIN "categories" c ON c.id = p."categoryId"
+        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.name
+        ORDER BY total DESC
+      `;
+
+      marginData = await prisma.$queryRaw`
+        SELECT SUM(si."totalAmount") as revenue, SUM(p."purchasePrice" * si.quantity) as cost
+        FROM "sale_items" si 
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      `;
+    }
 
     const queryDays = 90;
     const dateLimit = new Date();
@@ -618,15 +853,6 @@ export class ReportRepository {
 
     summary.withoutMovement = slowMoving.length;
 
-    // Calculate Average margin overall
-    const marginData: any[] = await prisma.$queryRaw`
-      SELECT SUM(si."totalAmount") as revenue, SUM(p."purchasePrice" * si.quantity) as cost
-      FROM "sale_items" si 
-      JOIN "sales" s ON s.id = si."saleId"
-      JOIN "products" p ON p.id = si."productId"
-      WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-    `;
-
     if (marginData && marginData[0] && marginData[0].revenue > 0) {
        const rev = parseFloat(marginData[0].revenue);
        const cost = parseFloat(marginData[0].cost);
@@ -644,7 +870,8 @@ export class ReportRepository {
 
   async getUsersMetrics(businessId: string, start: Date, end: Date, filters: any) {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
-    const baseWhere = { businessId, createdAt: { gte: start, lte: end } };
+    const baseWhere: any = { businessId, createdAt: { gte: start, lte: end } };
+    if (filters?.warehouseId && filters.warehouseId !== 'ALL') baseWhere.warehouseId = filters.warehouseId;
     
     const grouping = await prisma.sale.groupBy({
       by: ['createdById'],
@@ -684,6 +911,19 @@ export class ReportRepository {
 
     if (filters?.action && filters.action !== 'ALL') {
       where.actionType = { contains: filters.action, mode: 'insensitive' };
+    }
+
+    if (filters?.warehouseId && filters.warehouseId !== 'ALL') {
+      const wId = filters.warehouseId;
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { newValues: { contains: wId } },
+            { previousValues: { contains: wId } },
+          ],
+        },
+      ];
     }
 
     if (filters?.dateFrom || filters?.dateTo) {

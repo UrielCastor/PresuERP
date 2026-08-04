@@ -37,6 +37,7 @@ export class CustomerRepository {
         skip,
         take: limit,
         include: {
+          defaultPriceList: { select: { id: true, name: true } },
           _count: {
             select: { sales: true },
           },
@@ -63,6 +64,7 @@ export class CustomerRepository {
         businessId,
       },
       include: {
+        defaultPriceList: { select: { id: true, name: true } },
         sales: {
           orderBy: { createdAt: 'desc' },
           take: 50,
@@ -103,6 +105,10 @@ export class CustomerRepository {
     });
     const clienteGuardado = await prisma.customer.create({
       data,
+      include: {
+        defaultPriceList: { select: { id: true, name: true } },
+        _count: { select: { sales: true } },
+      },
     });
     console.log("6. [POST-PRISMA CREATE] clienteGuardado:", clienteGuardado);
     return clienteGuardado;

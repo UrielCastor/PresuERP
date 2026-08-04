@@ -2,6 +2,7 @@ import jwt from 'jsonwebtoken';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../config/db';
 import { env } from '../config/env';
+import { cleanExpiredRefreshTokens } from '../jobs/tokenCleanup.job';
 import { UserRepository } from '../repositories/user.repository';
 import { BusinessRepository } from '../repositories/business.repository';
 import { RoleRepository } from '../repositories/role.repository';
@@ -37,16 +38,22 @@ const whitelistPermissions = [
   // Sales
   { name: 'sales:read', description: 'Read sales data', module: 'sales' },
   { name: 'sales:write', description: 'Create and edit sales', module: 'sales' },
+  { name: 'sales:cancel', description: 'Cancel/void completed sales', module: 'sales' },
+  // Customers
+  { name: 'customers:read', description: 'Read customers', module: 'customers' },
+  { name: 'customers:write', description: 'Create and modify customers', module: 'customers' },
   // Settings
   { name: 'settings:read', description: 'Read business settings', module: 'settings' },
   { name: 'settings:write', description: 'Change business settings', module: 'settings' },
+  { name: 'settings:pos:read', description: 'Read POS settings', module: 'settings' },
+  { name: 'settings:pos:write', description: 'Change POS settings', module: 'settings' },
   // Stocks
   { name: 'stocks:read', description: 'Read stock levels', module: 'stocks' },
   { name: 'stocks:update', description: 'Adjust stock levels and settings', module: 'stocks' },
   // Kardex
   { name: 'kardex:read', description: 'Read stock movements ledger', module: 'kardex' },
   { name: 'kardex:export', description: 'Export stock movements PDF/Excel/CSV', module: 'kardex' },
-  // Purchases (Stage 4)
+  // Purchases
   { name: 'purchases:read', description: 'Read purchase orders', module: 'purchases' },
   { name: 'purchases:create', description: 'Create purchase orders', module: 'purchases' },
   { name: 'purchases:update', description: 'Edit draft purchase orders', module: 'purchases' },
@@ -58,6 +65,8 @@ const whitelistPermissions = [
   { name: 'cash:close', description: 'Close cash register session (Z)', module: 'cash' },
   { name: 'cash:movement', description: 'Register manual manual IN/OUT', module: 'cash' },
   { name: 'cash:audit', description: 'View full history of cash registers', module: 'cash' },
+  // Reports
+  { name: 'reports:read', description: 'View business reports', module: 'reports' },
 ];
 
 export class AuthService {
@@ -156,14 +165,8 @@ export class AuthService {
         },
       });
 
-      const empleadoRole = await tx.role.create({
-        data: {
-          name: 'Empleado',
-          description: 'General staff access',
-          businessId: business.id,
-          isSystem: true,
-        },
-      });
+
+
 
       // Assign all permissions to Administrator
       for (const p of permissionsMap) {
@@ -177,12 +180,18 @@ export class AuthService {
 
       // Assign subset of permissions to Supervisor
       const supervisorPermCodes = [
-        'users:read', 'products:read', 'products:create', 'products:update', 'products:write',
-        'categories:read', 'categories:create', 'categories:update',
-        'suppliers:read', 'suppliers:create', 'suppliers:update',
-        'sales:read', 'sales:write', 'settings:read',
-        'warehouses:read', 'warehouses:create', 'warehouses:update',
-        'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve'
+        'products:read', 'products:create', 'products:update', 'products:delete', 'products:write',
+        'categories:read', 'categories:create', 'categories:update', 'categories:delete',
+        'suppliers:read', 'suppliers:create', 'suppliers:update', 'suppliers:delete',
+        'warehouses:read', 'warehouses:create', 'warehouses:update', 'warehouses:delete',
+        'stocks:read', 'stocks:update',
+        'kardex:read', 'kardex:export',
+        'sales:read', 'sales:write', 'sales:cancel',
+        'customers:read', 'customers:write',
+        'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve', 'purchases:cancel',
+        'cash:view', 'cash:open', 'cash:close', 'cash:movement', 'cash:audit',
+        'reports:read',
+        'settings:pos:read', 'settings:pos:write',
       ];
       const supervisorPerms = permissionsMap.filter((p) => supervisorPermCodes.includes(p.name));
       for (const p of supervisorPerms) {
@@ -196,9 +205,12 @@ export class AuthService {
 
       // Assign to Cashier (Cajero)
       const cashierPermCodes = [
-        'products:read', 'categories:read', 'suppliers:read',
-        'sales:read', 'sales:write', 'warehouses:read', 'purchases:read',
-        'cash:view', 'cash:open', 'cash:close', 'cash:movement'
+        'products:read',
+        'warehouses:read',
+        'stocks:read',
+        'sales:read', 'sales:write',
+        'customers:read', 'customers:write',
+        'cash:view', 'cash:open', 'cash:close', 'cash:movement',
       ];
       const cashierPerms = permissionsMap.filter((p) => cashierPermCodes.includes(p.name));
       for (const p of cashierPerms) {
@@ -289,6 +301,15 @@ export class AuthService {
     const permissions = user.roleId ? await this.roleRepo.listPermissions(user.roleId as string) : [];
     const permissionCodes = permissions.map((p) => p.name);
 
+    console.log('🔥 [DEBUG LOGIN PRISMA USER]', {
+      id: user.id,
+      businessId: user.businessId,
+      role: user.role?.name,
+      permissionsCount: permissionCodes.length,
+      userWarehouses: (user as any).userWarehouses,
+      defaultWarehouse: (user as any).defaultWarehouse,
+    });
+
     const accessToken = jwt.sign(
       {
         userId: user.id,
@@ -310,7 +331,7 @@ export class AuthService {
 
     // Save refresh token to db
     const expiresAt = new Date();
-    expiresAt.setDate(expiresAt.getDate() + 7); // Matches '7d' limit
+    expiresAt.setDate(expiresAt.getDate() + 30); // Matches '30d' limit
 
     await prisma.refreshToken.create({
       data: {
@@ -328,6 +349,9 @@ export class AuthService {
       businessId: user.businessId || '',
       permissions: permissionCodes,
       isStaff: (user as any).isStaff,
+      defaultWarehouseId: (user as any).defaultWarehouseId || null,
+      defaultWarehouse: (user as any).defaultWarehouse || null,
+      userWarehouses: (user as any).userWarehouses || [],
     };
 
     return { accessToken, refreshToken, user: userClean };
@@ -376,7 +400,7 @@ export class AuthService {
       );
 
       const expiresAt = new Date();
-      expiresAt.setDate(expiresAt.getDate() + 7);
+      expiresAt.setDate(expiresAt.getDate() + 30); // Matches '30d' limit
 
       await prisma.refreshToken.create({
         data: {
@@ -392,11 +416,23 @@ export class AuthService {
     }
   }
 
-  async logout(token: string): Promise<void> {
+  async logout(token?: string, userId?: string): Promise<void> {
+    if (!token && !userId) return;
+
+    const conditions: any[] = [];
+    if (token) conditions.push({ token });
+    if (userId) conditions.push({ userId });
+
     await prisma.refreshToken.updateMany({
-      where: { token },
+      where: {
+        OR: conditions,
+      },
       data: { revoked: true },
     });
+  }
+
+  async cleanExpiredTokens(): Promise<number> {
+    return cleanExpiredRefreshTokens();
   }
 
   static async bootstrapPermissions() {
@@ -445,13 +481,18 @@ export class AuthService {
       // Supervisor assigns subset
       if (supervisorRole) {
         const supervisorPermCodes = [
-          'users:read', 'products:read', 'products:create', 'products:update', 'products:write',
-          'categories:read', 'categories:create', 'categories:update',
-          'suppliers:read', 'suppliers:create', 'suppliers:update',
-          'sales:read', 'sales:write', 'settings:read',
-          'warehouses:read', 'warehouses:create', 'warehouses:update',
-          'stocks:read', 'stocks:update', 'kardex:read', 'kardex:export',
-          'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve'
+          'products:read', 'products:create', 'products:update', 'products:delete', 'products:write',
+          'categories:read', 'categories:create', 'categories:update', 'categories:delete',
+          'suppliers:read', 'suppliers:create', 'suppliers:update', 'suppliers:delete',
+          'warehouses:read', 'warehouses:create', 'warehouses:update', 'warehouses:delete',
+          'stocks:read', 'stocks:update',
+          'kardex:read', 'kardex:export',
+          'sales:read', 'sales:write', 'sales:cancel',
+          'customers:read', 'customers:write',
+          'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve', 'purchases:cancel',
+          'cash:view', 'cash:open', 'cash:close', 'cash:movement', 'cash:audit',
+          'reports:read',
+          'settings:pos:read', 'settings:pos:write',
         ];
         const supervisorPerms = permissionsMap.filter((p) => supervisorPermCodes.includes(p.name));
         for (const p of supervisorPerms) {
@@ -474,9 +515,12 @@ export class AuthService {
       // Cashier assigns subset
       if (cashierRole) {
         const cashierPermCodes = [
-          'products:read', 'categories:read', 'suppliers:read',
-          'sales:read', 'sales:write', 'warehouses:read', 'stocks:read', 'kardex:read',
-          'purchases:read', 'cash:view', 'cash:open', 'cash:close', 'cash:movement'
+          'products:read',
+          'warehouses:read',
+          'stocks:read',
+          'sales:read', 'sales:write',
+          'customers:read', 'customers:write',
+          'cash:view', 'cash:open', 'cash:close', 'cash:movement',
         ];
         const cashierPerms = permissionsMap.filter((p) => cashierPermCodes.includes(p.name));
         for (const p of cashierPerms) {

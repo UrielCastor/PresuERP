@@ -8,8 +8,8 @@ export class ReportService {
     this.reportRepo = new ReportRepository();
   }
 
-  async getExecutiveSummary(businessId: string) {
-    return this.reportRepo.getExecutiveMetrics(businessId);
+  async getExecutiveSummary(businessId: string, filters?: any) {
+    return this.reportRepo.getExecutiveMetrics(businessId, filters);
   }
 
   async getSalesReport(businessId: string, filters: any) {

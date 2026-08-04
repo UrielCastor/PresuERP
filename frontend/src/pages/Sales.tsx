@@ -64,7 +64,7 @@ export const Sales: React.FC = () => {
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
   const canRead = hasPermission('sales:read');
-  const canCreate = hasPermission('sales:create');
+  const canCreate = hasPermission('sales:write');
   const canCancel = hasPermission('sales:cancel');
 
   // Manejador del Selector de Período

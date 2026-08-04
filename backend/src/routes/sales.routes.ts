@@ -21,7 +21,7 @@ router.get(
 
 router.post(
   '/',
-  requirePermission('sales:create'),
+  requirePermission('sales:write'),
   validate(createSaleSchema),
   SaleController.create
 );

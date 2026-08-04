@@ -11,20 +11,24 @@ export class StockController {
       let items: any[] = [];
       const businessId = req.user!.businessId;
 
-      if (!warehouseIdStr) {
-        const mainWarehouse = await prisma.warehouse.findFirst({
-           where: { businessId, isMain: true, status: 'ACTIVE' }
-        }) || await prisma.warehouse.findFirst({
-           where: { businessId, status: 'ACTIVE' }
-        });
-        
-        if (mainWarehouse) {
-          warehouseIdStr = mainWarehouse.id;
+      if (warehouseIdStr === 'ALL') {
+        items = await stockService.findAll(businessId);
+      } else {
+        if (!warehouseIdStr) {
+          const mainWarehouse = await prisma.warehouse.findFirst({
+             where: { businessId, isMain: true, status: 'ACTIVE' }
+          }) || await prisma.warehouse.findFirst({
+             where: { businessId, status: 'ACTIVE' }
+          });
+          
+          if (mainWarehouse) {
+            warehouseIdStr = mainWarehouse.id;
+          }
         }
-      }
 
-      if (warehouseIdStr) {
-        items = await stockService.findByWarehouse(warehouseIdStr, businessId);
+        if (warehouseIdStr) {
+          items = await stockService.findByWarehouse(warehouseIdStr, businessId);
+        }
       }
       return res.status(200).json({
         success: true,

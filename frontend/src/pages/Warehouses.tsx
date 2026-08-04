@@ -19,7 +19,8 @@ import {
   Phone,
   Mail,
   FileText,
-  Star
+  Star,
+  MoreVertical,
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { warehouseApi, Warehouse as WarehouseType } from '../services/warehouse.service';
@@ -57,6 +58,7 @@ export const Warehouses: React.FC = () => {
   const [deleteResult, setDeleteResult] = useState<{ id: string; status: string; matches: boolean; message: string } | null>(null);
   
   const [apiError, setApiError] = useState<string | null>(null);
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
   const canCreate = hasPermission('warehouses:create');
   const canUpdate = hasPermission('warehouses:update');
@@ -243,408 +245,560 @@ export const Warehouses: React.FC = () => {
     return true;
   });
 
+  const handleToggleMain = (warehouse: WarehouseType) => {
+    if (warehouse.isMain) return;
+    updateMutation.mutate({
+      id: warehouse.id,
+      data: {
+        name: warehouse.name,
+        code: warehouse.code || null,
+        description: warehouse.description || null,
+        address: warehouse.address || null,
+        managerName: warehouse.managerName || null,
+        phone: warehouse.phone || null,
+        email: warehouse.email || null,
+        isMain: true,
+        status: warehouse.status,
+        changeReason: 'Marcado como depósito principal',
+      },
+    });
+  };
+
+  const handleToggleStatus = (warehouse: WarehouseType) => {
+    const newStatus = warehouse.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE';
+    updateMutation.mutate({
+      id: warehouse.id,
+      data: {
+        name: warehouse.name,
+        code: warehouse.code || null,
+        description: warehouse.description || null,
+        address: warehouse.address || null,
+        managerName: warehouse.managerName || null,
+        phone: warehouse.phone || null,
+        email: warehouse.email || null,
+        isMain: warehouse.isMain,
+        status: newStatus,
+        changeReason: `Cambio de estado a ${newStatus === 'ACTIVE' ? 'Activo' : 'Inactivo'}`,
+      },
+    });
+  };
+
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="Depósitos / Almacenes"
-        subtitle="Gestiona los depósitos físicos, sucursales y almacenamiento de stock de la empresa."
-        action={
-          canCreate ? (
-            <Button onClick={handleOpenCreateModal} className="flex items-center gap-2">
-              <Plus className="h-4 w-4" />
-              Nuevo Depósito
-            </Button>
-          ) : undefined
-        }
-      />
+      {/* 1. ENCABEZADO ESTILO POS */}
+      <div className="bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+        <div className="space-y-1">
+          <div className="flex items-center gap-2">
+            <span className="text-2xl leading-none">🏬</span>
+            <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-white">
+              Depósitos / Almacenes
+            </h1>
+          </div>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-2xl">
+            Gestiona los depósitos físicos, sucursales y centros de almacenamiento de stock de tu empresa.
+          </p>
+        </div>
 
-      {/* Filters and Search */}
-      <div className="bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex-1 max-w-md">
-          <Input
+        {canCreate && (
+          <div className="flex items-center gap-3">
+            <Button
+              onClick={handleOpenCreateModal}
+              leftIcon={<Plus className="h-4 w-4" />}
+              className="text-xs font-bold shadow-md rounded-xl"
+            >
+              + Nuevo Depósito
+            </Button>
+          </div>
+        )}
+      </div>
+
+      {/* 2. BARRA DE HERRAMIENTAS Y FILTROS TIPO CHIPS */}
+      <div className="bg-white dark:bg-slate-900 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm flex flex-col md:flex-row gap-3.5 items-stretch md:items-center justify-between">
+        <div className="relative flex-1 max-w-md">
+          <Search className="absolute left-3.5 top-3 h-4.5 w-4.5 text-slate-400 dark:text-slate-500 pointer-events-none" />
+          <input
+            type="text"
             placeholder="Buscar por nombre, código o responsable..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            leftIcon={Search}
+            className="w-full pl-10 pr-4 py-2.5 bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200 dark:border-slate-800 rounded-xl text-xs sm:text-sm text-slate-900 dark:text-white placeholder-slate-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-transparent transition-all"
           />
         </div>
 
-        {/* Filter buttons */}
+        {/* Filtros Chips */}
         <div className="flex flex-wrap items-center gap-2">
           <button
             onClick={() => setFilterType('ALL')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
               filterType === 'ALL'
-                ? 'bg-primary-500 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                ? 'bg-primary-500 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Todos
           </button>
           <button
             onClick={() => setFilterType('ACTIVE')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-all ${
               filterType === 'ACTIVE'
-                ? 'bg-green-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                ? 'bg-emerald-600 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Activos
           </button>
           <button
             onClick={() => setFilterType('INACTIVE')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
               filterType === 'INACTIVE'
-                ? 'bg-red-600 text-white'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                ? 'bg-rose-600 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
             Inactivos
           </button>
           <button
             onClick={() => setFilterType('MAIN')}
-            className={`px-3 py-1.5 text-xs font-semibold rounded-lg transition-colors ${
+            className={`px-3 py-1.5 text-xs font-bold rounded-xl transition-all ${
               filterType === 'MAIN'
-                ? 'bg-yellow-550 text-white dark:bg-yellow-600'
-                : 'bg-slate-100 dark:bg-slate-800 text-slate-650 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                ? 'bg-amber-500 text-white shadow-2xs'
+                : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700'
             }`}
           >
-            Depósito Principal
+            Solo Principal
           </button>
-          <div className="text-xs text-slate-500 dark:text-slate-400 ml-2">
-            Total: {finalFiltered.length}
+
+          <div className="text-xs font-medium text-slate-500 dark:text-slate-400 ml-2">
+            Total: {finalFiltered.length} {finalFiltered.length === 1 ? 'depósito' : 'depósitos'}
           </div>
         </div>
       </div>
 
-      {/* Table grid */}
+      {/* 3. CARDS RESPONSIVE DE DEPÓSITOS */}
       {isLoading ? (
-        <div className="min-h-[200px] flex items-center justify-center bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+        <div className="min-h-[250px] flex items-center justify-center bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
           <Loader2 className="h-8 w-8 text-primary-500 animate-spin" />
         </div>
       ) : finalFiltered.length === 0 ? (
-        <EmptyStateGuide
-          title="No se encontraron depósitos"
-          description={
-            searchTerm || filterType !== 'ALL'
-              ? 'Prueba variando los parámetros de búsqueda o filtros.'
-              : 'Comienza creando el primer depósito para tu empresa.'
-          }
-          onAction={(!searchTerm && filterType === 'ALL' && canCreate) ? handleOpenCreateModal : undefined}
-          actionText="Nuevo Depósito"
-        />
+        <div className="min-h-[280px] flex flex-col items-center justify-center p-8 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm text-center">
+          <Warehouse className="h-12 w-12 text-slate-300 dark:text-slate-700 mb-3" />
+          <h3 className="text-base font-bold text-slate-900 dark:text-white">No existen depósitos registrados</h3>
+          <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-xs">
+            {searchTerm || filterType !== 'ALL'
+              ? 'No se encontraron depósitos que coincidan con la búsqueda o filtros.'
+              : 'Comienza creando el primer depósito para tu empresa.'}
+          </p>
+          {!searchTerm && filterType === 'ALL' && canCreate && (
+            <Button onClick={handleOpenCreateModal} className="mt-4 flex items-center gap-2 text-xs font-bold rounded-xl shadow-md">
+              <Plus className="h-4 w-4" />
+              Crear primer depósito
+            </Button>
+          )}
+        </div>
       ) : (
-        <div className="bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full border-collapse text-left">
-              <thead>
-                <tr className="border-b border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Nombre / Código</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Dirección</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Responsable</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Principal</th>
-                  <th className="px-6 py-3.5 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Estado</th>
-                  {(canUpdate || canDelete) && (
-                    <th className="px-6 py-3.5 text-right text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">Acciones</th>
-                  )}
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-200 dark:divide-slate-800">
-                {finalFiltered.map((warehouse) => (
-                  <tr key={warehouse.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-920/40 transition-colors">
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="h-9 w-9 bg-primary-50 dark:bg-primary-950/30 rounded-lg flex items-center justify-center text-primary-600 dark:text-primary-400">
-                          <Warehouse className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-1.5">
-                            {warehouse.name}
-                            {warehouse.isMain && (
-                              <span className="flex h-2 w-2 rounded-full bg-yellow-400" title="Depósito Principal" />
-                            )}
-                          </div>
-                          <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-1">
-                            <span className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-[10px]">
-                              {warehouse.code || 'S/C'}
-                            </span>
-                            {warehouse.description && (
-                              <span className="truncate max-w-[150px]">- {warehouse.description}</span>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4 text-sm text-slate-700 dark:text-slate-300">
-                      {warehouse.address ? (
-                        <div className="flex items-center gap-1">
-                          <MapPin className="h-3.5 w-3.5 text-slate-400" />
-                          <span>{warehouse.address}</span>
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic">No especificada</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4">
-                      {warehouse.managerName ? (
-                        <div>
-                          <div className="text-sm text-slate-900 dark:text-white flex items-center gap-1">
-                            <User className="h-3.5 w-3.5 text-slate-400" />
-                            <span>{warehouse.managerName}</span>
-                          </div>
-                          {(warehouse.phone || warehouse.email) && (
-                            <div className="text-xs text-slate-400 flex items-center gap-2 mt-0.5">
-                              {warehouse.phone && <span className="flex items-center gap-0.5"><Phone className="h-2.5 w-2.5" />{warehouse.phone}</span>}
-                              {warehouse.email && <span className="flex items-center gap-0.5"><Mail className="h-2.5 w-2.5 text-slate-400" />{warehouse.email}</span>}
-                            </div>
-                          )}
-                        </div>
-                      ) : (
-                        <span className="text-slate-400 italic text-sm">No definido</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      {warehouse.isMain ? (
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1 text-xs font-semibold rounded-full bg-yellow-50 text-yellow-700 dark:bg-yellow-950/30 dark:text-yellow-400 border border-yellow-200 dark:border-yellow-900/30">
-                          <Star className="h-3 w-3 fill-current" />
-                          Principal
-                        </span>
-                      ) : (
-                        <span className="text-slate-400 text-xs">-</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm">
-                      <span
-                        className={`inline-flex items-center gap-1 px-2 py-1 text-xs font-semibold rounded-full ${
-                          warehouse.status === 'ACTIVE'
-                            ? 'bg-green-50 text-green-700 dark:bg-green-950/30 dark:text-green-400'
-                            : 'bg-red-50 text-red-700 dark:bg-red-950/30 dark:text-red-400'
-                        }`}
-                      >
-                        {warehouse.status === 'ACTIVE' ? <CheckCircle className="h-3 w-3" /> : <XCircle className="h-3 w-3" />}
-                        {warehouse.status === 'ACTIVE' ? 'Activo' : 'Inactivo'}
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 gap-5 sm:gap-6">
+          {finalFiltered.map((warehouse) => {
+            const isInactive = warehouse.status === 'INACTIVE';
+
+            return (
+              <div
+                key={warehouse.id}
+                className="bg-white dark:bg-slate-900 border border-slate-200/80 dark:border-slate-800/80 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-slate-300 dark:hover:border-slate-700 transition-all flex flex-col justify-between space-y-4 relative group"
+              >
+                {/* Header Card: Fila Superior con Nombre & Badge Estado */}
+                <div className="space-y-2">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="text-lg leading-none">🏬</span>
+                      <h3 className="font-bold text-slate-900 dark:text-white text-base leading-snug truncate">
+                        {warehouse.name}
+                      </h3>
+                    </div>
+
+                    {!isInactive ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                        Activo
                       </span>
-                    </td>
-                    {(canUpdate || canDelete) && (
-                      <td className="px-6 py-4 whitespace-nowrap text-right text-sm">
-                        <div className="flex justify-end gap-2">
-                          {canUpdate && (
-                            <button
-                              onClick={() => handleOpenEditModal(warehouse)}
-                              className="p-1.5 text-slate-400 hover:text-primary-600 dark:text-slate-500 dark:hover:text-primary-400 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-                              title="Editar depósito"
-                            >
-                              <Edit2 className="h-4 w-4" />
-                            </button>
-                          )}
-                          {canDelete && (
-                            <button
-                              onClick={() => {
-                                setDeleteTarget(warehouse);
-                                setDeleteReason('');
-                              }}
-                              className="p-1.5 text-slate-400 hover:text-red-600 dark:text-slate-500 dark:hover:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/20 rounded-lg transition-colors"
-                              title="Eliminar depósito"
-                            >
-                              <Trash2 className="h-4 w-4" />
-                            </button>
-                          )}
-                        </div>
-                      </td>
+                    ) : (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-red-50 text-red-700 dark:bg-red-950/40 dark:text-red-400 border border-red-200 dark:border-red-800/50 shrink-0">
+                        <span className="w-1.5 h-1.5 rounded-full bg-red-500"></span>
+                        Inactivo
+                      </span>
                     )}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                  </div>
+
+                  {/* Fila Código y Principal */}
+                  <div className="flex items-center gap-2 flex-wrap text-xs">
+                    <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-mono font-bold bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+                      Código: {warehouse.code || 'S/C'}
+                    </span>
+
+                    {warehouse.isMain && (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 shadow-2xs">
+                        <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                        Principal
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Cuerpo: Información de Dirección, Responsable, Teléfono, Email */}
+                <div className="space-y-2 bg-slate-50/80 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200/60 dark:border-slate-800/60 text-xs">
+                  <div className="flex items-start gap-1.5">
+                    <span className="shrink-0 text-slate-400">📍</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium line-clamp-2">
+                      {warehouse.address || <span className="italic text-slate-400">—</span>}
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1.5 min-w-0">
+                    <span className="shrink-0 text-slate-400">👤</span>
+                    <span className="text-slate-700 dark:text-slate-300 font-medium truncate">
+                      {warehouse.managerName || <span className="italic text-slate-400">—</span>}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-800/50">
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="shrink-0 text-slate-400">📞</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-mono font-medium truncate">
+                        {warehouse.phone || <span className="italic text-slate-400">—</span>}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1 min-w-0">
+                      <span className="shrink-0 text-slate-400">✉️</span>
+                      <span className="text-slate-700 dark:text-slate-300 font-medium truncate">
+                        {warehouse.email || <span className="italic text-slate-400">—</span>}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Acciones: Botón Principal Ancho (Editar Depósito) + Menú Tres Puntos (⋮) */}
+                <div className="flex items-center gap-2 pt-1 border-t border-slate-100 dark:border-slate-800/60">
+                  {canUpdate && (
+                    <Button
+                      onClick={() => handleOpenEditModal(warehouse)}
+                      className="flex-1 text-xs font-bold py-2 rounded-xl shadow-2xs flex items-center justify-center gap-1.5"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                      Editar Depósito
+                    </Button>
+                  )}
+
+                  {/* Menú Tres Puntos (⋮) */}
+                  {(canUpdate || canDelete) && (
+                    <div className="relative">
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpenMenuId(openMenuId === warehouse.id ? null : warehouse.id);
+                        }}
+                        className="p-2 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                        title="Más acciones"
+                      >
+                        <MoreVertical className="w-4 h-4" />
+                      </button>
+
+                      {openMenuId === warehouse.id && (
+                        <>
+                          <div
+                            className="fixed inset-0 z-20"
+                            onClick={() => setOpenMenuId(null)}
+                          />
+                          <div className="absolute right-0 bottom-full mb-1 z-30 w-52 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl shadow-xl py-1 text-xs divide-y divide-slate-100 dark:divide-slate-800 animate-in fade-in zoom-in-95 duration-100">
+                            {canUpdate && (
+                              <div className="py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    handleOpenEditModal(warehouse);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                                >
+                                  <Edit2 className="w-3.5 h-3.5 text-blue-500" />
+                                  Editar Depósito
+                                </button>
+
+                                {!warehouse.isMain && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenMenuId(null);
+                                      handleToggleMain(warehouse);
+                                    }}
+                                    className="w-full text-left px-3 py-2 text-amber-700 dark:text-amber-400 hover:bg-amber-50 dark:hover:bg-amber-950/30 flex items-center gap-2 font-medium"
+                                  >
+                                    <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-400" />
+                                    Marcar como principal
+                                  </button>
+                                )}
+
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    handleToggleStatus(warehouse);
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 flex items-center gap-2 font-medium"
+                                >
+                                  {warehouse.status === 'ACTIVE' ? (
+                                    <>
+                                      <XCircle className="w-3.5 h-3.5 text-red-500" />
+                                      Desactivar Depósito
+                                    </>
+                                  ) : (
+                                    <>
+                                      <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                                      Activar Depósito
+                                    </>
+                                  )}
+                                </button>
+                              </div>
+                            )}
+
+                            {canDelete && (
+                              <div className="py-1">
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setOpenMenuId(null);
+                                    setDeleteTarget(warehouse);
+                                    setDeleteReason('');
+                                  }}
+                                  className="w-full text-left px-3 py-2 text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-950/30 flex items-center gap-2 font-medium"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5 text-red-500" />
+                                  Eliminar Depósito
+                                </button>
+                              </div>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
         </div>
       )}
 
-      {/* Create / Edit Modal */}
+      {/* Create / Edit Modal Estilo Editar Producto */}
       {isModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm">
-          <div className="relative w-full max-w-lg bg-white dark:bg-slate-900 rounded-xl border border-slate-200 dark:border-slate-800 shadow-2xl p-6 overflow-y-auto max-h-[90vh]">
-            <button
-              onClick={handleCloseModal}
-              className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-650 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
-            >
-              <X className="h-5 w-5" />
-            </button>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm">
+          <div className="relative w-full max-w-xl bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5 flex flex-col max-h-[90vh] transition-all duration-300">
+            {/* Header del Modal */}
+            <div className="flex-none pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
+              <button
+                onClick={handleCloseModal}
+                className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
 
-            <h2 className="text-xl font-bold text-slate-900 dark:text-white pr-6">
-              {editingWarehouse ? 'Editar Depósito' : 'Nuevo Depósito'}
-            </h2>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-              {editingWarehouse
-                ? 'Modifica los datos del depósito. Debes registrar el motivo del cambio.'
-                : 'Registra los datos de almacenamiento del nuevo depósito.'}
-            </p>
-
-            <form onSubmit={handleSubmit(onSubmit)} className="mt-5 space-y-4">
-              {apiError && (
-                <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-lg text-sm text-red-600 dark:text-red-450 font-medium">
-                  {apiError}
-                </div>
-              )}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Nombre <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    {...register('name')}
-                    placeholder="Ej: Depósito Central"
-                    className={`w-full px-3.5 py-2.5 bg-transparent border rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
-                      errors.name ? 'border-red-500 focus:ring-red-500' : 'border-slate-350 dark:border-slate-800'
-                    }`}
-                  />
-                  {errors.name && (
-                    <p className="mt-1 text-xs text-red-500 font-medium">{errors.name.message}</p>
-                  )}
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Código de Depósito
-                  </label>
-                  <input
-                    type="text"
-                    {...register('code')}
-                    placeholder="Ej: DEP-01"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xl leading-none">🏬</span>
+                <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white pr-6">
+                  {editingWarehouse ? 'Editar Depósito' : 'Nuevo Depósito'}
+                </h2>
               </div>
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Registra la información física, responsable y configuración del centro de almacenamiento.
+              </p>
+            </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Descripción
-                </label>
-                <textarea
-                  {...register('description')}
-                  placeholder="Ej: Depósito principal de mercaderías e insumos generales."
-                  rows={2}
-                  className="w-full px-3.5 py-2.0 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                />
-              </div>
+            {/* Scrollable Content */}
+            <div className="flex-1 overflow-y-auto pr-1">
+              <form id="warehouse-form" onSubmit={handleSubmit(onSubmit)} className="space-y-3.5 pt-1">
+                {apiError && (
+                  <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-lg text-xs text-red-600 dark:text-red-400 font-medium">
+                    {apiError}
+                  </div>
+                )}
 
-              <div>
-                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                  Dirección
-                </label>
-                <input
-                  type="text"
-                  {...register('address')}
-                  placeholder="Ej: Av. Industrial 1234, CABA"
-                  className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                />
-              </div>
+                {/* CARD 1: 📦 INFORMACIÓN GENERAL */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    <span className="text-base leading-none">📦</span>
+                    <span>Información General</span>
+                  </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Nombre del Responsable / Encargado
-                  </label>
-                  <input
-                    type="text"
-                    {...register('managerName')}
-                    placeholder="Ej: Carlos Gómez"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Teléfono del Responsable
-                  </label>
-                  <input
-                    type="text"
-                    {...register('phone')}
-                    placeholder="Ej: +54 9 11 9876 5432"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Email del Responsable
-                  </label>
-                  <input
-                    type="text"
-                    {...register('email')}
-                    placeholder="carlos@empresa.com"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Estado
-                  </label>
-                  <select
-                    {...register('status')}
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-slate-350 dark:border-slate-800 rounded-lg text-sm text-slate-705 dark:text-slate-300 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  >
-                    <option value="ACTIVE">Activo</option>
-                    <option value="INACTIVE">Inactivo</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* isMain Toggle option */}
-              <div className="flex items-center space-x-3 p-3 bg-slate-50 dark:bg-slate-800/40 rounded-lg border border-slate-150 dark:border-slate-800">
-                <input
-                  type="checkbox"
-                  id="isMainCheckbox"
-                  {...register('isMain')}
-                  className="h-4.5 w-4.5 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
-                />
-                <label htmlFor="isMainCheckbox" className="select-none text-sm text-slate-700 dark:text-slate-300 cursor-pointer">
-                  <strong>Marcar como depósito principal.</strong>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                    Solo puede existir un depósito principal por empresa. Si marcas esta casilla, el depósito principal actual se desmarcará automáticamente.
-                  </p>
-                </label>
-              </div>
-
-              {/* changeReason required if editing */}
-              {editingWarehouse && (
-                <div className="pt-2 border-t border-slate-205 dark:border-slate-800">
-                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 uppercase tracking-wider mb-2">
-                    Motivo del Cambio <span className="text-red-500">*</span>
-                  </label>
-                  <input
-                    type="text"
-                    {...register('changeReason')}
-                    placeholder="Ej: Actualización de datos de contacto del responsable"
-                    className="w-full px-3.5 py-2.5 bg-transparent border border-red-200 dark:border-red-800/40 rounded-lg text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
-                  />
-                  <p className="mt-1 text-[10px] text-slate-450 dark:text-slate-450">
-                    Historial de auditoría obligatorio. Debe ingresar al menos 4 caracteres explicando el cambio.
-                  </p>
-                </div>
-              )}
-
-              <div className="flex justify-end gap-3 pt-2">
-                <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting}>
-                  Cancelar
-                </Button>
-                <Button type="submit" disabled={isSubmitting}>
-                  {isSubmitting ? (
-                    <div className="flex items-center gap-1.5">
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                      Guardando...
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Nombre del Depósito <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        {...register('name')}
+                        placeholder="Ej: Depósito Central / Sucursal Belgrano"
+                        className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
+                          errors.name ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700'
+                        }`}
+                      />
+                      {errors.name && (
+                        <p className="mt-1 text-xs text-red-500 font-medium">{errors.name.message}</p>
+                      )}
                     </div>
-                  ) : (
-                    'Guardar Depósito'
-                  )}
-                </Button>
-              </div>
-            </form>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Código Interno
+                      </label>
+                      <input
+                        type="text"
+                        {...register('code')}
+                        placeholder="Ej: DEP-01"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Estado
+                      </label>
+                      <select
+                        {...register('status')}
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      >
+                        <option value="ACTIVE">Activo</option>
+                        <option value="INACTIVE">Inactivo</option>
+                      </select>
+                    </div>
+
+                    <div className="flex items-center pt-5">
+                      <label htmlFor="isMainCheckbox" className="flex items-center gap-2 cursor-pointer select-none">
+                        <input
+                          type="checkbox"
+                          id="isMainCheckbox"
+                          {...register('isMain')}
+                          className="h-4 w-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
+                        />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                          Depósito Principal (POS)
+                        </span>
+                      </label>
+                    </div>
+                  </div>
+                </div>
+
+                {/* CARD 2: 📍 UBICACIÓN & RESPONSABLE */}
+                <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+                  <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                    <span className="text-base leading-none">📍</span>
+                    <span>Ubicación & Responsable</span>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Dirección Física
+                    </label>
+                    <input
+                      type="text"
+                      {...register('address')}
+                      placeholder="Ej: Av. Industrial 1234, CABA"
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Encargado / Responsable
+                      </label>
+                      <input
+                        type="text"
+                        {...register('managerName')}
+                        placeholder="Ej: Carlos Gómez"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Teléfono
+                      </label>
+                      <input
+                        type="text"
+                        {...register('phone')}
+                        placeholder="Ej: +54 9 11 9876-5432"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                        Email Responsable
+                      </label>
+                      <input
+                        type="text"
+                        {...register('email')}
+                        placeholder="carlos@empresa.com"
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                      Descripción / Observaciones
+                    </label>
+                    <textarea
+                      {...register('description')}
+                      placeholder="Ej: Depósito principal de mercaderías e insumos generales."
+                      rows={2}
+                      className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all resize-none"
+                    />
+                  </div>
+                </div>
+
+                {/* CARD 3: 🛡 AUDITORÍA */}
+                {editingWarehouse && (
+                  <div className="bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/80 dark:border-amber-900/40 rounded-xl p-3.5 space-y-2.5 shadow-2xs">
+                    <div className="flex items-center gap-2 text-xs font-bold text-amber-900 dark:text-amber-300 uppercase tracking-wider">
+                      <span className="text-base leading-none">🛡</span>
+                      <span>Auditoría</span>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-semibold text-amber-900 dark:text-amber-400 mb-1">
+                        Motivo del Cambio <span className="text-red-500">*</span>
+                      </label>
+                      <input
+                        type="text"
+                        {...register('changeReason')}
+                        placeholder="Explique el motivo del cambio (mínimo 4 caracteres)..."
+                        className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700/80 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-amber-500 transition-all"
+                      />
+                    </div>
+                  </div>
+                )}
+              </form>
+            </div>
+
+            {/* Modal Footer - Fixed */}
+            <div className="flex-none pt-3 mt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+              <Button type="button" variant="outline" onClick={handleCloseModal} disabled={isSubmitting} className="text-xs px-4 rounded-lg">
+                Cancelar
+              </Button>
+              <Button type="submit" form="warehouse-form" disabled={isSubmitting} className="text-xs px-6 font-bold shadow-md rounded-lg">
+                {isSubmitting ? (
+                  <div className="flex items-center gap-1.5">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    Guardando...
+                  </div>
+                ) : (
+                  editingWarehouse ? 'Guardar Cambios' : 'Crear Depósito'
+                )}
+              </Button>
+            </div>
           </div>
         </div>
       )}

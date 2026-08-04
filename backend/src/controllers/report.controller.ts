@@ -14,7 +14,8 @@ export class ReportController {
   getExecutiveSummary = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user || !req.user.businessId) throw new AppError('Business ID is missing from Context', 400);
-      const data = await this.reportService.getExecutiveSummary(req.user.businessId);
+      const filters = reportQuerySchema.parse(req.query);
+      const data = await this.reportService.getExecutiveSummary(req.user.businessId, filters);
       res.status(200).json({ success: true, data });
     } catch (error) { next(error); }
   };

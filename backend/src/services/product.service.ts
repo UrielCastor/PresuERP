@@ -7,17 +7,21 @@ export class ProductService {
   private productRepo = new ProductRepository();
   private activityLogRepo = new ActivityLogRepository();
 
-  private parseProductPrices(product: any) {
+  private parseProductPrices(product: any, warehouseId?: string) {
     if (!product) return null;
     let purchasePrice = Number(product.purchasePrice) || 0;
     let salePrice = Number(product.salePrice) || 0;
     let profitMargin = product.profitMargin !== undefined && product.profitMargin !== null ? Number(product.profitMargin) : 30;
     let descriptionText = product.description || '';
 
-    // Calculate total stock from all warehouses
     let totalStock = 0;
     if (product.stocks && Array.isArray(product.stocks)) {
-      totalStock = product.stocks.reduce((sum: number, s: any) => sum + Number(s.quantity), 0);
+      if (warehouseId && warehouseId !== 'ALL') {
+        const whStock = product.stocks.find((s: any) => s.warehouseId === warehouseId);
+        totalStock = whStock ? Number(whStock.quantity) : 0;
+      } else {
+        totalStock = product.stocks.reduce((sum: number, s: any) => sum + Number(s.quantity), 0);
+      }
     }
 
     return {
@@ -30,17 +34,17 @@ export class ProductService {
     };
   }
 
-  async list(businessId: string, supplierId?: string) {
+  async list(businessId: string, supplierId?: string, warehouseId?: string) {
     const products = await this.productRepo.list(businessId, supplierId);
-    return products.map((p) => this.parseProductPrices(p));
+    return products.map((p) => this.parseProductPrices(p, warehouseId));
   }
 
-  async findById(id: string, businessId: string) {
+  async findById(id: string, businessId: string, warehouseId?: string) {
     const product = await this.productRepo.findById(id, businessId);
     if (!product) {
       throw new NotFoundError('Producto no encontrado');
     }
-    return this.parseProductPrices(product);
+    return this.parseProductPrices(product, warehouseId);
   }
 
   async create(data: any, operator: { id: string; businessId: string }, ip?: string, userAgent?: string) {
@@ -48,7 +52,7 @@ export class ProductService {
     if (dbSku) {
       const exists = await this.productRepo.findBySku(dbSku, operator.businessId);
       if (exists) {
-        throw new ConflictError('Ya existe un producto con este SKU en la empresa');
+        throw new ConflictError('Ya existe un producto con este Código Interno en la empresa');
       }
     }
 
@@ -70,14 +74,12 @@ export class ProductService {
       throw new NotFoundError('La categoría seleccionada no existe en la empresa');
     }
 
-    // Validate supplier if provided
-    if (data.supplierId && data.supplierId.trim() !== '') {
-      const supplierExists = await prisma.supplier.findFirst({
-        where: { id: data.supplierId, businessId: operator.businessId },
-      });
-      if (!supplierExists) {
-        throw new NotFoundError('El proveedor seleccionado no existe en la empresa');
-      }
+    // Extract supplierIds array or single supplierId fallback
+    let supplierIds: string[] | undefined = undefined;
+    if (Array.isArray(data.supplierIds)) {
+      supplierIds = data.supplierIds.filter((id: string) => typeof id === 'string' && id.trim() !== '');
+    } else if (data.supplierId && typeof data.supplierId === 'string' && data.supplierId.trim() !== '') {
+      supplierIds = [data.supplierId.trim()];
     }
 
     const purchase = Number(data.purchasePrice) || 0;
@@ -90,11 +92,14 @@ export class ProductService {
       barcode: dbBarcode,
       categoryId: data.categoryId,
       supplierId: (data.supplierId && data.supplierId.trim() !== '') ? data.supplierId : null,
+      supplierIds,
       status: data.status || 'ACTIVE',
       description: data.description || '',
       purchasePrice: purchase,
       salePrice: sale,
       profitMargin: margin,
+      unitOfMeasure: data.unitOfMeasure || 'UNIT',
+      allowSaleWithoutStock: data.allowSaleWithoutStock !== undefined ? Boolean(data.allowSaleWithoutStock) : false,
       businessId: operator.businessId,
     });
 
@@ -129,7 +134,7 @@ export class ProductService {
     if (dbSku && dbSku !== existing.sku) {
       const exists = await this.productRepo.findBySku(dbSku, operator.businessId);
       if (exists && exists.id !== id) {
-        throw new ConflictError('Ya existe otro producto con este SKU en la empresa');
+        throw new ConflictError('Ya existe otro producto con este Código Interno en la empresa');
       }
     }
 
@@ -153,14 +158,11 @@ export class ProductService {
       }
     }
 
-    // Validate supplier if provided
-    if (data.supplierId && data.supplierId.trim && data.supplierId.trim() !== '') {
-      const supplierExists = await prisma.supplier.findFirst({
-        where: { id: data.supplierId, businessId: operator.businessId },
-      });
-      if (!supplierExists) {
-        throw new NotFoundError('El proveedor seleccionado no existe en la empresa');
-      }
+    let supplierIds: string[] | undefined = undefined;
+    if (Array.isArray(data.supplierIds)) {
+      supplierIds = data.supplierIds.filter((sId: string) => typeof sId === 'string' && sId.trim() !== '');
+    } else if (data.supplierId !== undefined) {
+      supplierIds = data.supplierId && typeof data.supplierId === 'string' && data.supplierId.trim() !== '' ? [data.supplierId.trim()] : [];
     }
 
     const oldPurchasePrice = Number(existing.purchasePrice) || 0;
@@ -180,8 +182,8 @@ export class ProductService {
       margin = purchase > 0 ? ((sale - purchase) / purchase) * 100 : margin;
     }
 
-    const updatedSupplierId = data.supplierId !== undefined
-      ? (data.supplierId && data.supplierId.trim && data.supplierId.trim() !== '' ? data.supplierId : null)
+    const updatedSupplierId = supplierIds !== undefined
+      ? (supplierIds.length > 0 ? supplierIds[0] : null)
       : existing.supplierId;
 
     const updated = await this.productRepo.update(id, operator.businessId, {
@@ -190,11 +192,14 @@ export class ProductService {
       barcode: data.barcode !== undefined ? dbBarcode : existing.barcode,
       categoryId: data.categoryId,
       supplierId: updatedSupplierId,
+      supplierIds,
       status: data.status,
       description: data.description !== undefined ? data.description : existing.description,
       purchasePrice: purchase,
       salePrice: sale,
       profitMargin: margin,
+      unitOfMeasure: data.unitOfMeasure !== undefined ? data.unitOfMeasure : (existing as any).unitOfMeasure,
+      allowSaleWithoutStock: data.allowSaleWithoutStock !== undefined ? Boolean(data.allowSaleWithoutStock) : (existing as any).allowSaleWithoutStock,
     });
 
     const parsedUpdated = this.parseProductPrices(updated);

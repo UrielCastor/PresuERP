@@ -25,7 +25,9 @@ import {
   Warehouse,
   Boxes,
   ClipboardList,
-  History
+  History,
+  Building2,
+  Tag,
 } from 'lucide-react';
 import { menuConfig } from '../config/menu';
 import { Button } from '../components/ui/Button';
@@ -76,6 +78,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       case 'Settings': return <Settings className="h-5 w-5" />;
       case 'ShieldCheck': return <ShieldCheck className="h-5 w-5" />;
       case 'History': return <History className="h-5 w-5" />;
+      case 'Tag': return <Tag className="h-5 w-5" />;
       default: return null;
     }
   };
@@ -103,8 +106,8 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       return true;
     });
 
-  const handleLogout = () => {
-    logout();
+  const handleLogout = async () => {
+    await logout();
     navigate('/login');
   };
 

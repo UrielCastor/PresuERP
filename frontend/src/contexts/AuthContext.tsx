@@ -1,4 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
+import api from '../services/api';
+import { getInitialWarehouseId } from '../utils/warehouse';
 
 export interface User {
   id: string;
@@ -8,6 +11,9 @@ export interface User {
   businessId: string | null;
   permissions: string[];
   isStaff: boolean;
+  defaultWarehouseId?: string | null;
+  defaultWarehouse?: { id: string; name: string } | null;
+  userWarehouses?: Array<{ warehouseId: string; warehouse?: { id: string; name: string } }>;
 }
 
 interface AuthContextType {
@@ -16,7 +22,7 @@ interface AuthContextType {
   isAuthenticated: boolean;
   isLoading: boolean;
   login: (token: string, user: User) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   hasPermission: (permission: string) => boolean;
 }
 
@@ -26,6 +32,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [user, setUser] = useState<User | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const queryClient = useQueryClient();
 
   useEffect(() => {
     // Initial load check from localStorage to speed up initial render
@@ -49,13 +56,39 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     setUser(newUser);
     localStorage.setItem('accessToken', newToken);
     localStorage.setItem('user', JSON.stringify(newUser));
+
+    const initialWarehouseId = getInitialWarehouseId(newUser);
+
+    console.log('[AUTH USER] user completo después del login:', {
+      id: newUser.id,
+      email: newUser.email,
+      isStaff: newUser.isStaff,
+      defaultWarehouseId: newUser.defaultWarehouseId,
+      defaultWarehouse: newUser.defaultWarehouse,
+      userWarehouses: newUser.userWarehouses,
+      getInitialWarehouseId_result: initialWarehouseId,
+    });
   };
 
-  const logout = () => {
-    setToken(null);
-    setUser(null);
-    localStorage.removeItem('accessToken');
-    localStorage.removeItem('user');
+  const logout = async () => {
+    try {
+      // Call backend to revoke refresh token in database and clear cookies
+      await api.post('/auth/logout', {}, { withCredentials: true });
+    } catch (e) {
+      console.warn('Backend logout warning:', e);
+    } finally {
+      // Clear auth state, storage, and React Query cache unconditionally
+      setToken(null);
+      setUser(null);
+      localStorage.removeItem('accessToken');
+      localStorage.removeItem('user');
+      sessionStorage.clear();
+      try {
+        queryClient.clear();
+      } catch (e) {
+        // Fallback if queryClient is not available
+      }
+    }
   };
 
   const hasPermission = (permission: string): boolean => {
@@ -67,9 +100,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // system:* permissions are STRICTLY reserved for Staff
     if (permission.startsWith('system:')) return false;
 
-    // Tenant Administrator can do anything within their tenant
-    if (user.role === 'Administrator') return true;
-    
     return user.permissions.includes(permission);
   };
 

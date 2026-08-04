@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useQueryClient } from '@tanstack/react-query';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Input } from '../components/forms/Input';
@@ -20,6 +21,9 @@ import {
   NumberSettingsData
 } from '../services/settings.service';
 import { paymentAdjustmentRuleService, PaymentAdjustmentRule } from '../services/paymentAdjustmentRule.service';
+import { productPriceTierService, ProductPriceTier } from '../services/productPriceTier.service';
+import { promotionService, Promotion } from '../services/promotion.service';
+import { productApi } from '../services/product.service';
 import {
   Building, Settings as SettingsIcon, Percent, Printer, Mail, ListPlus,
   Loader2, AlertCircle, CheckCircle2, Palette, Users, Package, Store,
@@ -34,10 +38,9 @@ import { FiscalService, FiscalConfigData } from '../services/fiscal.service';
 
 export const Settings: React.FC = () => {
   const { user, hasPermission } = useAuth();
-  const canViewAudit =
-    Boolean(user?.role && ['OWNER', 'ADMIN', 'SUPER_ADMIN', 'Administrator', 'Administrador', 'Owner'].includes(user.role)) ||
-    hasPermission('reports:audit');
+  const canViewAudit = user?.isStaff || hasPermission('settings:read');
   const { preferences, updatePreference } = useAppearance();
+  const queryClient = useQueryClient();
   
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -50,7 +53,7 @@ export const Settings: React.FC = () => {
   const [bizData, setBizData] = useState<BusinessData>({ name: '', email: '', phone: '', address: '', website: '', city: '', state: '', country: 'Argentina', zipCode: '', subscriptionPlan: 'Professional', subscriptionEndsAt: '' });
   const [prefData, setPrefData] = useState<BusinessSettingsData>({ currencyCode: 'ARS', currencySymbol: '$', timezone: 'America/Argentina/Buenos_Aires', dateFormat: 'DD/MM/YYYY', timeFormat: '24h', decimalSeparator: ',', thousandSeparator: '.', decimalPlaces: 2, showCents: true, language: 'es', logoUrl: '', allowNegativeStock: false, warnMinimumStock: true, autoDeductStock: true, allowManualAdjustments: true, costingMethod: 'Promedio Ponderado' });
   const [fiscalData, setFiscalData] = useState<FiscalSettingsData>({ taxRegime: 'Responsable Inscripto', vatNumber: '', grossIncomeNumber: '', multilateralAgreement: false, mainPointOfSale: '00001', afipEnvironment: 'Testing', digitalCertificateUrl: '', isLocalTaxEnabled: true, defaultTaxRate: 21 });
-  const [posData, setPOSData] = useState<POSSettingsData>({ isAutoCloseSessionEnabled: false, maxCashLimit: 0, printReceiptAfterSale: true, isDiscountAllowed: true, maxDiscountPercentage: 100, defaultPaymentMethodId: null, defaultCashRegisterId: null, requireOpenCashRegister: true, allowMultipleRegisters: false, requireCustomerForSale: false, requireSellerForSale: false, ticketCopyCount: 1, showTicketPreview: true, allowMixedPayments: true, autoRounding: false });
+  const [posData, setPOSData] = useState<POSSettingsData>({ isAutoCloseSessionEnabled: false, maxCashLimit: 0, printReceiptAfterSale: true, isDiscountAllowed: true, maxDiscountPercentage: 100, defaultPaymentMethodId: null, defaultCashRegisterId: null, requireOpenCashRegister: true, allowMultipleRegisters: false, requireCustomerForSale: false, requireSellerForSale: false, ticketCopyCount: 1, showTicketPreview: true, allowMixedPayments: true, autoRounding: false, autoRoundingMode: 'CASH_ONLY' });
   const [printData, setPrintData] = useState<PrintSettingsData>({ printerType: 'THERMAL', paperWidth: '80MM', fontName: 'Monospace', headerText: '', footerText: '', logoSize: 100, margins: '0mm', showQr: false, showBarcode: false });
   const [emailData, setEmailData] = useState<EmailSettingsData>({ smtpHost: '', smtpPort: 587, smtpUser: '', smtpPassword: '', senderEmail: '', senderName: '', secureConnection: true });
   const [numberData, setNumberData] = useState<NumberSettingsData>({ currentPurchaseNumber: 1, currentSaleNumber: 1, currentTransferNumber: 1, currentInventoryNumber: 1 });
@@ -60,14 +63,19 @@ export const Settings: React.FC = () => {
   const [subscription, setSubscription] = useState<any>(null);
   const [selectedCycles, setSelectedCycles] = useState<Record<string, string>>({}); // planId -> selectedCycle
   const [payingPlanPrice, setPayingPlanPrice] = useState<string | null>(null); // spinner state
-  const [activeSection, setActiveSection] = useState('general');
+  const defaultSection = hasPermission('settings:read') ? 'general' : 'pos';
+  const [activeSection, setActiveSection] = useState(defaultSection);
   const [searchParams] = useSearchParams();
   const [arcaConfig, setArcaConfig] = useState<FiscalConfigData | null>(null);
 
   useEffect(() => {
-    const section = searchParams.get('section') || searchParams.get('tab');
-    if (section) {
-      setActiveSection(section);
+    if (window.location.pathname === '/settings/pos') {
+      setActiveSection('pos');
+    } else {
+      const section = searchParams.get('section') || searchParams.get('tab');
+      if (section) {
+        setActiveSection(section);
+      }
     }
   }, [searchParams]);
 
@@ -132,12 +140,142 @@ export const Settings: React.FC = () => {
     active: true
   });
 
+  // Precios por Cantidad States
+  const [priceTiers, setPriceTiers] = useState<ProductPriceTier[]>([]);
+  const [isTierModalOpen, setIsTierModalOpen] = useState<boolean>(false);
+  const [editingTierId, setEditingTierId] = useState<string | null>(null);
+  const [savingTier, setSavingTier] = useState<boolean>(false);
+  const [tierForm, setTierForm] = useState<{
+    productId: string;
+    minQuantity: number;
+    price: number;
+    isActive: boolean;
+  }>({
+    productId: '',
+    minQuantity: 10,
+    price: 1200,
+    isActive: true,
+  });
+  const [productsList, setProductsList] = useState<any[]>([]);
+
+  // Promotions State & Handlers
+  const [promotions, setPromotions] = useState<Promotion[]>([]);
+  const [isPromoModalOpen, setIsPromoModalOpen] = useState<boolean>(false);
+  const [editingPromoId, setEditingPromoId] = useState<string | null>(null);
+  const [savingPromo, setSavingPromo] = useState<boolean>(false);
+  const [promoForm, setPromoForm] = useState<{
+    name: string;
+    type: 'TWO_FOR_ONE' | 'SECOND_UNIT_DISCOUNT' | 'SPECIAL_PACK';
+    productId: string;
+    minQuantity: number;
+    discountPercentage: number;
+    specialPrice: number;
+    isActive: boolean;
+  }>({
+    name: '2x1 Promoción',
+    type: 'TWO_FOR_ONE',
+    productId: '',
+    minQuantity: 2,
+    discountPercentage: 20,
+    specialPrice: 0,
+    isActive: true,
+  });
+
+  const fetchPromotions = async () => {
+    try {
+      const promos = await promotionService.getAll();
+      setPromotions(promos);
+    } catch (err) {
+      console.error('Error fetching promotions', err);
+    }
+  };
+
   const fetchAdjustmentRules = async () => {
     try {
       const rules = await paymentAdjustmentRuleService.getAll();
       setAdjustmentRules(rules);
     } catch (err) {
       console.error('Error fetching payment adjustment rules', err);
+    }
+  };
+
+  const fetchPriceTiers = async () => {
+    try {
+      const tiers = await productPriceTierService.getAll();
+      setPriceTiers(tiers);
+    } catch (err) {
+      console.error('Error fetching product price tiers', err);
+    }
+  };
+
+  const fetchProductsList = async () => {
+    try {
+      const prods = await productApi.list();
+      setProductsList(prods);
+    } catch (err) {
+      console.error('Error fetching products list', err);
+    }
+  };
+
+  const openNewTierModal = () => {
+    setEditingTierId(null);
+    setTierForm({
+      productId: productsList.length > 0 ? productsList[0].id : '',
+      minQuantity: 10,
+      price: 1200,
+      isActive: true,
+    });
+    setIsTierModalOpen(true);
+  };
+
+  const openEditTierModal = (tier: ProductPriceTier) => {
+    setEditingTierId(tier.id);
+    setTierForm({
+      productId: tier.productId,
+      minQuantity: Number(tier.minQuantity),
+      price: Number(tier.price),
+      isActive: tier.isActive,
+    });
+    setIsTierModalOpen(true);
+  };
+
+  const handleSaveTier = async () => {
+    try {
+      setSavingTier(true);
+      if (editingTierId) {
+        await productPriceTierService.update(editingTierId, tierForm);
+      } else {
+        await productPriceTierService.create(tierForm);
+      }
+      await fetchPriceTiers();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+      setIsTierModalOpen(false);
+      setEditingTierId(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al guardar la regla de precio por cantidad');
+    } finally {
+      setSavingTier(false);
+    }
+  };
+
+  const handleDeleteTier = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta regla de precio por cantidad?')) return;
+    try {
+      await productPriceTierService.delete(id);
+      await fetchPriceTiers();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al eliminar la regla');
+    }
+  };
+
+  const handleToggleTierActive = async (tier: ProductPriceTier) => {
+    try {
+      await productPriceTierService.update(tier.id, { isActive: !tier.isActive });
+      await fetchPriceTiers();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+    } catch (err: any) {
+      alert('Error al cambiar el estado de la regla');
     }
   };
 
@@ -202,9 +340,80 @@ export const Settings: React.FC = () => {
     setIsRuleModalOpen(true);
   };
 
+  const openNewPromoModal = () => {
+    setEditingPromoId(null);
+    setPromoForm({
+      name: '',
+      type: 'TWO_FOR_ONE',
+      productId: productsList.length > 0 ? productsList[0].id : '',
+      minQuantity: 2,
+      discountPercentage: 20,
+      specialPrice: 0,
+      isActive: true,
+    });
+    setIsPromoModalOpen(true);
+  };
+
+  const openEditPromoModal = (promo: Promotion) => {
+    setEditingPromoId(promo.id);
+    setPromoForm({
+      name: promo.name,
+      type: promo.type,
+      productId: promo.productId,
+      minQuantity: promo.minQuantity,
+      discountPercentage: promo.discountPercentage ? Number(promo.discountPercentage) : 20,
+      specialPrice: promo.specialPrice ? Number(promo.specialPrice) : 0,
+      isActive: promo.isActive,
+    });
+    setIsPromoModalOpen(true);
+  };
+
+  const handleSavePromo = async () => {
+    try {
+      setSavingPromo(true);
+      if (editingPromoId) {
+        await promotionService.update(editingPromoId, promoForm);
+      } else {
+        await promotionService.create(promoForm);
+      }
+      await fetchPromotions();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+      setIsPromoModalOpen(false);
+      setEditingPromoId(null);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al guardar la promoción');
+    } finally {
+      setSavingPromo(false);
+    }
+  };
+
+  const handleDeletePromo = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar esta promoción?')) return;
+    try {
+      await promotionService.delete(id);
+      await fetchPromotions();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.message || 'Error al eliminar la promoción');
+    }
+  };
+
+  const handleTogglePromoActive = async (promo: Promotion) => {
+    try {
+      await promotionService.update(promo.id, { isActive: !promo.isActive });
+      await fetchPromotions();
+      queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+    } catch (err: any) {
+      alert('Error al cambiar el estado de la promoción');
+    }
+  };
+
   useEffect(() => { 
     fetchSettings(); 
     fetchAdjustmentRules();
+    fetchPriceTiers();
+    fetchPromotions();
+    fetchProductsList();
   }, []);
 
   const fetchSettings = async () => {
@@ -410,28 +619,33 @@ export const Settings: React.FC = () => {
     </div>
   );
 
-  const menuGroups = [
+  const rawMenuGroups = [
     { label: 'Configuración', items: [
-      { id: 'general', label: 'General', icon: Building },
-      { id: 'preferences', label: 'Preferencias', icon: SettingsIcon },
-      { id: 'fiscal', label: 'Fiscal', icon: Percent },
+      { id: 'general', label: 'General', icon: Building, permission: 'settings:read' },
+      { id: 'preferences', label: 'Preferencias', icon: SettingsIcon, permission: 'settings:read' },
+      { id: 'fiscal', label: 'Fiscal', icon: Percent, permission: 'settings:read' },
     ]},
     { label: 'Operación', items: [
-      { id: 'pos', label: 'POS', icon: ShoppingCart },
-      { id: 'print', label: 'Impresión', icon: Printer },
-      { id: 'email', label: 'Email', icon: Mail },
-      { id: 'numbers', label: 'Numeración', icon: ListPlus },
-      { id: 'inventory', label: 'Inventario', icon: Package },
+      { id: 'pos', label: 'POS', icon: ShoppingCart, permission: 'settings:pos:read' },
+      { id: 'print', label: 'Impresión', icon: Printer, permission: 'settings:read' },
+      { id: 'email', label: 'Email', icon: Mail, permission: 'settings:read' },
+      { id: 'numbers', label: 'Numeración', icon: ListPlus, permission: 'settings:read' },
+      { id: 'inventory', label: 'Inventario', icon: Package, permission: 'settings:read' },
     ]},
     { label: 'Sistema', items: [
-      { id: 'appearance', label: 'Apariencia', icon: Palette },
-      { id: 'security', label: 'Seguridad', icon: Shield },
-      { id: 'integrations', label: 'Integraciones', icon: Share2 },
+      { id: 'appearance', label: 'Apariencia', icon: Palette, permission: 'settings:read' },
+      { id: 'security', label: 'Seguridad', icon: Shield, permission: 'settings:read' },
+      { id: 'integrations', label: 'Integraciones', icon: Share2, permission: 'settings:read' },
     ]},
     { label: 'Administración', items: [
-      { id: 'license', label: 'Licencia', icon: Award },
+      { id: 'license', label: 'Licencia', icon: Award, permission: 'settings:read' },
     ]},
   ];
+
+  const menuGroups = rawMenuGroups.map(group => ({
+    ...group,
+    items: group.items.filter(item => !item.permission || hasPermission(item.permission))
+  })).filter(group => group.items.length > 0);
 
   return (
     <div className="space-y-5 pb-20 max-w-7xl mx-auto">
@@ -589,7 +803,63 @@ export const Settings: React.FC = () => {
                      <label className="flex items-center gap-3"><input type="checkbox" checked={posData.printReceiptAfterSale} onChange={e => setPOSData({...posData, printReceiptAfterSale: e.target.checked})} className="h-4 w-4"/>Impresión automática</label>
                      <label className="flex items-center gap-3"><input type="checkbox" checked={posData.allowMixedPayments} onChange={e => setPOSData({...posData, allowMixedPayments: e.target.checked})} className="h-4 w-4"/>Permitir pagos mixtos</label>
                      <label className="flex items-center gap-3"><input type="checkbox" checked={posData.isDiscountAllowed} onChange={e => setPOSData({...posData, isDiscountAllowed: e.target.checked})} className="h-4 w-4"/>Permitir descuentos</label>
-                     <label className="flex items-center gap-3"><input type="checkbox" checked={posData.autoRounding} onChange={e => setPOSData({...posData, autoRounding: e.target.checked})} className="h-4 w-4"/>Redondeo automático</label>
+                      <div className="space-y-2.5 col-span-1 md:col-span-2 p-3 bg-slate-50/70 dark:bg-slate-900/40 rounded-xl border border-slate-200/80 dark:border-slate-800/80">
+                        <label className="flex items-center gap-3 cursor-pointer select-none">
+                          <input
+                            type="checkbox"
+                            checked={Boolean(posData.autoRounding || posData.autoPriceRounding)}
+                            onChange={(e) =>
+                              setPOSData({
+                                ...posData,
+                                autoRounding: e.target.checked,
+                                autoPriceRounding: e.target.checked,
+                              })
+                            }
+                            className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                          />
+                          <span className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                            Redondeo automático
+                          </span>
+                        </label>
+
+                        {Boolean(posData.autoRounding || posData.autoPriceRounding) && (
+                          <div className="pl-7 space-y-2.5 animate-in fade-in duration-200">
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                              Los precios finales de venta se ajustarán automáticamente al valor comercial más cercano.
+                            </p>
+
+                            <div className="pt-1">
+                              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                                Aplicar redondeo:
+                              </label>
+                              <div className="flex flex-wrap items-center gap-4">
+                                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  <input
+                                    type="radio"
+                                    name="autoRoundingMode"
+                                    value="CASH_ONLY"
+                                    checked={(posData.autoRoundingMode || 'CASH_ONLY') === 'CASH_ONLY'}
+                                    onChange={() => setPOSData({ ...posData, autoRoundingMode: 'CASH_ONLY' })}
+                                    className="h-3.5 w-3.5 text-primary-600 focus:ring-primary-500"
+                                  />
+                                  Solo efectivo (Recomendado)
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer text-xs font-semibold text-slate-800 dark:text-slate-200">
+                                  <input
+                                    type="radio"
+                                    name="autoRoundingMode"
+                                    value="ALL_METHODS"
+                                    checked={posData.autoRoundingMode === 'ALL_METHODS'}
+                                    onChange={() => setPOSData({ ...posData, autoRoundingMode: 'ALL_METHODS' })}
+                                    className="h-3.5 w-3.5 text-primary-600 focus:ring-primary-500"
+                                  />
+                                  Todos los medios de pago
+                                </label>
+                              </div>
+                            </div>
+                          </div>
+                        )}
+                      </div>
                   </div>
                   <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
                      <Input type="number" id="dsc" label="Max. Descuento (%)" value={posData.maxDiscountPercentage} onChange={e => setPOSData({...posData, maxDiscountPercentage: Number(e.target.value)})} />
@@ -817,6 +1087,382 @@ export const Settings: React.FC = () => {
                         </Button>
                         <Button type="button" variant="primary" size="sm" onClick={handleSaveRule} disabled={savingRule}>
                           {savingRule ? 'Guardando...' : 'Guardar regla'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Precios por Cantidad Card */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle>Precios por Cantidad</CardTitle>
+                      <p className="text-xs text-slate-500 mt-1">Configuración automática de precios comerciales según la cantidad vendida de un producto.</p>
+                    </div>
+                    <Button type="button" variant="primary" size="sm" onClick={openNewTierModal}>
+                      <Plus className="w-4 h-4 mr-1.5" /> Nueva regla
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    {priceTiers.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                        <Layers className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                        <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No hay reglas de precios por cantidad configuradas</p>
+                        <p className="text-xs text-slate-400 mt-1">Haz clic en "+ Nueva regla" para automatizar escalas de precios por volumen.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="pb-3">Producto</th>
+                              <th className="pb-3">Cantidad mínima</th>
+                              <th className="pb-3">Precio</th>
+                              <th className="pb-3">Estado</th>
+                              <th className="pb-3 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {priceTiers.map((tier) => (
+                              <tr key={tier.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30">
+                                <td className="py-3 font-semibold text-slate-900 dark:text-slate-100">
+                                  {tier.product?.name || 'Producto N/A'}
+                                  {tier.product?.sku && <span className="text-xs text-slate-400 font-mono ml-2">({tier.product.sku})</span>}
+                                </td>
+                                <td className="py-3 font-mono font-bold text-slate-700 dark:text-slate-300">
+                                  {tier.minQuantity} u.
+                                </td>
+                                <td className="py-3 font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                                  ${Number(tier.price).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                                </td>
+                                <td className="py-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleToggleTierActive(tier)}
+                                    className="cursor-pointer"
+                                  >
+                                    {tier.isActive ? (
+                                      <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400">🟢 Activo</span>
+                                    ) : (
+                                      <span className="text-xs font-bold text-slate-400">🔴 Inactivo</span>
+                                    )}
+                                  </button>
+                                </td>
+                                <td className="py-3 text-right">
+                                  <div className="flex justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditTierModal(tier)}
+                                      className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg transition-colors"
+                                      title="Editar regla"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeleteTier(tier.id)}
+                                      className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors"
+                                      title="Eliminar regla"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Modal Form de Regla de Precio por Cantidad */}
+                {isTierModalOpen && (
+                  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 border border-slate-200 dark:border-slate-800">
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-base">
+                          {editingTierId ? 'Editar Regla de Precio por Cantidad' : 'Nueva Regla de Precio por Cantidad'}
+                        </h4>
+                        <button onClick={() => setIsTierModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Producto *</label>
+                          <select
+                            value={tierForm.productId}
+                            disabled={!!editingTierId}
+                            onChange={(e) => setTierForm({ ...tierForm, productId: e.target.value })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="">Seleccionar producto...</option>
+                            {productsList.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.sku ? `(${p.sku})` : ''} - Base: ${p.salePrice}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cantidad mínima *</label>
+                          <input
+                            type="number"
+                            min="1"
+                            step="1"
+                            value={tierForm.minQuantity}
+                            onChange={(e) => setTierForm({ ...tierForm, minQuantity: Number(e.target.value) })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Precio Unitario *</label>
+                          <input
+                            type="number"
+                            min="0.01"
+                            step="0.01"
+                            value={tierForm.price}
+                            onChange={(e) => setTierForm({ ...tierForm, price: Number(e.target.value) })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+
+                        <div className="flex items-center gap-3 pt-2">
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={tierForm.isActive}
+                              onChange={(e) => setTierForm({ ...tierForm, isActive: e.target.checked })}
+                              className="h-4 w-4 rounded text-indigo-600"
+                            />
+                            Regla activa
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setIsTierModalOpen(false)}>
+                          Cancelar
+                        </Button>
+                        <Button type="button" variant="primary" size="sm" onClick={handleSaveTier} disabled={savingTier}>
+                          {savingTier ? 'Guardando...' : 'Guardar'}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Promociones Card */}
+                <Card>
+                  <CardHeader className="flex flex-row items-center justify-between pb-2">
+                    <div>
+                      <CardTitle>Promociones</CardTitle>
+                      <p className="text-xs text-slate-500 mt-1">Configuración de promociones automáticas aplicadas durante la venta.</p>
+                    </div>
+                    <Button type="button" variant="primary" size="sm" onClick={openNewPromoModal}>
+                      <Plus className="w-4 h-4 mr-1.5" /> Nueva promoción
+                    </Button>
+                  </CardHeader>
+                  <CardContent className="pt-4">
+                    {promotions.length === 0 ? (
+                      <div className="text-center py-8 bg-slate-50 dark:bg-slate-900/40 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                        <Zap className="w-8 h-8 mx-auto text-slate-300 mb-2" />
+                        <p className="text-sm font-medium text-slate-600 dark:text-slate-400">No hay promociones configuradas</p>
+                        <p className="text-xs text-slate-400 mt-1">Haz clic en "+ Nueva promoción" para crear reglas 2x1, 2da unidad % o packs.</p>
+                      </div>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-sm">
+                          <thead>
+                            <tr className="border-b border-slate-200 dark:border-slate-800 text-xs font-bold text-slate-400 uppercase tracking-wider">
+                              <th className="pb-3">Nombre</th>
+                              <th className="pb-3">Tipo</th>
+                              <th className="pb-3">Producto</th>
+                              <th className="pb-3">Regla / Detalle</th>
+                              <th className="pb-3">Estado</th>
+                              <th className="pb-3 text-right">Acciones</th>
+                            </tr>
+                          </thead>
+                          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                            {promotions.map((promo) => (
+                              <tr key={promo.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-900/30">
+                                <td className="py-3 font-bold text-slate-900 dark:text-slate-100">
+                                  {promo.name}
+                                </td>
+                                <td className="py-3">
+                                  <span className="inline-flex items-center text-xs font-extrabold px-2 py-0.5 rounded bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                                    {promo.type === 'TWO_FOR_ONE' ? '2x1' : promo.type === 'SECOND_UNIT_DISCOUNT' ? '2da Unidad %' : 'Pack Especial'}
+                                  </span>
+                                </td>
+                                <td className="py-3 font-semibold text-slate-700 dark:text-slate-300">
+                                  {promo.product?.name || promo.productId}
+                                </td>
+                                <td className="py-3 text-xs font-mono">
+                                  {promo.type === 'TWO_FOR_ONE' && `Compra 2, paga 1`}
+                                  {promo.type === 'SECOND_UNIT_DISCOUNT' && `2da unidad ${promo.discountPercentage}% OFF`}
+                                  {promo.type === 'SPECIAL_PACK' && `Min ${promo.minQuantity} u. -> $${Number(promo.specialPrice).toLocaleString('es-AR')}`}
+                                </td>
+                                <td className="py-3">
+                                  <button
+                                    type="button"
+                                    onClick={() => handleTogglePromoActive(promo)}
+                                    className={`px-2 py-0.5 text-xs font-bold rounded-full transition-colors ${
+                                      promo.isActive
+                                        ? 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+                                        : 'bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400'
+                                    }`}
+                                  >
+                                    {promo.isActive ? 'Activa' : 'Inactiva'}
+                                  </button>
+                                </td>
+                                <td className="py-3 text-right">
+                                  <div className="flex items-center justify-end gap-1">
+                                    <button
+                                      type="button"
+                                      onClick={() => openEditPromoModal(promo)}
+                                      className="p-1 text-slate-400 hover:text-primary-600"
+                                      title="Editar"
+                                    >
+                                      <Edit2 className="w-4 h-4" />
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleDeletePromo(promo.id)}
+                                      className="p-1 text-slate-400 hover:text-rose-600"
+                                      title="Eliminar"
+                                    >
+                                      <Trash2 className="w-4 h-4" />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Modal Form de Promoción */}
+                {isPromoModalOpen && (
+                  <div className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-5 border border-slate-200 dark:border-slate-800">
+                      <div className="flex justify-between items-center pb-3 border-b border-slate-100 dark:border-slate-800">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-base">
+                          {editingPromoId ? 'Editar Promoción' : 'Nueva Promoción'}
+                        </h4>
+                        <button onClick={() => setIsPromoModalOpen(false)} className="text-slate-400 hover:text-slate-600">
+                          <X className="w-5 h-5" />
+                        </button>
+                      </div>
+
+                      <div className="space-y-4">
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Nombre Promoción *</label>
+                          <input
+                            type="text"
+                            placeholder="ej: 2x1 Fernet Branca"
+                            value={promoForm.name}
+                            onChange={(e) => setPromoForm({ ...promoForm, name: e.target.value })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          />
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Tipo de Promoción *</label>
+                          <select
+                            value={promoForm.type}
+                            onChange={(e) => setPromoForm({ ...promoForm, type: e.target.value as any })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="TWO_FOR_ONE">2x1 (Lleva 2, Paga 1)</option>
+                            <option value="SECOND_UNIT_DISCOUNT">Segunda Unidad con Descuento %</option>
+                            <option value="SPECIAL_PACK">Pack Especial por Volumen</option>
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Producto Afectado *</label>
+                          <select
+                            value={promoForm.productId}
+                            onChange={(e) => setPromoForm({ ...promoForm, productId: e.target.value })}
+                            className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-semibold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                          >
+                            <option value="">Seleccionar producto...</option>
+                            {productsList.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} {p.sku ? `(${p.sku})` : ''} - Base: ${p.salePrice}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+
+                        {promoForm.type === 'SECOND_UNIT_DISCOUNT' && (
+                          <div>
+                            <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Descuento en 2da Unidad (%) *</label>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              value={promoForm.discountPercentage}
+                              onChange={(e) => setPromoForm({ ...promoForm, discountPercentage: Number(e.target.value) })}
+                              className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                            />
+                          </div>
+                        )}
+
+                        {promoForm.type === 'SPECIAL_PACK' && (
+                          <>
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Cantidad Mínima del Pack *</label>
+                              <input
+                                type="number"
+                                min="2"
+                                value={promoForm.minQuantity}
+                                onChange={(e) => setPromoForm({ ...promoForm, minQuantity: Number(e.target.value) })}
+                                className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-bold uppercase tracking-wider text-slate-500 mb-1.5">Precio Especial del Pack ($) *</label>
+                              <input
+                                type="number"
+                                min="0.01"
+                                step="0.01"
+                                value={promoForm.specialPrice}
+                                onChange={(e) => setPromoForm({ ...promoForm, specialPrice: Number(e.target.value) })}
+                                className="w-full h-10 px-3 rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-sm font-mono font-bold focus:outline-none focus:ring-2 focus:ring-primary-500"
+                              />
+                            </div>
+                          </>
+                        )}
+
+                        <div className="flex items-center gap-3 pt-2">
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-300 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={promoForm.isActive}
+                              onChange={(e) => setPromoForm({ ...promoForm, isActive: e.target.checked })}
+                              className="h-4 w-4 rounded text-indigo-600"
+                            />
+                            Promoción activa
+                          </label>
+                        </div>
+                      </div>
+
+                      <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+                        <Button type="button" variant="outline" size="sm" onClick={() => setIsPromoModalOpen(false)}>
+                          Cancelar
+                        </Button>
+                        <Button type="button" variant="primary" size="sm" onClick={handleSavePromo} disabled={savingPromo}>
+                          {savingPromo ? 'Guardando...' : 'Guardar'}
                         </Button>
                       </div>
                     </div>
@@ -1479,7 +2125,9 @@ export const Settings: React.FC = () => {
                 </div>
               </div>
             )}
-          ].find(s => s.id === activeSection)?.content}
+          ].filter(tab => {
+            return menuGroups.some(group => group.items.some(item => item.id === tab.id));
+          }).find(s => s.id === activeSection)?.content}
         </div>
       </div>
       <style>{`

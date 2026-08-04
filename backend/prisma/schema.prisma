@@ -70,6 +70,7 @@ model Business {
   warehouseTransfers WarehouseTransfer[]
   products           Product[]
   priceLists         PriceList[]
+  productPriceTiers  ProductPriceTier[]
   stocks             Stock[]
   stockMovements     StockMovement[]
   inventories        Inventory[]
@@ -96,6 +97,7 @@ model Business {
   electronicInvoices  ElectronicInvoice[]
   fiscalCredentials   FiscalCredential[]
   fiscalErrorLogs     FiscalErrorLog[]
+  productPriceUpdates ProductPriceUpdateHistory[]
 
   @@index([taxId])
   @@index([isActive])
@@ -307,6 +309,8 @@ model POSSettings {
   showTicketPreview         Boolean  @default(true)
   allowMixedPayments        Boolean  @default(true)
   autoRounding              Boolean  @default(false)
+  autoPriceRounding         Boolean  @default(false)
+  autoRoundingMode          String   @default("CASH_ONLY")
   updatedAt                 DateTime @updatedAt
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
@@ -379,16 +383,19 @@ model User {
   password      String
   isActive      Boolean  @default(true)
   isStaff       Boolean  @default(false)
-  businessId    String?
-  roleId        String?
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  deletedAt     DateTime?
-  originalName  String?
-  originalEmail String?
+  businessId         String?
+  roleId             String?
+  defaultWarehouseId String?
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+  deletedAt          DateTime?
+  originalName       String?
+  originalEmail      String?
 
   business           Business?           @relation(fields: [businessId], references: [id], onDelete: Cascade)
   role               Role?               @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  defaultWarehouse   Warehouse?          @relation("DefaultWarehouseUser", fields: [defaultWarehouseId], references: [id], onDelete: SetNull)
+  userWarehouses     UserWarehouse[]
   sessions           RefreshToken[]
   audits             AuditLog[]
   activities         ActivityLog[]
@@ -402,6 +409,7 @@ model User {
   openedSessions     CashSession[]       @relation("OpenedByUser")
   closedSessions     CashSession[]       @relation("ClosedByUser")
   cashMovements      CashMovement[]
+  productPriceUpdates ProductPriceUpdateHistory[]
 
   @@index([businessId, email])
   @@map("users")
@@ -595,9 +603,10 @@ model Supplier {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  business  Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  products  Product[]
-  purchases Purchase[]
+  business         Business          @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  products         Product[]
+  productSuppliers ProductSupplier[]
+  purchases        Purchase[]
 
   @@unique([taxId, businessId])
   @@index([businessId])
@@ -631,10 +640,28 @@ model Warehouse {
   inventories       Inventory[]
   purchases         Purchase[]
   cashRegisters     CashRegister[]
+  sales             Sale[]
+  cashSessions      CashSession[]
+  authorizedUsers   UserWarehouse[]
+  defaultUsers      User[]              @relation("DefaultWarehouseUser")
 
   @@unique([code, businessId])
   @@index([businessId])
   @@map("warehouses")
+}
+
+model UserWarehouse {
+  userId      String
+  warehouseId String
+  createdAt   DateTime @default(now())
+
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, warehouseId])
+  @@index([userId])
+  @@index([warehouseId])
+  @@map("user_warehouses")
 }
 
 model WarehouseTransfer {
@@ -706,6 +733,24 @@ model PriceListItem {
 
   @@unique([priceListId, productId, minQuantity])
   @@map("price_list_items")
+}
+
+model ProductPriceTier {
+  id          String   @id @default(uuid())
+  businessId  String
+  productId   String
+  minQuantity Decimal  @default(1.000) @db.Decimal(12, 3)
+  price       Decimal  @db.Decimal(12, 2)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([businessId, productId, minQuantity])
+  @@index([businessId, productId, isActive])
+  @@map("product_price_tiers")
 }
 
 // ==========================================
@@ -819,31 +864,49 @@ model Product {
   purchasePrice Decimal  @default(0.00) @db.Decimal(12, 2)
   salePrice     Decimal  @default(0.00) @db.Decimal(12, 2)
   profitMargin  Decimal  @default(30.00) @db.Decimal(5, 2)
+  unitOfMeasure         String   @default("UNIT") // UNIT, KG, GRAM, LITER, METER
+  allowSaleWithoutStock Boolean  @default(false)
   businessId    String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
   // Framework relations
-  business       Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  category       Category                @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  subCategory    SubCategory?            @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
-  brand          Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
-  supplier       Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
-  images         ProductImage[]
-  barcodes       ProductBarcode[]
-  priceListItems PriceListItem[]
-  stocks         Stock[]
-  stockMovements StockMovement[]
-  transferItems  WarehouseTransferItem[]
-  inventoryItems InventoryItem[]
-  purchaseItems  PurchaseItem[]
-  saleItems      SaleItem[]
-  promotionItems PromotionItem[]
+  business         Business                @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  category         Category                @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  subCategory      SubCategory?            @relation(fields: [subCategoryId], references: [id], onDelete: SetNull)
+  brand            Brand?                  @relation(fields: [brandId], references: [id], onDelete: SetNull)
+  supplier         Supplier?               @relation(fields: [supplierId], references: [id], onDelete: SetNull)
+  productSuppliers ProductSupplier[]
+  images           ProductImage[]
+  barcodes         ProductBarcode[]
+  priceListItems   PriceListItem[]
+  priceTiers       ProductPriceTier[]
+  stocks           Stock[]
+  stockMovements   StockMovement[]
+  transferItems    WarehouseTransferItem[]
+  inventoryItems   InventoryItem[]
+  purchaseItems    PurchaseItem[]
+  saleItems        SaleItem[]
+  promotions       Promotion[]
 
   @@unique([sku, businessId])
   @@index([businessId, status])
   @@index([barcode, businessId])
   @@map("products")
+}
+
+model ProductSupplier {
+  productId  String
+  supplierId String
+  createdAt  DateTime @default(now())
+
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  supplier Supplier @relation(fields: [supplierId], references: [id], onDelete: Cascade)
+
+  @@id([productId, supplierId])
+  @@index([productId])
+  @@index([supplierId])
+  @@map("product_suppliers")
 }
 
 model ProductImage {
@@ -894,6 +957,7 @@ model Customer {
   active             Boolean                 @default(true)
   isActive           Boolean                 @default(true)
   defaultPriceListId String?
+  autoApplyPriceList Boolean                 @default(true)
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -1046,6 +1110,7 @@ model Sale {
   businessId       String
   customerId       String?
   cashSessionId    String?
+  warehouseId      String?
   documentTypeId   String
   documentSeriesId String?
   documentNumber   Int
@@ -1070,6 +1135,7 @@ model Sale {
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
   cashSession    CashSession?    @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  warehouse      Warehouse?      @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   documentType   DocumentType    @relation(fields: [documentTypeId], references: [id], onDelete: Restrict)
   documentSeries DocumentSeries? @relation(fields: [documentSeriesId], references: [id], onDelete: SetNull)
   createdBy      User            @relation("CreatedSalesByUser", fields: [createdById], references: [id], onDelete: Restrict)
@@ -1173,6 +1239,7 @@ model CashSession {
   id                    String    @id @default(uuid())
   businessId            String
   cashRegisterId        String
+  warehouseId           String?
   openedById            String
   closedById            String?
   openedAt              DateTime  @default(now())
@@ -1185,12 +1252,14 @@ model CashSession {
 
   business      Business       @relation(fields: [businessId], references: [id], onDelete: Cascade)
   cashRegister  CashRegister   @relation(fields: [cashRegisterId], references: [id], onDelete: Restrict)
+  warehouse     Warehouse?     @relation(fields: [warehouseId], references: [id], onDelete: SetNull)
   openedBy      User           @relation("OpenedByUser", fields: [openedById], references: [id], onDelete: Restrict)
   closedBy      User?          @relation("ClosedByUser", fields: [closedById], references: [id], onDelete: Restrict)
   sales         Sale[]
   cashMovements CashMovement[]
 
   @@index([businessId, status])
+  @@index([businessId, warehouseId, status])
   @@map("cash_sessions")
 }
 
@@ -1221,35 +1290,30 @@ model CashMovement {
 // 14. PROMOTIONS & MARKETING
 // ==========================================
 
-model Promotion {
-  id           String   @id @default(uuid())
-  businessId   String
-  name         String
-  description  String?  @db.Text
-  discountType String   @default("PERCENTAGE") // PERCENTAGE, FIXED_AMOUNT, BUY_X_GET_Y
-  value        Decimal  @db.Decimal(12, 2)
-  startDate    DateTime
-  endDate      DateTime
-  isActive     Boolean  @default(true)
-  createdAt    DateTime @default(now())
-
-  business Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
-  items    PromotionItem[]
-
-  @@index([businessId, isActive])
-  @@map("promotions")
+enum PromotionType {
+  TWO_FOR_ONE
+  SECOND_UNIT_DISCOUNT
+  SPECIAL_PACK
 }
 
-model PromotionItem {
-  id          String @id @default(uuid())
-  promotionId String
-  productId   String
+model Promotion {
+  id                 String        @id @default(uuid())
+  businessId         String
+  name               String
+  type               PromotionType
+  productId          String
+  minQuantity        Int           @default(2)
+  discountPercentage Float?
+  specialPrice       Decimal?      @db.Decimal(12, 2)
+  isActive           Boolean       @default(true)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  promotion Promotion @relation(fields: [promotionId], references: [id], onDelete: Cascade)
-  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  product  Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
 
-  @@unique([promotionId, productId])
-  @@map("promotion_items")
+  @@index([businessId, productId, isActive])
+  @@map("promotions")
 }
 
 // ==========================================
@@ -1530,6 +1594,29 @@ model FiscalErrorLog {
 
   @@index([businessId, createdAt])
   @@map("fiscal_error_logs")
+}
+
+model ProductPriceUpdateHistory {
+  id                    String   @id @default(uuid())
+  businessId            String
+  userId                String
+  type                  String
+  filterType            String
+  filterValue           String?
+  percentage            Float?
+  fixedAmount           Float?
+  multiplyFactor        Float?
+  affectedPurchasePrice Boolean  @default(false)
+  affectedSalePrice     Boolean  @default(false)
+  productsAffected      Int      @default(0)
+  createdAt             DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id])
+
+  @@index([businessId, createdAt])
+  @@index([userId])
+  @@map("product_price_update_histories")
 }
 
 

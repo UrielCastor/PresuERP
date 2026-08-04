@@ -13,6 +13,7 @@ import {
   Filter,
   CheckCircle2,
   XCircle,
+  Tag,
 } from 'lucide-react';
 import { Customer, getCustomers, deleteCustomer } from '../../services/customer.service';
 import { CustomerFormModal } from './CustomerFormModal';
@@ -165,6 +166,7 @@ export const Customers: React.FC = () => {
                   <th className="px-6 py-4">Tipo</th>
                   <th className="px-6 py-4">Documento / CUIT</th>
                   <th className="px-6 py-4">Contacto</th>
+                  <th className="px-6 py-4">Lista de precios</th>
                   <th className="px-6 py-4 text-center">Estado</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
@@ -211,6 +213,19 @@ export const Customers: React.FC = () => {
                         )}
                         {!c.phone && !c.email && <span className="text-slate-400">-</span>}
                       </div>
+                    </td>
+
+                    <td className="px-6 py-4">
+                      {c.defaultPriceList?.name ? (
+                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shadow-sm">
+                          <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          {c.defaultPriceList.name}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-slate-400 font-medium">
+                          Sin asignar
+                        </span>
+                      )}
                     </td>
 
                     <td className="px-6 py-4 text-center">

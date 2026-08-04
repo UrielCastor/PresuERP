@@ -111,11 +111,10 @@ Al registrar una empresa nueva mediante `AuthService.registerBusinessTenant` se 
 1.  **Validación de Claves Primarias**: Comprueba la inexistencia previa del identificador CUIT (`taxId`) y el correo del administrador.
 2.  **Alta del Inquilino**: Persiste la cabecera en la entidad `Business`.
 3.  **Permisos Modulares**: Recorre las 27 configuraciones del pool estático `whitelistPermissions` y realiza un upsert de los permisos en la base global compartida.
-4.  **Roles Predeterminados del Tenant**: Crea los 4 roles básicos del inquilino asociando la llave primaria `businessId` para que pertenezcan en exclusiva a su espacio lógico:
+4.  **Roles Predeterminados del Tenant**: Crea los 3 roles básicos del inquilino asociando la llave primaria `businessId` para que pertenezcan en exclusiva a su espacio lógico:
     *   `Administrator` (Acceso absoluto a la gestión total de tiendas).
     *   `Supervisor` (Acceso operacional y de compras ampliado).
     *   `Cajero` (Ventas y facturadores rápidos).
-    *   `Empleado` (Staff básico general).
 5.  **Mapeo de Relaciones**: Asocia las llaves correspondientes en la tabla relacional `RolePermission` (ej. administrador recluta el total de permisos; Cajero una selección mínima de lectura y cierre de caja).
 6.  **Hasheo de Contraseña**: Encriptado seguro usando `bcrypt` con 10 saltos.
 7.  **Persistencia Final del Operador**: Da de alta al registro inicial vinculando el rol `Administrator` y el tenant correspondiente.

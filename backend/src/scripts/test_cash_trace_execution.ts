@@ -39,10 +39,12 @@ async function main() {
     const registers = await cashService.getRegisters(business.id);
     const registerId = registers[0].id;
     console.log(`[SETUP] Abriendo nueva sesión de caja en la registradora: ${registerId}...`);
+    const warehouse = await prisma.warehouse.findFirst({ where: { businessId: business.id } });
     await cashService.openSession({
       businessId: business.id,
       userId: user.id,
       cashRegisterId: registerId,
+      warehouseId: warehouse?.id || '',
       openingBalance: 1000,
       notes: 'Sesión de prueba trazabilidad real'
     });

@@ -36,6 +36,7 @@ export class SaleService {
     businessId: string,
     userId: string,
     data: {
+      priceListId?: string | null;
       customerId?: string | null;
       cashSessionId?: string | null;
       documentTypeId?: string | null;
@@ -71,38 +72,57 @@ export class SaleService {
     console.log('[SALE CREATE]', {
       businessId,
       cashSessionIdRecibido: data.cashSessionId,
+      priceListId: data.priceListId,
       paymentMethod: (data as any).paymentMethod || data.payments?.[0]?.details,
       totalAmount: data.totalAmount,
     });
 
     const createdSale = await prisma.$transaction(async (tx) => {
       // 0. Resolver y Validar la sesión de caja obligatoria (Regla de negocio: Sin caja no hay venta)
+      let activeSession: any = null;
       let targetCashSessionId = data.cashSessionId;
-      if (!targetCashSessionId) {
-        const activeSession = await tx.cashSession.findFirst({
-          where: { businessId, status: 'OPEN', openedById: userId },
-          orderBy: { openedAt: 'desc' }
-        }) || await tx.cashSession.findFirst({
-          where: { businessId, status: 'OPEN' },
-          orderBy: { openedAt: 'desc' }
-        });
 
-        if (!activeSession) {
-          throw new BadRequestError('Es obligatorio tener una sesión de caja abierta para registrar una venta.');
-        }
-        targetCashSessionId = activeSession.id;
-      } else {
-        const activeSession = await tx.cashSession.findFirst({
-          where: { id: targetCashSessionId, businessId, status: 'OPEN' }
+      if (targetCashSessionId) {
+        activeSession = await tx.cashSession.findFirst({
+          where: { id: targetCashSessionId, businessId, status: 'OPEN' },
+          include: { cashRegister: true }
         });
-
         if (!activeSession) {
           throw new BadRequestError('La sesión de caja asignada no es válida o ya fue cerrada. Operación cancelada.');
         }
+      } else {
+        if (data.warehouseId) {
+          activeSession = await tx.cashSession.findFirst({
+            where: { businessId, status: 'OPEN', warehouseId: data.warehouseId },
+            include: { cashRegister: true },
+            orderBy: { openedAt: 'desc' }
+          });
+        }
+
+        if (!activeSession) {
+          activeSession = await tx.cashSession.findFirst({
+            where: { businessId, status: 'OPEN' },
+            include: { cashRegister: true },
+            orderBy: { openedAt: 'desc' }
+          });
+        }
+
+        if (!activeSession) {
+          throw new BadRequestError('Es obligatorio tener una sesión de caja abierta en la sucursal para registrar una venta.');
+        }
+        targetCashSessionId = activeSession.id;
       }
 
+      // Regla obligatoria: El depósito de la venta es SIEMPRE el de la CashSession activa
+      const effectiveWarehouseId = activeSession.warehouseId || activeSession.cashRegister?.warehouseId || data.warehouseId;
+      if (!effectiveWarehouseId) {
+        throw new BadRequestError('No fue posible determinar el depósito asociado a la sesión de caja activa.');
+      }
+      data.warehouseId = effectiveWarehouseId;
+
       console.log('[SALE CASH SESSION]', {
-        resolvedCashSessionId: targetCashSessionId
+        resolvedCashSessionId: targetCashSessionId,
+        effectiveWarehouseId,
       });
 
       // 1. Validar el almacén
@@ -121,16 +141,108 @@ export class SaleService {
         if (!item.quantity || item.quantity <= 0) {
           throw new BadRequestError('La cantidad vendida de cada producto debe ser mayor a cero.');
         }
-        calculatedSubtotal += item.quantity * item.unitPrice;
-        
-        // Consultar stock físico actual antes de descontar (Validación real ACID por la tx)
-        const stock = await tx.stock.findFirst({
-          where: { productId: item.productId, warehouseId: data.warehouseId, businessId },
+
+        let effectiveUnitPrice = item.unitPrice;
+        const product = await tx.product.findFirst({
+          where: { id: item.productId, businessId },
+          include: {
+            priceListItems: data.priceListId
+              ? { where: { priceListId: data.priceListId } }
+              : false,
+            priceTiers: {
+              where: { isActive: true },
+              orderBy: { minQuantity: 'asc' }
+            },
+            promotions: {
+              where: { isActive: true }
+            }
+          }
         });
 
-        if (!stock || Number(stock.quantity) < item.quantity) {
-           const prodName = await tx.product.findUnique({ where: { id: item.productId } }).then((p: any) => p?.name || item.productId);
-           throw new BadRequestError(`Stock negativo no permitido preventivamente. El producto ${prodName} no tiene suficiente existencia en el depósito seleccionado (Disponible: ${stock ? Number(stock.quantity) : 0}, Requerido: ${item.quantity}).`);
+        if (product) {
+          let matchingPriceListItem: any = null;
+          if (data.priceListId && (product as any).priceListItems && (product as any).priceListItems.length > 0) {
+            const items = (product as any).priceListItems
+              .filter((pli: any) => Number(pli.minQuantity) <= item.quantity)
+              .sort((a: any, b: any) => Number(b.minQuantity) - Number(a.minQuantity));
+            if (items.length > 0) matchingPriceListItem = items[0];
+          }
+
+          let matchingTier: any = null;
+          if ((product as any).priceTiers && (product as any).priceTiers.length > 0) {
+            const tiers = (product as any).priceTiers
+              .filter((pt: any) => Number(pt.minQuantity) <= item.quantity)
+              .sort((a: any, b: any) => Number(b.minQuantity) - Number(a.minQuantity));
+            if (tiers.length > 0) matchingTier = tiers[0];
+          }
+
+          let matchingPromo: any = null;
+          if ((product as any).promotions && (product as any).promotions.length > 0) {
+            const promos = (product as any).promotions
+              .filter((p: any) => item.quantity >= Number(p.minQuantity))
+              .sort((a: any, b: any) => Number(b.minQuantity) - Number(a.minQuantity));
+            if (promos.length > 0) matchingPromo = promos[0];
+          }
+
+          if (matchingPriceListItem && matchingTier) {
+            const pliMinQty = Number(matchingPriceListItem.minQuantity) || 1;
+            const tierMinQty = Number(matchingTier.minQuantity) || 1;
+            if (pliMinQty > 1 && pliMinQty >= tierMinQty) {
+              effectiveUnitPrice = Number(matchingPriceListItem.price);
+            } else if (tierMinQty > pliMinQty) {
+              effectiveUnitPrice = Number(matchingTier.price);
+            } else {
+              effectiveUnitPrice = Number(matchingPriceListItem.price);
+            }
+          } else if (matchingPriceListItem) {
+            effectiveUnitPrice = Number(matchingPriceListItem.price);
+          } else if (matchingTier) {
+            effectiveUnitPrice = Number(matchingTier.price);
+          } else if (matchingPromo) {
+            const base = Number(product.salePrice);
+            const qty = item.quantity;
+            if (matchingPromo.type === 'TWO_FOR_ONE') {
+              effectiveUnitPrice = (base * Math.ceil(qty / 2)) / qty;
+            } else if (matchingPromo.type === 'SECOND_UNIT_DISCOUNT') {
+              const desc = Number(matchingPromo.discountPercentage) || 0;
+              effectiveUnitPrice = (base * Math.ceil(qty / 2) + base * (1 - desc / 100) * Math.floor(qty / 2)) / qty;
+            } else if (matchingPromo.type === 'SPECIAL_PACK') {
+              const packPrice = Number(matchingPromo.specialPrice) || base;
+              const packQty = Number(matchingPromo.minQuantity) || 1;
+              effectiveUnitPrice = (packPrice * Math.floor(qty / packQty) + base * (qty % packQty)) / qty;
+            } else {
+              effectiveUnitPrice = base;
+            }
+          } else {
+            effectiveUnitPrice = Number(product.salePrice);
+          }
+        }
+
+        item.unitPrice = effectiveUnitPrice;
+        calculatedSubtotal += item.quantity * effectiveUnitPrice;
+        
+        // Jerarquía de Validación de Stock: 1) Config Global (systemSettings/posSettings) 2) Permitir sin stock individual (product.allowSaleWithoutStock) 3) Stock suficiente
+        const systemSettingsRow = await tx.businessSettings.findUnique({ where: { businessId } });
+        const posSettingsRow = await (tx as any).pOSSettings.findUnique({ where: { businessId } });
+
+        const globalAllowWithoutStock = Boolean(
+          systemSettingsRow?.allowNegativeStock ||
+          posSettingsRow?.allowNegativeStock ||
+          posSettingsRow?.allowSaleWithoutStock
+        );
+        const productAllowsWithoutStock = Boolean((product as any)?.allowSaleWithoutStock);
+        const canSellWithoutStock = globalAllowWithoutStock || productAllowsWithoutStock;
+
+        if (!canSellWithoutStock) {
+          const stock = await tx.stock.findFirst({
+            where: { productId: item.productId, warehouseId: data.warehouseId, businessId },
+          });
+
+          const availableStock = stock ? Number(stock.quantity) : 0;
+          if (availableStock < item.quantity) {
+            const prodName = (product as any)?.name || item.productId;
+            throw new BadRequestError(`Stock insuficiente. El producto '${prodName}' no tiene suficiente existencia en el depósito seleccionado (Disponible: ${availableStock}, Requerido: ${item.quantity}).`);
+          }
         }
       }
 
@@ -172,7 +284,61 @@ export class SaleService {
         calculatedSurcharges = Math.round(rawSurchargeValue * 100) / 100;
       }
 
-      const expectedTotal = calculatedSubtotal - calculatedDiscounts + calculatedSurcharges + calculatedTax;
+      const baseTotal = calculatedSubtotal - calculatedDiscounts + calculatedSurcharges + calculatedTax;
+
+      // Consultar configuración de redondeo automático del POS
+      const posSettings = await (tx as any).pOSSettings.findUnique({
+        where: { businessId },
+      });
+
+      const isGlobalRoundingConfigured = Boolean(
+        posSettings?.autoRounding || posSettings?.autoPriceRounding
+      );
+      const autoRoundingMode = posSettings?.autoRoundingMode || 'CASH_ONLY';
+
+      const rawPaymentMethod = (data as any).paymentMethod || data.payments?.[0]?.details;
+      const normalizedPaymentMethod = normalizePaymentMethodCode(rawPaymentMethod);
+
+      const isAutoRoundingActive = (() => {
+        if (!isGlobalRoundingConfigured) return false;
+        if (autoRoundingMode === 'CASH_ONLY') {
+          return normalizedPaymentMethod === 'CASH';
+        }
+        return true;
+      })();
+
+      let expectedTotal = Math.round(baseTotal * 100) / 100;
+      let roundingAmount = 0;
+
+      if (isAutoRoundingActive && expectedTotal > 0) {
+        const rounded = Math.round(expectedTotal / 100) * 100;
+        roundingAmount = Math.round((rounded - expectedTotal) * 100) / 100;
+        expectedTotal = rounded;
+      }
+
+      console.log('[DEBUG SALE TOTALS BACKEND]', {
+        subtotal: calculatedSubtotal,
+        descuentos: calculatedDiscounts,
+        recargos: calculatedSurcharges,
+        promociones: 0,
+        impuestos: calculatedTax,
+        redondeo: roundingAmount,
+        totalCalculado: expectedTotal,
+        totalRecibido: data.totalAmount,
+        diferencia: Math.round((data.totalAmount - expectedTotal) * 100) / 100
+      });
+
+      for (const item of data.items) {
+        console.log('[ITEM BACKEND LOG]', {
+          producto: item.productId,
+          cantidad: item.quantity,
+          precioUnitario: item.unitPrice,
+          descuento: item.discountAmount || 0,
+          subtotalItem: item.quantity * item.unitPrice,
+          totalItem: item.totalAmount || (item.quantity * item.unitPrice)
+        });
+      }
+
       if (Math.abs(expectedTotal - data.totalAmount) > 0.05) {
         throw new BadRequestError(`Los totales no coinciden. Calculado internamente: ${expectedTotal}, Recibido: ${data.totalAmount}`);
       }
@@ -325,6 +491,7 @@ export class SaleService {
           businessId,
           customerId: data.customerId,
           cashSessionId: targetCashSessionId,
+          warehouseId: data.warehouseId,
           documentTypeId: docType.id,
           documentSeriesId: data.documentSeriesId,
           documentNumber: saleNumber,

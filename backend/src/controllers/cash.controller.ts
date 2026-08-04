@@ -10,6 +10,7 @@ export class CashController {
         businessId: req.user!.businessId,
         userId: req.user!.id,
         cashRegisterId: req.body.cashRegisterId,
+        warehouseId: req.body.warehouseId,
         openingBalance: Number(req.body.openingBalance),
         notes: req.body.notes,
       });
@@ -26,6 +27,7 @@ export class CashController {
         userId: req.user!.id,
         countedBalance: Number(req.body.countedBalance),
         notes: req.body.notes,
+        warehouseId: req.body.warehouseId || (req.query.warehouseId as string),
       });
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
@@ -42,6 +44,7 @@ export class CashController {
         amount: Number(req.body.amount),
         concept: req.body.concept,
         notes: req.body.notes,
+        warehouseId: req.body.warehouseId || (req.query.warehouseId as string),
       });
       return res.status(201).json({ success: true, data: result });
     } catch (error) {
@@ -51,7 +54,8 @@ export class CashController {
 
   static async getActive(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await cashService.getActiveSession(req.user!.businessId, req.user!.id);
+      const warehouseId = req.query.warehouseId as string | undefined;
+      const result = await cashService.getActiveSession(req.user!.businessId, req.user!.id, warehouseId);
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
       return next(error);
@@ -60,7 +64,8 @@ export class CashController {
 
   static async getHistory(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await cashService.getHistory(req.user!.businessId);
+      const warehouseId = req.query.warehouseId as string | undefined;
+      const result = await cashService.getHistory(req.user!.businessId, warehouseId);
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
       return next(error);
@@ -78,7 +83,8 @@ export class CashController {
 
   static async getRegisters(req: Request, res: Response, next: NextFunction) {
     try {
-      const result = await cashService.getRegisters(req.user!.businessId);
+      const warehouseId = req.query.warehouseId as string | undefined;
+      const result = await cashService.getRegisters(req.user!.businessId, warehouseId);
       return res.status(200).json({ success: true, data: result });
     } catch (error) {
       return next(error);

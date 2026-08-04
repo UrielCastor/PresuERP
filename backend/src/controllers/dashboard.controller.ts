@@ -6,7 +6,8 @@ const dashboardService = new DashboardService();
 export class DashboardController {
   static async getDashboard(req: Request, res: Response, next: NextFunction) {
     try {
-      const summary = await dashboardService.getDashboardData(req.user!.businessId);
+      const warehouseId = req.query.warehouseId as string | undefined;
+      const summary = await dashboardService.getDashboardData(req.user!.businessId, warehouseId);
       return res.status(200).json({
         success: true,
         data: summary,

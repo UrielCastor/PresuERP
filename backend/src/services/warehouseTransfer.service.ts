@@ -2,7 +2,7 @@ import { WarehouseTransferRepository, CreateTransferInput } from '../repositorie
 import { StockMovementService } from './stockMovement.service';
 import { ActivityLogRepository } from '../repositories/activityLog.repository';
 import { prisma } from '../config/db';
-import { NotFoundError, BadRequestError } from '../utils/appError';
+import { NotFoundError, BadRequestError, ForbiddenError } from '../utils/appError';
 
 export class WarehouseTransferService {
   private transferRepo = new WarehouseTransferRepository();
@@ -40,6 +40,16 @@ export class WarehouseTransferService {
     });
     if (!targetWarehouse) {
       throw new BadRequestError('El depósito de destino especificado no existe o está inactivo.');
+    }
+
+    const userWarehouses = await prisma.userWarehouse.findMany({
+      where: { userId: createdById },
+    });
+    if (userWarehouses.length > 0) {
+      const allowed = userWarehouses.some((uw) => uw.warehouseId === input.sourceWarehouseId || uw.warehouseId === input.targetWarehouseId);
+      if (!allowed) {
+        throw new ForbiddenError('No tienes permisos autorizados sobre los depósitos involucrados en este traspaso.');
+      }
     }
 
     // 3. Validation: Verify source stock levels for each item

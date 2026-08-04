@@ -109,7 +109,7 @@ async update(id: string, businessId: string, data: any) {
 ## 5. ROLES Y CONFIGURACIÓN SEGREGADA POR TENANT
 
 *   **Autonomía Operativa**: Cada empresa posee la potestad de crear sus propios depósitos (`warehouses`), pool de marcas y proveedores logísticos.
-*   **Roles Independientes**: Las entidades vinculadas en la tabla `Role` pertenecen a inquilinos específicos a través de `businessId`. Un rol supervisor de la Empresa A no puede editarse, leerse ni asignarse sobre el personal empleado de la Empresa B.
+*   **Roles Independientes**: Las entidades vinculadas en la tabla `Role` pertenecen a inquilinos específicos a través de `businessId`. Un rol supervisor de la Empresa A no puede editarse, leerse ni asignarse sobre el personal de la Empresa B.
 
 ---
 

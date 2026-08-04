@@ -57,6 +57,7 @@ async function runTest() {
     businessId: business.id,
     userId: user.id,
     cashRegisterId: register.id,
+    warehouseId: warehouse.id,
     openingBalance: 500,
     notes: 'Prueba 5 Medios de Pago'
   });

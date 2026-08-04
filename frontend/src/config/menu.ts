@@ -35,6 +35,12 @@ export const menuConfig: MenuItem[] = [
         permission: 'products:read',
       },
       {
+        name: 'Listas de Precios',
+        href: '/price-lists',
+        iconName: 'Tag',
+        permission: 'products:read',
+      },
+      {
         name: 'Categorías',
         href: '/categories',
         iconName: 'FolderOpen',
@@ -76,7 +82,7 @@ export const menuConfig: MenuItem[] = [
     name: 'Clientes',
     href: '/customers',
     iconName: 'Users',
-    permission: 'sales:read',
+    permission: 'customers:read',
   },
   {
     name: 'Caja',
@@ -88,7 +94,13 @@ export const menuConfig: MenuItem[] = [
     name: 'Reportes',
     href: '/reports',
     iconName: 'TrendingUp',
-    permission: 'sales:read',
+    permission: 'reports:read',
+  },
+  {
+    name: 'Auditorías',
+    href: '/audit',
+    iconName: 'History',
+    permission: 'AUDIT_VIEW',
   },
   {
     name: 'Configuración',
@@ -107,10 +119,10 @@ export const menuConfig: MenuItem[] = [
         permission: 'settings:read',
       },
       {
-        name: 'Auditoría del Sistema',
-        href: '/system/audit',
-        iconName: 'History',
-        permission: 'AUDIT_VIEW',
+        name: 'POS',
+        href: '/settings/pos',
+        iconName: 'ShoppingCart',
+        permission: 'settings:pos:read',
       },
     ],
   },

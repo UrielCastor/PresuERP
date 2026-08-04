@@ -6,7 +6,7 @@ import morgan from 'morgan';
 import { env } from './config/env';
 import { logger } from './config/logger';
 import { errorHandler } from './middlewares/error.middleware';
-import apiRoutes from './routes';
+import apiRoutes from './routes'; // product-price-tiers routes active
 import mpWebhookRoute from './routes/mp-webhook.routes';
 
 const app = express();

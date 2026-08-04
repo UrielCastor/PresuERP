@@ -17,6 +17,12 @@ export interface Customer {
   allowCreditAccount?: boolean;
   creditLimit?: number;
   currentDebt?: number;
+  defaultPriceListId?: string | null;
+  autoApplyPriceList?: boolean;
+  defaultPriceList?: {
+    id: string;
+    name: string;
+  } | null;
   active: boolean;
   createdAt: string;
   updatedAt: string;

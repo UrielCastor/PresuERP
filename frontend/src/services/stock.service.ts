@@ -24,8 +24,9 @@ export interface StockAdjustmentPayload {
 }
 
 export const stockApi = {
-  list: async () => {
-    const response = await api.get<{ success: boolean; data: Stock[] }>('/stocks');
+  list: async (warehouseId?: string) => {
+    const params = warehouseId ? { warehouseId } : {};
+    const response = await api.get<{ success: boolean; data: Stock[] }>('/stocks', { params });
     return response.data.data;
   },
   findById: async (id: string) => {

@@ -49,7 +49,7 @@ A continuación se indexan las agrupaciones lógicas de funcionales, establecien
 **Funcionalidades:**
 ✅ Interfaz POS interactiva y minimalista.
 ✅ Flujo automatizado: Transacción POS descuento de cajas y reducción real paramétrica de inventario (Stock API).
-✅ Sesiones de Empleados de Cajero (Arqueo de Entradas).
+✅ Sesiones de Cajeros (Arqueo de Entradas).
 
 ---
 

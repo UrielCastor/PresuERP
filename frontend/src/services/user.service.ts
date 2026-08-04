@@ -11,8 +11,12 @@ export interface User {
   name: string;
   email: string;
   isActive: boolean;
+  isStaff?: boolean;
   roleId: string;
   role: Role;
+  defaultWarehouseId?: string | null;
+  defaultWarehouse?: { id: string; name: string } | null;
+  userWarehouses?: { warehouseId: string; warehouse: { id: string; name: string } }[];
   createdAt: string;
   updatedAt: string;
 }
@@ -24,6 +28,8 @@ export interface CreateUserData {
   confirmarPassword?: string;
   roleId: string;
   isActive?: boolean;
+  defaultWarehouseId?: string | null;
+  authorizedWarehouseIds?: string[];
 }
 
 export interface UpdateUserData {
@@ -33,6 +39,8 @@ export interface UpdateUserData {
   confirmarPassword?: string | null;
   roleId?: string;
   isActive?: boolean;
+  defaultWarehouseId?: string | null;
+  authorizedWarehouseIds?: string[];
 }
 
 export class UserService {

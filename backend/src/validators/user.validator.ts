@@ -12,6 +12,8 @@ export const createUserSchema = z.object({
       confirmarPassword: z.string().min(1, 'Debe confirmar la contraseña'),
       roleId: z.string().min(1, 'El rol es requerido'),
       isActive: z.boolean().optional(),
+      defaultWarehouseId: z.string().optional().nullable().or(z.literal('')),
+      authorizedWarehouseIds: z.array(z.string()).optional(),
     })
     .refine((data) => data.password === data.confirmarPassword, {
       message: 'Las contraseñas no coinciden',
@@ -38,6 +40,8 @@ export const updateUserSchema = z.object({
         .or(z.literal('')),
       roleId: z.string().min(1, 'El rol es requerido').optional(),
       isActive: z.boolean().optional(),
+      defaultWarehouseId: z.string().optional().nullable().or(z.literal('')),
+      authorizedWarehouseIds: z.array(z.string()).optional(),
     })
     .refine(
       (data) => {

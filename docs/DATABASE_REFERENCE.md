@@ -57,7 +57,7 @@ Este archivo consolida las principales Entidades de Datos sin omitir su interdep
   - *Uso:* Registro ticket TPV / Venta al consumidor.
   - *Relaciones:* Pertenece a un `Business`, Creador `User`, Cliente `Customer`, desglose en Array `SaleItem` (-> Producto).
 - **`CashSession` & `CashRegister`**
-  - *Uso:* Turno físico de recaudación de empleados de un comercio. Limitante temporal previo a ejecutar VENTAS.
+  - *Uso:* Turno físico de recaudación de los cajeros de un comercio. Limitante temporal previo a ejecutar VENTAS.
 - **`Purchase`**
   - *Uso:* Registro de gastos o abastecedores B2B `Suppliers`. Deriva en impacto a Kardex por recepciones.
 

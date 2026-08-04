@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { X, User, Building, CreditCard, Phone, Mail, MapPin, FileText, CheckCircle } from 'lucide-react';
+import { useQuery } from '@tanstack/react-query';
+import { X, User, Building, CreditCard, Phone, Mail, MapPin, FileText, CheckCircle, Tag } from 'lucide-react';
 import { Customer, createCustomer, updateCustomer } from '../../services/customer.service';
+import { priceListService } from '../../services/priceList.service';
 
 interface CustomerFormModalProps {
   isOpen: boolean;
@@ -15,6 +17,11 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   onSuccess,
   customer,
 }) => {
+  const { data: priceLists = [] } = useQuery({
+    queryKey: ['priceListsAll'],
+    queryFn: priceListService.getAll,
+  });
+
   const [formData, setFormData] = useState({
     type: 'PERSON' as 'PERSON' | 'COMPANY',
     name: '',
@@ -28,6 +35,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
     notes: '',
     allowCreditAccount: false,
     creditLimit: '' as number | string,
+    defaultPriceListId: '',
+    autoApplyPriceList: true,
   });
 
   const [loading, setLoading] = useState(false);
@@ -53,6 +62,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         notes: customer.notes || '',
         allowCreditAccount: Boolean(customer.allowCreditAccount),
         creditLimit: Number(customer.creditLimit || 0),
+        defaultPriceListId: customer.defaultPriceListId || '',
+        autoApplyPriceList: customer.autoApplyPriceList !== false,
       });
     } else {
       setFormData({
@@ -68,6 +79,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
         notes: '',
         allowCreditAccount: false,
         creditLimit: 0,
+        defaultPriceListId: '',
+        autoApplyPriceList: true,
       });
     }
     setError(null);
@@ -88,6 +101,8 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
     const payload = {
       ...formData,
       creditLimit: Number(formData.creditLimit) || 0,
+      defaultPriceListId: formData.defaultPriceListId || null,
+      autoApplyPriceList: Boolean(formData.autoApplyPriceList),
     };
 
     try {
@@ -106,270 +121,301 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-slate-50/50 dark:bg-slate-900/50">
-          <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 rounded-xl">
-              {formData.type === 'COMPANY' ? <Building className="w-5 h-5" /> : <User className="w-5 h-5" />}
-            </div>
-            <div>
-              <h2 className="text-lg font-bold text-slate-800 dark:text-slate-100">
-                {customer ? 'Editar Cliente' : 'Nuevo Cliente'}
-              </h2>
-              <p className="text-xs text-slate-500">
-                {customer ? 'Modificar datos del cliente seleccionado' : 'Ingresa los datos para registrar un cliente'}
-              </p>
-            </div>
-          </div>
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="relative w-full max-w-2xl bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-2xl p-5 flex flex-col max-h-[90vh] transition-all duration-300">
+        {/* Header del Modal */}
+        <div className="flex-none pb-3 border-b border-slate-100 dark:border-slate-800 mb-4">
           <button
             onClick={onClose}
-            className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            className="absolute right-4 top-4 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors"
           >
-            <X className="w-5 h-5" />
+            <X className="h-5 w-5" />
           </button>
+
+          <div className="flex items-center gap-2">
+            <span className="text-xl leading-none">👤</span>
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white pr-6">
+              {customer ? 'Editar Cliente' : 'Nuevo Cliente'}
+            </h2>
+          </div>
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            {customer ? 'Modifica la información comercial y fiscal del cliente.' : 'Registra los datos requeridos para dar de alta a un cliente.'}
+          </p>
         </div>
 
-        {/* Body Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-5 overflow-y-auto flex-1">
-          {error && (
-            <div className="p-3 text-sm text-red-700 bg-red-50 dark:bg-red-950/30 dark:text-red-400 rounded-xl border border-red-200 dark:border-red-900/50">
-              {error}
-            </div>
-          )}
-
-          {/* Type Selector */}
-          <div>
-            <label className="block text-xs font-semibold uppercase tracking-wider text-slate-500 mb-2">
-              Tipo de Cliente
-            </label>
-            <div className="grid grid-cols-2 gap-3">
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, type: 'PERSON' })}
-                className={`flex items-center justify-center gap-2 p-3 rounded-xl border font-semibold text-sm transition-all ${
-                  formData.type === 'PERSON'
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-500 shadow-sm'
-                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
-              >
-                <User className="w-4 h-4" /> Persona Física
-              </button>
-              <button
-                type="button"
-                onClick={() => setFormData({ ...formData, type: 'COMPANY' })}
-                className={`flex items-center justify-center gap-2 p-3 rounded-xl border font-semibold text-sm transition-all ${
-                  formData.type === 'COMPANY'
-                    ? 'border-indigo-600 bg-indigo-50 text-indigo-700 dark:bg-indigo-950/50 dark:text-indigo-300 dark:border-indigo-500 shadow-sm'
-                    : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-50 dark:hover:bg-slate-800/50'
-                }`}
-              >
-                <Building className="w-4 h-4" /> Empresa / Razón Social
-              </button>
-            </div>
-          </div>
-
-          {/* Basic Data Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Nombre / Razón Social <span className="text-red-500">*</span>
-              </label>
-              <input
-                type="text"
-                required
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                placeholder={formData.type === 'COMPANY' ? 'Ej. Logística Sur S.A.' : 'Ej. Juan Pérez'}
-                className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Documento / CUIT / DNI
-              </label>
-              <div className="relative">
-                <CreditCard className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={formData.document}
-                  onChange={(e) => setFormData({ ...formData, document: e.target.value })}
-                  placeholder="20-30405060-7"
-                  className="w-full text-sm pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Condición IVA
-              </label>
-              <select
-                value={formData.taxCondition}
-                onChange={(e) => setFormData({ ...formData, taxCondition: e.target.value })}
-                className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              >
-                <option value="Consumidor Final">Consumidor Final</option>
-                <option value="Responsable Inscripto">Responsable Inscripto</option>
-                <option value="Monotributo">Monotributo</option>
-                <option value="Exento">Exento</option>
-                <option value="Cliente Exterior">Cliente Exterior</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Teléfono / WhatsApp
-              </label>
-              <div className="relative">
-                <Phone className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                  placeholder="+54 9 11 1234-5678"
-                  className="w-full text-sm pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div className="md:col-span-2">
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Correo Electrónico
-              </label>
-              <div className="relative">
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  placeholder="cliente@ejemplo.com"
-                  className="w-full text-sm pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-          </div>
-
-          {/* Location Grid */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2 border-t border-slate-100 dark:border-slate-800">
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Dirección
-              </label>
-              <div className="relative">
-                <MapPin className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
-                <input
-                  type="text"
-                  value={formData.address}
-                  onChange={(e) => setFormData({ ...formData, address: e.target.value })}
-                  placeholder="Av. Corrientes 1234"
-                  className="w-full text-sm pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Localidad
-              </label>
-              <input
-                type="text"
-                value={formData.city}
-                onChange={(e) => setFormData({ ...formData, city: e.target.value })}
-                placeholder="CABA / Rosario / Córdoba"
-                className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                Provincia
-              </label>
-              <input
-                type="text"
-                value={formData.province}
-                onChange={(e) => setFormData({ ...formData, province: e.target.value })}
-                placeholder="Buenos Aires"
-                className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-              />
-            </div>
-          </div>
-
-          {/* Configuración de Cuenta Corriente */}
-          <div className="p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 bg-indigo-50/40 dark:bg-indigo-950/20 space-y-3">
-            <div className="flex items-center justify-between">
-              <div>
-                <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Cuenta Corriente</h4>
-                <p className="text-xs text-slate-500">Habilita compras a crédito con saldo adeudado para este cliente.</p>
-              </div>
-              <label className="relative inline-flex items-center cursor-pointer">
-                <input
-                  type="checkbox"
-                  checked={formData.allowCreditAccount}
-                  onChange={(e) => setFormData({ ...formData, allowCreditAccount: e.target.checked })}
-                  className="sr-only peer"
-                />
-                <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-indigo-600"></div>
-              </label>
-            </div>
-
-            {formData.allowCreditAccount && (
-              <div className="pt-2 animate-in fade-in duration-200">
-                <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-                  Límite Máximo de Crédito ($ ARS)
-                </label>
-                <input
-                  type="number"
-                  min="0"
-                  step="100"
-                  value={formData.creditLimit === 0 ? '' : formData.creditLimit}
-                  onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
-                  placeholder="0.00"
-                  className="w-full text-sm px-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-medium"
-                />
-                <p className="text-[11px] text-slate-400 mt-1">Límite mensual permitido para ventas a crédito en POS.</p>
+        {/* Scrollable Content */}
+        <div className="flex-1 overflow-y-auto pr-1">
+          <form id="customer-form" onSubmit={handleSubmit} className="space-y-3.5 pt-1">
+            {error && (
+              <div className="p-3 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800/40 rounded-lg text-xs text-red-600 dark:text-red-400 font-medium">
+                {error}
               </div>
             )}
-          </div>
 
-          {/* Notes */}
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800">
-            <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1">
-              Notas Internas
-            </label>
-            <div className="relative">
-              <FileText className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
+            {/* CARD 1: 📦 INFORMACIÓN GENERAL */}
+            <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-base leading-none">📦</span>
+                <span>Información General</span>
+              </div>
+
+              {/* Selector Persona / Empresa */}
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1.5">
+                  Tipo de Cliente
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: 'PERSON' })}
+                    className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border font-bold text-xs transition-all ${
+                      formData.type === 'PERSON'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <User className="w-4 h-4" /> Persona Física
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setFormData({ ...formData, type: 'COMPANY' })}
+                    className={`flex items-center justify-center gap-2 p-2.5 rounded-lg border font-bold text-xs transition-all ${
+                      formData.type === 'COMPANY'
+                        ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/40 dark:text-primary-300 shadow-2xs'
+                        : 'border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'
+                    }`}
+                  >
+                    <Building className="w-4 h-4" /> Empresa / Razón Social
+                  </button>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Nombre / Razón Social <span className="text-red-500">*</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={formData.name}
+                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                    placeholder={formData.type === 'COMPANY' ? 'Ej: Logística Sur S.A.' : 'Ej: Juan Pérez'}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Documento / CUIT / DNI
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.document}
+                    onChange={(e) => setFormData({ ...formData, document: e.target.value })}
+                    placeholder="Ej: 20-30405060-7"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                  Condición IVA
+                </label>
+                <select
+                  value={formData.taxCondition}
+                  onChange={(e) => setFormData({ ...formData, taxCondition: e.target.value })}
+                  className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                >
+                  <option value="Consumidor Final">Consumidor Final</option>
+                  <option value="Responsable Inscripto">Responsable Inscripto</option>
+                  <option value="Monotributo">Monotributo</option>
+                  <option value="Exento">Exento</option>
+                  <option value="Cliente Exterior">Cliente Exterior</option>
+                </select>
+              </div>
+            </div>
+
+            {/* CARD 2: 📞 CONTACTO & COMUNICACIÓN */}
+            <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-base leading-none">📞</span>
+                <span>Contacto & Comunicación</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Teléfono / WhatsApp
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    placeholder="+54 9 11 1234-5678"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Correo Electrónico
+                  </label>
+                  <input
+                    type="email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    placeholder="cliente@ejemplo.com"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 3: 📍 UBICACIÓN & DIRECCIÓN */}
+            <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-base leading-none">📍</span>
+                <span>Ubicación & Dirección</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Dirección
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.address}
+                    onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                    placeholder="Av. Corrientes 1234"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Localidad
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.city}
+                    onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                    placeholder="CABA / Rosario"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Provincia
+                  </label>
+                  <input
+                    type="text"
+                    value={formData.province}
+                    onChange={(e) => setFormData({ ...formData, province: e.target.value })}
+                    placeholder="Buenos Aires"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* CARD 4: 💲 PRECIOS & CUENTA CORRIENTE */}
+            <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-3 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-base leading-none">💲</span>
+                <span>Tarifas & Cuenta Corriente</span>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Lista de Precios Comercial
+                  </label>
+                  <select
+                    value={formData.defaultPriceListId}
+                    onChange={(e) => setFormData({ ...formData, defaultPriceListId: e.target.value })}
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all font-bold"
+                  >
+                    <option value="">-- Sin lista asignada (Tarifa General Base) --</option>
+                    {priceLists.map((pl: any) => (
+                      <option key={pl.id} value={pl.id}>
+                        {pl.name} {pl.isDefault ? '(Lista Base)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="flex items-center pt-5">
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={formData.allowCreditAccount}
+                      onChange={(e) => setFormData({ ...formData, allowCreditAccount: e.target.checked })}
+                      className="h-4 w-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
+                    />
+                    <span className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                      Habilitar Cuenta Corriente (Ventas a Crédito)
+                    </span>
+                  </label>
+                </div>
+              </div>
+
+              {formData.allowCreditAccount && (
+                <div>
+                  <label className="block text-xs font-semibold text-slate-600 dark:text-slate-400 mb-1">
+                    Límite Máximo de Crédito ($ ARS)
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="100"
+                    value={formData.creditLimit === 0 ? '' : formData.creditLimit}
+                    onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
+                    placeholder="0.00"
+                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                  />
+                </div>
+              )}
+            </div>
+
+            {/* CARD 5: 📝 DESCRIPCIÓN & NOTAS */}
+            <div className="bg-slate-50/70 dark:bg-slate-950/60 border border-slate-200/80 dark:border-slate-800/80 rounded-xl p-3.5 space-y-2 shadow-2xs">
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                <span className="text-base leading-none">📝</span>
+                <span>Notas Internas & Observaciones</span>
+              </div>
               <textarea
-                rows={3}
+                rows={2}
                 value={formData.notes}
                 onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
-                placeholder="Horarios de entrega, preferencias, observaciones..."
-                className="w-full text-sm pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 text-slate-800 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                placeholder="Horarios de entrega, preferencias comerciales, observaciones..."
+                className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all resize-none"
               />
             </div>
-          </div>
+          </form>
+        </div>
 
-          {/* Actions */}
-          <div className="flex items-center justify-end gap-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-            <button
-              type="button"
-              onClick={onClose}
-              className="px-4 py-2.5 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-xl transition-colors"
-            >
-              Cancelar
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-6 py-2.5 text-sm font-semibold text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 rounded-xl shadow-sm transition-all flex items-center gap-2"
-            >
-              <CheckCircle className="w-4 h-4" />
-              {loading ? 'Guardando...' : customer ? 'Guardar Cambios' : 'Crear Cliente'}
-            </button>
-          </div>
-        </form>
+        {/* Modal Footer - Fixed */}
+        <div className="flex-none pt-3 mt-3 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 text-xs font-medium text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-lg transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            type="submit"
+            form="customer-form"
+            disabled={loading}
+            className="px-6 py-2 text-xs font-bold text-white bg-primary-600 hover:bg-primary-700 disabled:opacity-50 rounded-lg shadow-md transition-all flex items-center gap-2"
+          >
+            {loading ? 'Guardando...' : customer ? 'Guardar Cambios' : 'Crear Cliente'}
+          </button>
+        </div>
       </div>
     </div>
   );

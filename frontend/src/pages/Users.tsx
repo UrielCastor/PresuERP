@@ -5,6 +5,7 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '../contexts/AuthContext';
 import { UserService, User } from '../services/user.service';
+import { warehouseApi } from '../services/warehouse.service';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardContent } from '../components/ui/Card';
 import { Input } from '../components/forms/Input';
@@ -34,6 +35,7 @@ import {
   Eye,
   EyeOff,
   Key,
+  Building2,
 } from 'lucide-react';
 
 const createUserFormSchema = z
@@ -100,6 +102,10 @@ export const Users: React.FC = () => {
   const [showEditConfirmPassword, setShowEditConfirmPassword] = useState(false);
   const [enablePasswordReset, setEnablePasswordReset] = useState(false);
 
+  // Warehouse state
+  const [selectedAuthorizedWarehouses, setSelectedAuthorizedWarehouses] = useState<string[]>([]);
+  const [selectedDefaultWarehouseId, setSelectedDefaultWarehouseId] = useState<string>('');
+
   // Queries
   const { data: usersData, isLoading: isLoadingUsers, error: usersError } = useQuery({
     queryKey: ['users'],
@@ -111,9 +117,14 @@ export const Users: React.FC = () => {
     queryFn: () => UserService.listRoles(),
   });
 
+  const { data: warehousesData = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: () => warehouseApi.list(),
+  });
+
   // Mutations
   const createUserMutation = useMutation({
-    mutationFn: (data: CreateUserFormValues) => UserService.create(data),
+    mutationFn: (data: any) => UserService.create(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setIsModalOpen(false);
@@ -125,15 +136,7 @@ export const Users: React.FC = () => {
   });
 
   const updateUserMutation = useMutation({
-    mutationFn: ({ id, data }: { id: string; data: EditUserFormValues }) =>
-      UserService.update(id, {
-        name: data.name,
-        email: data.email,
-        roleId: data.roleId,
-        isActive: data.isActive,
-        password: enablePasswordReset && data.password ? data.password : null,
-        confirmarPassword: enablePasswordReset && data.confirmarPassword ? data.confirmarPassword : null,
-      }),
+    mutationFn: ({ id, data }: { id: string; data: any }) => UserService.update(id, data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setIsModalOpen(false);
@@ -204,6 +207,8 @@ export const Users: React.FC = () => {
     setSubmitError(null);
     setShowPassword(false);
     setShowConfirmPassword(false);
+    setSelectedAuthorizedWarehouses([]);
+    setSelectedDefaultWarehouseId('');
     resetCreate({
       name: '',
       email: '',
@@ -225,6 +230,13 @@ export const Users: React.FC = () => {
     setEnablePasswordReset(false);
     setShowEditPassword(false);
     setShowEditConfirmPassword(false);
+
+    const initialAuthorized = (user.userWarehouses || [])
+      .map((uw: any) => uw.warehouseId || uw.warehouse?.id || uw.id)
+      .filter(Boolean);
+
+    setSelectedAuthorizedWarehouses(initialAuthorized);
+    setSelectedDefaultWarehouseId(user.defaultWarehouseId || user.defaultWarehouse?.id || '');
     resetEdit({
       name: user.name,
       email: user.email,
@@ -260,10 +272,37 @@ export const Users: React.FC = () => {
 
   const onSubmit = (data: any) => {
     setSubmitError(null);
+    const userId = editingUser?.id;
+    const defaultWarehouseId = selectedDefaultWarehouseId || null;
+    const authorizedWarehouseIds = selectedAuthorizedWarehouses;
+
+    console.log({
+      userId,
+      authorizedWarehouseIds,
+      defaultWarehouseId
+    });
+
+    const payload: any = {
+      name: data.name,
+      email: data.email,
+      roleId: data.roleId,
+      isActive: data.isActive,
+      authorizedWarehouseIds,
+      defaultWarehouseId,
+    };
+
+    console.log('🔥 [FRONTEND USER SUBMIT PAYLOAD]', JSON.stringify(payload, null, 2));
+
     if (editingUser) {
-      updateUserMutation.mutate({ id: editingUser.id, data });
+      if (enablePasswordReset && data.password) {
+        payload.password = data.password;
+        payload.confirmarPassword = data.confirmarPassword;
+      }
+      updateUserMutation.mutate({ id: editingUser.id, data: payload });
     } else {
-      createUserMutation.mutate(data);
+      payload.password = data.password;
+      payload.confirmarPassword = data.confirmarPassword;
+      createUserMutation.mutate(payload);
     }
   };
 
@@ -277,7 +316,6 @@ export const Users: React.FC = () => {
       u.role?.name.toLowerCase().includes(searchTerm.toLowerCase())
   ) || [];
 
-  const isAdmin = currentUser?.role === 'Administrator';
 
   // Role Badge Styling classes helper
   const getRoleBadgeClasses = (roleName: string) => {
@@ -356,6 +394,8 @@ export const Users: React.FC = () => {
                   <TableHead className="font-semibold">Nombre</TableHead>
                   <TableHead className="font-semibold">E-mail</TableHead>
                   <TableHead className="font-semibold">Rol de Sistema</TableHead>
+                  <TableHead className="font-semibold">Depósitos Autorizados</TableHead>
+                  <TableHead className="font-semibold">Depósito Predeterminado</TableHead>
                   <TableHead className="font-semibold">Estado</TableHead>
                   <TableHead className="font-semibold">Fecha de Alta</TableHead>
                   <TableHead className="text-right font-semibold">Acciones</TableHead>
@@ -364,7 +404,7 @@ export const Users: React.FC = () => {
               <TableBody>
                 {filteredUsers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="text-center py-12 text-slate-400">
+                    <TableCell colSpan={8} className="text-center py-12 text-slate-400">
                       No se encontraron usuarios registrados.
                     </TableCell>
                   </TableRow>
@@ -386,9 +426,38 @@ export const Users: React.FC = () => {
                       </TableCell>
                       <TableCell className="text-slate-600 dark:text-slate-300 font-mono text-xs">{item.email}</TableCell>
                       <TableCell>
-                        <span className={getRoleBadgeClasses(item.role?.name || 'Empleado')}>
+                        <span className={getRoleBadgeClasses(item.role?.name || '')}>
                           {item.role?.name || 'Cargando...'}
                         </span>
+                      </TableCell>
+                      <TableCell>
+                        {item.isStaff ? (
+                          <span className="text-xs text-purple-600 dark:text-purple-400 font-semibold flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            Todos (Staff)
+                          </span>
+                        ) : item.userWarehouses && item.userWarehouses.length > 0 ? (
+                          <div className="flex flex-wrap gap-1">
+                            {item.userWarehouses.map((uw) => (
+                              <span key={uw.warehouseId} className="inline-flex items-center gap-1 rounded bg-slate-100 px-2 py-0.5 text-[11px] font-medium text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                <Building2 className="h-3 w-3 text-slate-400" />
+                                {uw.warehouse.name}
+                              </span>
+                            ))}
+                          </div>
+                        ) : (
+                          <span className="text-xs text-rose-500 dark:text-rose-400 italic font-medium">Sin depósitos</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-xs font-medium text-slate-700 dark:text-slate-300">
+                        {item.defaultWarehouse?.name ? (
+                          <span className="inline-flex items-center gap-1 text-primary-600 dark:text-primary-400">
+                            <Building2 className="h-3 w-3" />
+                            {item.defaultWarehouse.name}
+                          </span>
+                        ) : (
+                          <span className="text-slate-400 dark:text-slate-500">-</span>
+                        )}
                       </TableCell>
                       <TableCell>
                         <button
@@ -507,7 +576,7 @@ export const Users: React.FC = () => {
                 </label>
                 <select
                   id="edit-roleId"
-                  disabled={!isAdmin}
+                  disabled={!hasPermission('users:write')}
                   className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:text-sm transition-all duration-200 disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-900/50"
                   {...registerEdit('roleId')}
                 >
@@ -521,7 +590,7 @@ export const Users: React.FC = () => {
                     ))
                   )}
                 </select>
-                {!isAdmin && (
+                {!hasPermission('users:write') && (
                   <p className="text-[10px] text-slate-450 dark:text-slate-500 italic mt-0.5">
                     * Solo los administradores pueden cambiar roles de usuario.
                   </p>
@@ -550,6 +619,60 @@ export const Users: React.FC = () => {
                 >
                   Usuario activo (Habilita el ingreso al sistema)
                 </label>
+              </div>
+
+              {/* SECCIÓN DE DEPÓSITOS PERMITIDOS */}
+              <div className="border-t border-slate-150 dark:border-slate-800 pt-4 mt-2 space-y-3">
+                <label className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary-500" />
+                  Depósitos Autorizados
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Selecciona los depósitos a los que este usuario tendrá acceso. Si no seleccionas ningún depósito, el usuario no podrá operar en ningún depósito.
+                </p>
+                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                  {warehousesData.map((wh) => (
+                    <label key={wh.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedAuthorizedWarehouses.includes(wh.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAuthorizedWarehouses([...selectedAuthorizedWarehouses, wh.id]);
+                          } else {
+                            const updated = selectedAuthorizedWarehouses.filter((id) => id !== wh.id);
+                            setSelectedAuthorizedWarehouses(updated);
+                            if (selectedDefaultWarehouseId === wh.id) {
+                              setSelectedDefaultWarehouseId(updated[0] || '');
+                            }
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>{wh.name}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Depósito Predeterminado
+                  </label>
+                  <select
+                    value={selectedDefaultWarehouseId}
+                    onChange={(e) => setSelectedDefaultWarehouseId(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:text-sm"
+                  >
+                    <option value="">-- Sin depósito predeterminado --</option>
+                    {warehousesData
+                      .filter((w) => selectedAuthorizedWarehouses.length === 0 || selectedAuthorizedWarehouses.includes(w.id))
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
 
               {/* SECURITY / RESET PASSWORD SECTION */}
@@ -727,7 +850,7 @@ export const Users: React.FC = () => {
                 </label>
                 <select
                   id="create-roleId"
-                  disabled={!isAdmin}
+                  disabled={!hasPermission('users:write')}
                   className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:border-primary-500 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:text-sm transition-all duration-200 disabled:bg-slate-50 disabled:text-slate-500 dark:disabled:bg-slate-900/50"
                   {...registerCreate('roleId')}
                 >
@@ -741,7 +864,7 @@ export const Users: React.FC = () => {
                     ))
                   )}
                 </select>
-                {!isAdmin && (
+                {!hasPermission('users:write') && (
                   <p className="text-[10px] text-slate-450 dark:text-slate-500 italic mt-0.5">
                     * Solo los administradores pueden asignar roles de usuario.
                   </p>
@@ -762,6 +885,60 @@ export const Users: React.FC = () => {
                 <label htmlFor="create-isActive" className="text-sm font-medium text-slate-700 dark:text-slate-205 cursor-pointer">
                   Usuario activo (Habilita el ingreso al sistema)
                 </label>
+              </div>
+
+              {/* SECCIÓN DE DEPÓSITOS PERMITIDOS */}
+              <div className="border-t border-slate-150 dark:border-slate-800 pt-4 mt-2 space-y-3">
+                <label className="text-sm font-semibold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Building2 className="h-4 w-4 text-primary-500" />
+                  Depósitos Autorizados
+                </label>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Selecciona los depósitos en los que este usuario tiene permiso para operar. Si no seleccionas ninguno, el usuario podrá acceder a todos los depósitos.
+                </p>
+                <div className="grid grid-cols-2 gap-2 max-h-36 overflow-y-auto p-2.5 bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-800">
+                  {warehousesData.map((wh) => (
+                    <label key={wh.id} className="flex items-center gap-2 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={selectedAuthorizedWarehouses.includes(wh.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) {
+                            setSelectedAuthorizedWarehouses([...selectedAuthorizedWarehouses, wh.id]);
+                          } else {
+                            const updated = selectedAuthorizedWarehouses.filter((id) => id !== wh.id);
+                            setSelectedAuthorizedWarehouses(updated);
+                            if (selectedDefaultWarehouseId === wh.id) {
+                              setSelectedDefaultWarehouseId(updated[0] || '');
+                            }
+                          }
+                        }}
+                        className="h-4 w-4 rounded border-slate-300 text-primary-600 focus:ring-primary-500"
+                      />
+                      <span>{wh.name}</span>
+                    </label>
+                  ))}
+                </div>
+
+                <div className="flex flex-col gap-1.5 pt-1">
+                  <label className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    Depósito Predeterminado
+                  </label>
+                  <select
+                    value={selectedDefaultWarehouseId}
+                    onChange={(e) => setSelectedDefaultWarehouseId(e.target.value)}
+                    className="block w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-slate-900 focus:outline-none focus:ring-1 focus:ring-primary-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100 sm:text-sm"
+                  >
+                    <option value="">-- Sin depósito predeterminado --</option>
+                    {warehousesData
+                      .filter((w) => selectedAuthorizedWarehouses.length === 0 || selectedAuthorizedWarehouses.includes(w.id))
+                      .map((w) => (
+                        <option key={w.id} value={w.id}>
+                          {w.name}
+                        </option>
+                      ))}
+                  </select>
+                </div>
               </div>
             </>
           )}

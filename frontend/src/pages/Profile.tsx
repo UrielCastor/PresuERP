@@ -71,9 +71,13 @@ export const Profile: React.FC = () => {
             <div className="mt-8 border-t border-slate-100 dark:border-slate-800 pt-6">
               <h4 className="text-xs font-semibold text-slate-405 uppercase tracking-wider mb-3">Permisos Habilitados</h4>
               <div className="flex flex-wrap gap-2">
-                {user?.role === 'Administrator' ? (
+                {user?.isStaff ? (
                   <span className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-950/20 dark:text-primary-400">
-                    Acceso Total (Administrator Bypass)
+                    Acceso Total (Staff)
+                  </span>
+                ) : user?.role === 'Administrator' ? (
+                  <span className="inline-flex items-center rounded-full bg-primary-50 px-2.5 py-0.5 text-xs font-medium text-primary-700 dark:bg-primary-950/20 dark:text-primary-400">
+                    Acceso Total (Administrador)
                   </span>
                 ) : (
                   user?.permissions.map((perm) => (

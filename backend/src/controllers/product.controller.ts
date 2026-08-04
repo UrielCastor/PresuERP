@@ -7,7 +7,8 @@ export class ProductController {
   static async list(req: Request, res: Response, next: NextFunction) {
     try {
       const supplierId = req.query.supplierId ? String(req.query.supplierId) : undefined;
-      const items = await productService.list(req.user!.businessId, supplierId);
+      const warehouseId = req.query.warehouseId ? String(req.query.warehouseId) : undefined;
+      const items = await productService.list(req.user!.businessId, supplierId, warehouseId);
       return res.status(200).json({
         success: true,
         data: items,
