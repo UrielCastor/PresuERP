@@ -9,30 +9,47 @@ export class WarehouseService {
 
   async list(businessId: string, userId?: string) {
     const allWarehouses = await this.warehouseRepo.list(businessId);
-    if (!userId) return allWarehouses;
 
-    const user = await prisma.user.findUnique({
-      where: { id: userId },
-      select: { isStaff: true },
-    });
+    const user = userId
+      ? await prisma.user.findUnique({
+          where: { id: userId },
+          include: { role: true }
+        })
+      : null;
 
-    // isStaff = true -> Access to all warehouses
-    if (user?.isStaff) {
-      return allWarehouses;
+    // Determine condition path and select appropriate warehouses
+    let path = 'user filter';
+    let finalWarehouses = [];
+
+    if (!userId) {
+      path = 'no userId provided (bypass)';
+      finalWarehouses = allWarehouses;
+    } else if (user?.isStaff) {
+      path = 'global staff bypass';
+      finalWarehouses = allWarehouses;
+    } else if (user?.role?.name === 'Administrator') {
+      path = 'local Administrator bypass';
+      finalWarehouses = allWarehouses;
+    } else {
+      // Normal user filter
+      const userWarehouses = await prisma.userWarehouse.findMany({
+        where: { userId },
+        select: { warehouseId: true },
+      });
+      const allowedIds = new Set(userWarehouses.map((uw) => uw.warehouseId));
+      finalWarehouses = allWarehouses.filter((w) => allowedIds.has(w.id));
     }
 
-    // isStaff = false -> Access ONLY to authorized userWarehouses
-    const userWarehouses = await prisma.userWarehouse.findMany({
-      where: { userId },
-      select: { warehouseId: true },
-    });
+    console.log(`[WarehouseService.list] AUDIT LOG:
+- user.id: ${userId || 'N/A'}
+- user.role.name: ${user?.role?.name || 'N/A'}
+- user.isStaff: ${user?.isStaff || false}
+- businessId: ${businessId}
+- condicion: ${path}
+- cantidad encontrada antes del filtro: ${allWarehouses.length}
+- cantidad encontrada después del filtro: ${finalWarehouses.length}`);
 
-    if (userWarehouses.length === 0) {
-      return [];
-    }
-
-    const allowedIds = new Set(userWarehouses.map((uw) => uw.warehouseId));
-    return allWarehouses.filter((w) => allowedIds.has(w.id));
+    return finalWarehouses;
   }
 
   async findById(id: string, businessId: string) {
