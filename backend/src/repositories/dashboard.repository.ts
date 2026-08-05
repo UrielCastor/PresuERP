@@ -3,7 +3,28 @@ import { calculateSessionTotals } from '../services/cash.service';
 
 export class DashboardRepository {
   async getSalesTotal(businessId: string, startDate: Date, endDate: Date, warehouseId?: string): Promise<number> {
-    const warehouseFilter = warehouseId && warehouseId !== 'ALL' ? { warehouseId } : undefined;
+    const cleanWarehouseId = (warehouseId && warehouseId !== 'ALL' && warehouseId !== 'undefined' && warehouseId !== 'null' && warehouseId !== '') ? warehouseId : undefined;
+
+    // Logs temporales solicitados
+    console.log('[Dashboard Venta del Día]');
+    console.log('businessId:', businessId);
+    console.log('warehouseId:', warehouseId);
+    console.log('periodo:', `${startDate.toISOString()} - ${endDate.toISOString()}`);
+    console.log('filtro aplicado:', cleanWarehouseId ? { warehouseId: cleanWarehouseId } : 'Consolidado (Todos los locales)');
+
+    const where: any = {
+      businessId,
+      createdAt: {
+        gte: startDate,
+        lte: endDate,
+      },
+      status: 'COMPLETED',
+    };
+
+    if (cleanWarehouseId) {
+      where.warehouseId = cleanWarehouseId;
+    }
+
     const aggregate = await prisma.sale.aggregate({
       _sum: {
         totalAmount: true,
@@ -11,21 +32,12 @@ export class DashboardRepository {
       _count: {
         _all: true,
       },
-      where: {
-        businessId,
-        ...(warehouseFilter && { warehouseId: warehouseFilter.warehouseId }),
-        createdAt: {
-          gte: startDate,
-          lte: endDate,
-        },
-        status: {
-          not: 'CANCELLED',
-        },
-      },
+      where,
     });
 
     const totalSales = Number(aggregate._sum.totalAmount || 0);
-    const salesCount = aggregate._count._all || 0;
+    console.log('resultado:', totalSales);
+    console.log('--------------------------------------------------');
 
     return totalSales;
   }

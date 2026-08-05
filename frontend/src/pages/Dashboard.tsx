@@ -28,9 +28,18 @@ export const Dashboard: React.FC = () => {
   const { user } = useAuth();
   const defaultWhId = getInitialWarehouseId(user) || undefined;
 
-  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(
-    () => (user?.isStaff ? 'ALL' : defaultWhId || 'ALL')
-  );
+  const isCompanyAdmin = user?.isStaff || user?.role === 'Administrator';
+
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>(() => {
+    if (isCompanyAdmin) {
+      return defaultWhId || 'ALL';
+    }
+    if (defaultWhId) return defaultWhId;
+    if (user?.userWarehouses && user.userWarehouses.length > 0) {
+      return user.userWarehouses[0].warehouseId || user.userWarehouses[0].warehouse?.id || 'ALL';
+    }
+    return 'ALL';
+  });
 
   const { data: warehouses = [] } = useQuery({
     queryKey: ['warehouses'],
@@ -53,10 +62,18 @@ export const Dashboard: React.FC = () => {
   }, [warehouses, user]);
 
   useEffect(() => {
-    if (!user?.isStaff && defaultWhId && (selectedWarehouse === 'ALL' || !selectedWarehouse)) {
-      setSelectedWarehouse(defaultWhId);
+    if (!isCompanyAdmin) {
+      if (defaultWhId && selectedWarehouse !== defaultWhId) {
+        setSelectedWarehouse(defaultWhId);
+      } else if (!defaultWhId && displayWarehouses.length > 0 && selectedWarehouse === 'ALL') {
+        setSelectedWarehouse(displayWarehouses[0].id);
+      }
+    } else {
+      if (!selectedWarehouse) {
+        setSelectedWarehouse(defaultWhId || 'ALL');
+      }
     }
-  }, [defaultWhId, user]);
+  }, [defaultWhId, isCompanyAdmin, displayWarehouses, selectedWarehouse]);
 
   console.log('[DASHBOARD] estado del depósito:', {
     selectedWarehouse,
@@ -138,7 +155,7 @@ export const Dashboard: React.FC = () => {
                   <option value="">Sin depósitos autorizados</option>
                 ) : (
                   <>
-                    {user?.isStaff && <option value="ALL">🏢 Todos los depósitos</option>}
+                    {isCompanyAdmin && <option value="ALL">🏢 Todos los locales</option>}
                     {displayWarehouses.map((w: any) => (
                       <option key={w.id} value={w.id}>
                         🏭 {w.name}
