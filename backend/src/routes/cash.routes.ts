@@ -6,6 +6,7 @@ const router = Router();
 
 // Endpoints (All requiring valid authentication via main router mounting)
 router.get('/registers', requirePermission('cash:view'), CashController.getRegisters);
+router.get('/sessions', requirePermission('cash:view'), CashController.getSessions);
 router.get('/active', requirePermission('cash:view'), CashController.getActive);
 router.post('/open', requirePermission('cash:open'), CashController.open);
 router.post('/close', requirePermission('cash:close'), CashController.close);

@@ -11,6 +11,11 @@ export const cashApi = {
     return data.data;
   },
 
+  getSessions: async () => {
+    const { data } = await api.get('/cash/sessions');
+    return data.data;
+  },
+
   getHistory: async (params?: any) => {
     const { data } = await api.get('/cash/history', { params });
     return data.data;
@@ -26,12 +31,12 @@ export const cashApi = {
     return data.data;
   },
 
-  closeSession: async (payload: { countedBalance: number; notes?: string; warehouseId?: string }) => {
+  closeSession: async (payload: { countedBalance: number; notes?: string; warehouseId?: string; sessionId?: string }) => {
     const { data } = await api.post('/cash/close', payload);
     return data.data;
   },
 
-  registerMovement: async (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string }) => {
+  registerMovement: async (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string; sessionId?: string }) => {
     const { data } = await api.post('/cash/movement', payload);
     return data.data;
   }

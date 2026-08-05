@@ -24,86 +24,78 @@ import {
   Minus,
   Lock,
   Search,
-  CheckCircle2,
-  XCircle,
-  DollarSign,
-  TrendingUp,
-  RefreshCw,
   Building2,
   Clock,
   User,
-  HelpCircle,
-  Percent,
-  Receipt
+  Receipt,
+  Play,
+  DollarSign,
+  TrendingUp
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 import { SessionDetailModal } from '../components/cash/SessionDetailModal';
-
 import { useAuth } from '../contexts/AuthContext';
-import { getInitialWarehouseId } from '../utils/warehouse';
 
 export const Cash: React.FC = () => {
   const { user } = useAuth();
   const queryClient = useQueryClient();
-  const [activeTab, setActiveTab] = useState<'operacion' | 'historial'>('operacion');
+  const [activeTab, setActiveTab] = useState<'cajas' | 'historial'>('cajas');
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const [historySearchTerm, setHistorySearchTerm] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 10;
 
-  const { data: warehouses = [] } = useQuery({
-    queryKey: ['warehouses'],
-    queryFn: warehouseApi.list,
-  });
-
   // Modales
+  const [isOpenModalOpen, setIsOpenModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isMovementModalOpen, setIsMovementModalOpen] = useState(false);
   const [isCloseModalOpen, setIsCloseModalOpen] = useState(false);
 
+  // States para Apertura
   const [openWarehouseId, setOpenWarehouseId] = useState<string>('');
   const [openRegisterId, setOpenRegisterId] = useState<string>('');
   const [openBalance, setOpenBalance] = useState('');
   const [openNotes, setOpenNotes] = useState('');
 
+  // States para Movimiento Manual
+  const [movType, setMovType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
+  const [movAmount, setMovAmount] = useState('');
+  const [movConcept, setMovConcept] = useState('');
+
+  // State para Cierre Arqueo
+  const [countedBalance, setCountedBalance] = useState('');
+
+  // Session ID seleccionado para operar/ver detalle en modal
+  const [activeDetailSessionId, setActiveDetailSessionId] = useState<string | null>(null);
+
   // Queries
-  const { data: activeSession, isLoading: loadingSession } = useQuery({
-    queryKey: ['cash', 'active', openWarehouseId],
-    queryFn: () => cashApi.getActiveSession(openWarehouseId ? { warehouseId: openWarehouseId } : undefined),
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: warehouseApi.list,
+  });
+
+  const { data: registers = [], isLoading: loadingRegisters } = useQuery({
+    queryKey: ['cash', 'registers'],
+    queryFn: () => cashApi.getRegisters(),
+  });
+
+  const { data: activeSessionDetail, isLoading: loadingSessionDetail } = useQuery({
+    queryKey: ['cash', 'session-detail', activeDetailSessionId],
+    queryFn: () => cashApi.getHistoryById(activeDetailSessionId!),
+    enabled: !!activeDetailSessionId,
     refetchOnMount: 'always',
     staleTime: 0,
   });
 
-  useEffect(() => {
-    if (warehouses.length > 0 && !openWarehouseId) {
-      const initialWhId = getInitialWarehouseId(user, warehouses);
-      if (initialWhId) {
-        setOpenWarehouseId(initialWhId);
-      }
-    }
-  }, [warehouses, openWarehouseId, user]);
-
-  const { data: registers } = useQuery({
-    queryKey: ['cash', 'registers', openWarehouseId],
-    queryFn: () => cashApi.getRegisters({ warehouseId: openWarehouseId || undefined }),
-    enabled: !activeSession && Boolean(openWarehouseId),
-  });
-
-  const { data: history, isLoading: loadingHistory } = useQuery({
+  const { data: history = [], isLoading: loadingHistory } = useQuery({
     queryKey: ['cash', 'history'],
     queryFn: () => cashApi.getHistory(),
     enabled: activeTab === 'historial',
   });
 
-  // State Movimiento Manual
-  const [movType, setMovType] = useState<'INCOME' | 'EXPENSE'>('INCOME');
-  const [movAmount, setMovAmount] = useState('');
-  const [movConcept, setMovConcept] = useState('');
-
-  // State Cierre Arqueo
-  const [countedBalance, setCountedBalance] = useState('');
-
-  // Mutations
+  // Mutaciones
   const openMutation = useMutation({
     mutationFn: cashApi.openSession,
     onSuccess: () => {
@@ -111,25 +103,28 @@ export const Cash: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setOpenBalance('');
       setOpenNotes('');
+      setIsOpenModalOpen(false);
     },
     onError: (err: any) => alert(err.response?.data?.message || 'Error al abrir caja'),
   });
 
   const closeMutation = useMutation({
     mutationFn: (payload: { countedBalance: number; notes?: string }) =>
-      cashApi.closeSession({ ...payload, warehouseId: activeSession?.warehouseId || openWarehouseId }),
+      cashApi.closeSession({ ...payload, sessionId: activeDetailSessionId || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       setCountedBalance('');
       setIsCloseModalOpen(false);
+      setIsDetailModalOpen(false);
+      setActiveDetailSessionId(null);
     },
     onError: (err: any) => alert(err.response?.data?.message || 'Error al cerrar caja'),
   });
 
   const movementMutation = useMutation({
     mutationFn: (payload: { type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string }) =>
-      cashApi.registerMovement({ ...payload, warehouseId: activeSession?.warehouseId || openWarehouseId }),
+      cashApi.registerMovement({ ...payload, sessionId: activeDetailSessionId || undefined }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
@@ -143,9 +138,46 @@ export const Cash: React.FC = () => {
   const formatCurrency = (val: number | string) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(Number(val));
 
-  // Totales de dominio provistos por el backend
-  const totals = activeSession?.totals || {
-    openingBalance: Number(activeSession?.openingBalance || 0),
+  // Filtrado de Cajas Registradoras
+  const filteredRegisters = useMemo(() => {
+    return registers.filter((r: any) =>
+      r.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
+      r.warehouse?.name.toLowerCase().includes(searchTerm.toLowerCase())
+    );
+  }, [registers, searchTerm]);
+
+  // Filtrado de Historial
+  const filteredHistory = useMemo(() => {
+    if (!history) return [];
+    return history.filter(
+      (s: any) =>
+        s.openedBy?.name?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+        s.cashRegister?.name?.toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+        s.cashRegister?.code?.toLowerCase().includes(historySearchTerm.toLowerCase())
+    );
+  }, [history, historySearchTerm]);
+
+  const paginatedHistory = useMemo(() => {
+    return filteredHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+  }, [filteredHistory, currentPage]);
+
+  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
+
+  // Cajas registradoras disponibles para el depósito seleccionado
+  const availableRegistersForOpen = useMemo(() => {
+    if (!openWarehouseId) return [];
+    return registers.filter((r: any) => {
+      const matchWh = r.warehouseId === openWarehouseId;
+      const latestSession = r.sessions?.[0];
+      const isClosed = !latestSession || latestSession.status === 'CLOSED';
+      return matchWh && isClosed;
+    });
+  }, [registers, openWarehouseId]);
+
+  // Totales de dominio provistos por la sesión detallada activa
+  const totals = activeSessionDetail?.totals || {
+    openingBalance: Number(activeSessionDetail?.openingBalance || 0),
     cashTotal: 0,
     mercadoPagoTotal: 0,
     transferTotal: 0,
@@ -154,117 +186,40 @@ export const Cash: React.FC = () => {
     digitalTotal: 0,
     manualIncomes: 0,
     manualExpenses: 0,
-    expectedCashBalance: Number(activeSession?.openingBalance || 0),
+    expectedCashBalance: Number(activeSessionDetail?.openingBalance || 0),
     totalVendido: 0,
-    grandTotal: Number(activeSession?.openingBalance || 0),
+    grandTotal: Number(activeSessionDetail?.openingBalance || 0),
   };
 
   const expectedCash = totals.expectedCashBalance;
   const digitalTotal = totals.digitalTotal;
   const totalVendido = totals.totalVendido;
 
-  // Filtrado de Historial
-  const filteredHistory = useMemo(() => {
-    if (!history) return [];
-    return history.filter(
-      (s: any) =>
-        s.openedBy?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.cashRegister?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        s.cashRegister?.code?.toLowerCase().includes(searchTerm.toLowerCase())
-    );
-  }, [history, searchTerm]);
-
-  const paginatedHistory = useMemo(() => {
-    return filteredHistory.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
-  }, [filteredHistory, currentPage]);
-
-  const totalPages = Math.ceil(filteredHistory.length / itemsPerPage);
-
-  const openMovementModal = (type: 'INCOME' | 'EXPENSE') => {
-    setMovType(type);
-    setMovAmount('');
-    setMovConcept('');
-    setIsMovementModalOpen(true);
-  };
-
-  const openCloseModal = () => {
-    setCountedBalance('');
-    setIsCloseModalOpen(true);
-  };
-
-  if (loadingSession) {
-    return (
-      <div className="space-y-6">
-        <PageHeader title="Módulo de Caja Financiera" subtitle="Control de turno y libro diario de caja" />
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-          <Skeleton className="h-28 rounded-2xl" />
-        </div>
-        <Skeleton className="h-64 rounded-2xl" />
-      </div>
-    );
-  }
-
-  console.log('ACTIVE SESSION', activeSession);
-  console.log('MOVEMENTS LENGTH', activeSession?.cashMovements?.length);
-
   return (
     <div className="space-y-6">
-      {/* 1. Header con Bar de Estado y Acciones Rápidas */}
+      {/* 1. Header del Módulo */}
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4 bg-white dark:bg-slate-900 p-5 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div className="flex flex-col md:flex-row md:items-center gap-4">
-          <div>
-            <div className="flex items-center gap-3">
-              <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
-                Caja Financiera
-              </h1>
-              {activeSession ? (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800 animate-pulse">
-                  <span className="h-2 w-2 rounded-full bg-emerald-500"></span>
-                  TURNO ABIERTO
-                </span>
-              ) : (
-                <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-extrabold bg-amber-50 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400 border border-amber-200 dark:border-amber-800">
-                  <span className="h-2 w-2 rounded-full bg-amber-500"></span>
-                  CAJA CERRADA
-                </span>
-              )}
-            </div>
-            <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
-              {activeSession
-                ? `Operando en ${activeSession.cashRegister?.name || 'Caja'} (${activeSession.cashRegister?.code}) • Apertura: ${format(new Date(activeSession.openedAt), 'HH:mm - dd MMM', { locale: es })}`
-                : 'Selecciona una caja e ingresa el fondo inicial para iniciar un nuevo turno.'}
-            </p>
-          </div>
-
-          {activeSession && (
-            <div className="flex items-center gap-2.5 bg-slate-100 dark:bg-slate-800 px-3.5 py-2 rounded-xl border border-slate-200 dark:border-slate-700">
-              <Building2 className="w-4 h-4 text-emerald-500 shrink-0" />
-              <div className="flex flex-col">
-                <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400">Depósito</span>
-                <span className="text-xs font-black text-slate-900 dark:text-white flex items-center gap-1.5">
-                  🏭 {activeSession.warehouse?.name || activeSession.cashRegister?.warehouse?.name}
-                </span>
-              </div>
-            </div>
-          )}
+        <div>
+          <h1 className="text-xl md:text-2xl font-black text-slate-900 dark:text-white tracking-tight">
+            Cajas Financieras
+          </h1>
+          <p className="text-xs md:text-sm text-slate-500 dark:text-slate-400 mt-1">
+            Administración de cajas registradoras y sesiones de efectivo de la empresa.
+          </p>
         </div>
 
-        {/* Pestañas de Vista y Botones de Acción Inmediata */}
-        <div className="flex flex-wrap items-center gap-2.5">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="inline-flex rounded-xl bg-slate-100 dark:bg-slate-800 p-1 border border-slate-200 dark:border-slate-700">
             <button
               type="button"
-              onClick={() => setActiveTab('operacion')}
+              onClick={() => setActiveTab('cajas')}
               className={`px-3.5 py-1.5 text-xs font-bold rounded-lg transition-all ${
-                activeTab === 'operacion'
+                activeTab === 'cajas'
                   ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
                   : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
               }`}
             >
-              Operación Actual
+              Cajas Activas
             </button>
             <button
               type="button"
@@ -279,462 +234,199 @@ export const Cash: React.FC = () => {
             </button>
           </div>
 
-          {activeSession && activeTab === 'operacion' && (
-            <div className="flex items-center gap-2">
-              <Button
-                variant="success"
-                size="sm"
-                onClick={() => openMovementModal('INCOME')}
-                className="font-bold flex items-center gap-1.5 shadow-sm"
-              >
-                <Plus className="w-4 h-4" /> Ingreso (+)
-              </Button>
-              <Button
-                variant="danger"
-                size="sm"
-                onClick={() => openMovementModal('EXPENSE')}
-                className="font-bold flex items-center gap-1.5 shadow-sm"
-              >
-                <Minus className="w-4 h-4" /> Retiro (-)
-              </Button>
-              <Button
-                variant="warning"
-                size="sm"
-                onClick={openCloseModal}
-                className="font-bold flex items-center gap-1.5 shadow-sm"
-              >
-                <Lock className="w-4 h-4" /> Cierre Z
-              </Button>
-            </div>
-          )}
+          <Button
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              setOpenWarehouseId('');
+              setOpenRegisterId('');
+              setIsOpenModalOpen(true);
+            }}
+            className="font-bold flex items-center gap-1.5 shadow-sm"
+          >
+            <Plus className="w-4 h-4" /> Abrir Nueva Caja
+          </Button>
         </div>
       </div>
 
-      {/* 2. Pestaña OPERACIÓN ACTUAL */}
-      {activeTab === 'operacion' && (
-        !activeSession ? (
-          /* CAJA CERRADA: FORMULARIO DE APERTURA */
-          <Card className="max-w-lg mx-auto mt-6 border-t-4 border-t-amber-500 shadow-md">
-            <CardHeader className="bg-slate-50 dark:bg-slate-900/50 border-b border-slate-100 dark:border-slate-800">
-              <CardTitle className="flex items-center gap-2.5 text-base md:text-lg">
-                <div className="h-9 w-9 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-600 dark:text-amber-400 flex items-center justify-center">
-                  <AlertTriangle className="h-5 w-5" />
-                </div>
-                Apertura de Turno de Caja
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-6 space-y-4">
-              <p className="text-xs md:text-sm text-slate-600 dark:text-slate-300">
-                Selecciona el depósito y la caja registradora correspondiente e ingresa el monto inicial del turno.
-              </p>
-              
-              <Select
-                label="Depósito *"
-                value={openWarehouseId}
-                onChange={(e: any) => {
-                  setOpenWarehouseId(e.target.value);
-                  setOpenRegisterId('');
-                }}
-                leftIcon={Building2}
-              >
-                <option value="">Selecciona un depósito...</option>
-                {warehouses.map((w: any) => (
-                  <option key={w.id} value={w.id}>
-                    🏭 {w.name}
-                  </option>
-                ))}
-              </Select>
-
-              <Select
-                label="Caja Registradora *"
-                value={openRegisterId}
-                onChange={(e: any) => setOpenRegisterId(e.target.value)}
-                leftIcon={Building2}
-                disabled={!openWarehouseId}
-              >
-                <option value="">Selecciona una caja registrada...</option>
-                {registers?.map((r: any) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name} ({r.code})
-                  </option>
-                ))}
-              </Select>
-
+      {/* 2. Listado de Cajas en Formato Grid de Tarjetas */}
+      {activeTab === 'cajas' && (
+        <div className="space-y-4">
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 bg-white dark:bg-slate-900 p-4 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div className="w-full sm:w-72">
               <Input
-                label="Monto Inicial ($ ARS) *"
-                type="number"
-                step="0.01"
-                min="0"
-                value={openBalance}
-                onChange={(e: any) => setOpenBalance(e.target.value)}
-                placeholder="0.00"
-                leftIcon={Wallet}
-                helperText="Efectivo en billetes con el que arranca la jornada."
+                placeholder="Buscar caja o depósito..."
+                value={searchTerm}
+                onChange={(e: any) => setSearchTerm(e.target.value)}
+                leftIcon={Search}
               />
-
-              <Input
-                label="Observaciones de Apertura (Opcional)"
-                type="text"
-                value={openNotes}
-                onChange={(e: any) => setOpenNotes(e.target.value)}
-                placeholder="Ej. Cambio de billetes de $1.000"
-              />
-
-              <Button
-                variant="primary"
-                size="lg"
-                className="w-full mt-4 font-bold tracking-wide"
-                onClick={() =>
-                  openMutation.mutate({
-                    warehouseId: openWarehouseId,
-                    cashRegisterId: openRegisterId,
-                    openingBalance: Number(openBalance),
-                    notes: openNotes,
-                  })
-                }
-                disabled={!openWarehouseId || !openRegisterId || openBalance === '' || openMutation.isPending}
-                isLoading={openMutation.isPending}
-              >
-                Iniciar Turno y Abrir Caja
-              </Button>
-            </CardContent>
-          </Card>
-        ) : (
-          /* CAJA ABIERTA: DASHBOARD FINANCIERO EN TIEMPO REAL */
-          <div className="space-y-6">
-            
-            {/* HERO KPIS PRINCIPALES (4 TARJETAS CLAVE) */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-              {/* KPI 1: Efectivo Físico Esperado (DESTACADO HERO) */}
-              <Card className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-l-amber-500 dark:bg-slate-900 shadow-sm relative overflow-hidden">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
-                      Efectivo en Caja (Esperado)
-                    </span>
-                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
-                      <Banknote className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white font-mono">
-                    {formatCurrency(expectedCash)}
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
-                    <Wallet className="w-3.5 h-3.5 text-amber-500" />
-                    Base ${Number(totals.openingBalance).toLocaleString()} + Efectivo neto
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* KPI 2: Ventas Digitales y Tarjetas */}
-              <Card className="bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border-l-4 border-l-indigo-500 dark:bg-slate-900 shadow-sm">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
-                      Ventas Digitales
-                    </span>
-                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
-                      <CreditCard className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-black text-slate-900 dark:text-white font-mono">
-                    {formatCurrency(digitalTotal)}
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                    Mercado Pago, Transf. y Tarjetas
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* KPI 3: Total Bruto Vendido */}
-              <Card className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-l-4 border-l-emerald-500 dark:bg-slate-900 shadow-sm">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
-                      Total Vendido Turno
-                    </span>
-                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
-                      <TrendingUp className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-                    {formatCurrency(totalVendido)}
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                    Suma total de todos los medios
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* KPI 4: Fondo Inicial */}
-              <Card className="bg-gradient-to-br from-slate-500/10 via-slate-500/5 to-transparent border-l-4 border-l-slate-500 dark:bg-slate-900 shadow-sm">
-                <CardContent className="p-4 md:p-5">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
-                      Fondo Inicial
-                    </span>
-                    <div className="p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                      <Wallet className="w-5 h-5" />
-                    </div>
-                  </div>
-                  <div className="text-2xl md:text-3xl font-black text-slate-800 dark:text-slate-100 font-mono">
-                    {formatCurrency(totals.openingBalance)}
-                  </div>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
-                    Monto inicial de apertura
-                  </p>
-                </CardContent>
-              </Card>
             </div>
-
-            {/* DESGLOSE POR MEDIO DE PAGO & CONTROLES */}
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-              
-              {/* Tarjetas de Medios de Pago (Col-span 2) */}
-              <div className="lg:col-span-2 space-y-6">
-                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3">
-                    <CardTitle className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
-                      <span className="flex items-center gap-2">
-                        <Receipt className="w-4 h-4 text-indigo-500" /> Desglose Financiero por Medio de Pago
-                      </span>
-                      <span className="text-xs font-normal text-slate-400">Actualizado en vivo</span>
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-5">
-                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
-                      
-                      {/* Efectivo */}
-                      <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl space-y-1">
-                        <span className="text-[11px] font-bold text-amber-700 dark:text-amber-400 block uppercase">💵 Efectivo</span>
-                        <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono">
-                          {formatCurrency(totals.cashTotal)}
-                        </div>
-                      </div>
-
-                      {/* Mercado Pago */}
-                      <div className="p-3 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl space-y-1">
-                        <span className="text-[11px] font-bold text-sky-700 dark:text-sky-400 block uppercase">💙 Mercado Pago</span>
-                        <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono">
-                          {formatCurrency(totals.mercadoPagoTotal)}
-                        </div>
-                      </div>
-
-                      {/* Transferencia */}
-                      <div className="p-3 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40 rounded-xl space-y-1">
-                        <span className="text-[11px] font-bold text-purple-700 dark:text-purple-400 block uppercase">🏦 Transferencia</span>
-                        <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono">
-                          {formatCurrency(totals.transferTotal)}
-                        </div>
-                      </div>
-
-                      {/* Débito */}
-                      <div className="p-3 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 rounded-xl space-y-1">
-                        <span className="text-[11px] font-bold text-blue-700 dark:text-blue-400 block uppercase">💳 Débito</span>
-                        <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono">
-                          {formatCurrency(totals.debitCardTotal)}
-                        </div>
-                      </div>
-
-                      {/* Crédito */}
-                      <div className="p-3 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40 rounded-xl space-y-1">
-                        <span className="text-[11px] font-bold text-indigo-700 dark:text-indigo-400 block uppercase">💳 Crédito</span>
-                        <div className="text-base md:text-lg font-black text-slate-900 dark:text-white font-mono">
-                          {formatCurrency(totals.creditCardTotal)}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Fila secundaria de Ajustes Manuales */}
-                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between text-xs text-slate-500 gap-3">
-                      <div className="flex items-center gap-4">
-                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
-                          <ArrowUpCircle className="w-3.5 h-3.5" /> Ingresos Manuales (+): {formatCurrency(totals.manualIncomes)}
-                        </span>
-                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
-                          <ArrowDownCircle className="w-3.5 h-3.5" /> Retiros Manuales (-): {formatCurrency(totals.manualExpenses)}
-                        </span>
-                      </div>
-                      <span className="font-mono text-slate-400">Total Operaciones: {activeSession.cashMovements?.length || 0}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Línea de Tiempo de Movimientos */}
-                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3 flex flex-row items-center justify-between">
-                    <CardTitle className="text-sm md:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                      <History className="w-4 h-4 text-indigo-500" /> Línea de Tiempo (Actividad del Turno)
-                    </CardTitle>
-                    <Badge variant="outline" className="text-[10px] font-mono">
-                      {activeSession.cashMovements?.length || 0} registros
-                    </Badge>
-                  </CardHeader>
-                  <CardContent className="p-4 max-h-[480px] overflow-y-auto">
-                    <div style={{ background: 'red', color: 'white', padding: '8px', fontWeight: 'bold', borderRadius: '8px', marginBottom: '12px' }}>
-                      Cantidad: {activeSession?.cashMovements?.length}
-                    </div>
-                    {activeSession?.cashMovements?.length === 0 ? (
-                      <EmptyState
-                        title="Sin movimientos aún"
-                        description="Las ventas y cobros registrados aparecerán automáticamente en esta línea de tiempo."
-                        icon={History}
-                      />
-                    ) : (
-                      <div className="space-y-3">
-                        {(() => {
-                          console.log('RENDERING MOVEMENTS');
-                          return activeSession?.cashMovements?.map((mov: any) => {
-                            console.log('MOVEMENT', mov);
-                            const isIncome = mov.type === 'IN' || mov.type === 'INCOME';
-                          const isCreditCollection =
-                            mov.referenceType === 'ACCOUNT_RECEIVABLE_PAYMENT' ||
-                            mov.referenceType === 'ACCOUNT_PAYMENT' ||
-                            mov.reason?.includes('Cuenta Corriente');
-
-                          return (
-                            <div
-                              key={mov.id}
-                              className="flex items-start justify-between p-3.5 rounded-xl border border-slate-100 dark:border-slate-800/70 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-all gap-3"
-                            >
-                              <div className="flex items-start gap-3">
-                                <div
-                                  className={`p-2 rounded-xl shrink-0 mt-0.5 ${
-                                    isIncome
-                                      ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
-                                      : 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
-                                  }`}
-                                >
-                                  {isIncome ? (
-                                    <ArrowUpCircle className="w-4 h-4" />
-                                  ) : (
-                                    <ArrowDownCircle className="w-4 h-4" />
-                                  )}
-                                </div>
-                                <div>
-                                  <div className="flex items-center gap-2">
-                                    <span className="font-bold text-sm text-slate-800 dark:text-slate-100">
-                                      {isCreditCollection
-                                        ? 'Cobro Cuenta Corriente'
-                                        : mov.referenceType === 'SALE'
-                                        ? 'Venta POS'
-                                        : mov.referenceType === 'MANUAL'
-                                        ? 'Ajuste Manual'
-                                        : mov.referenceType === 'OPENING_BALANCE'
-                                        ? 'Fondo de Apertura'
-                                        : 'Movimiento'}
-                                    </span>
-                                    {mov.paymentMethod && (
-                                      <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                                        {mov.paymentMethod}
-                                      </span>
-                                    )}
-                                  </div>
-                                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                    {mov.reason}
-                                  </p>
-                                  <span className="text-[10px] text-slate-400 font-mono mt-1 block">
-                                    {format(new Date(mov.createdAt), 'HH:mm:ss - dd MMM', { locale: es })}
-                                  </span>
-                                </div>
-                              </div>
-
-                              <div className="text-right shrink-0">
-                                <span
-                                  className={`text-base font-black font-mono block ${
-                                    isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
-                                  }`}
-                                >
-                                  {isIncome ? '+' : '-'}{formatCurrency(mov.amount)}
-                                </span>
-                              </div>
-                            </div>
-                          );
-                        })
-                      })()}
-                      </div>
-                    )}
-                  </CardContent>
-                </Card>
-              </div>
-
-              {/* Panel Lateral de Acciones Rápidas (Col-span 1) */}
-              <div className="space-y-6">
-                
-                {/* Card de Accesos Directos */}
-                <Card className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white border-0 shadow-lg relative overflow-hidden">
-                  <CardContent className="p-5 relative z-10 space-y-4">
-                    <div className="flex justify-between items-start">
-                      <div>
-                        <span className="text-[10px] font-black uppercase tracking-widest text-indigo-300">
-                          ACCIONES RÁPIDAS
-                        </span>
-                        <h3 className="text-lg font-bold text-white mt-0.5">Gestión de Turno</h3>
-                      </div>
-                      <Wallet className="w-8 h-8 text-indigo-400/40" />
-                    </div>
-
-                    <div className="space-y-2.5 pt-1">
-                      <Button
-                        variant="success"
-                        className="w-full font-bold justify-start text-xs py-2.5"
-                        onClick={() => openMovementModal('INCOME')}
-                      >
-                        <Plus className="w-4 h-4 mr-2" /> Registrar Ingreso Manual
-                      </Button>
-                      <Button
-                        variant="danger"
-                        className="w-full font-bold justify-start text-xs py-2.5"
-                        onClick={() => openMovementModal('EXPENSE')}
-                      >
-                        <Minus className="w-4 h-4 mr-2" /> Registrar Retiro de Caja
-                      </Button>
-                      <Button
-                        variant="warning"
-                        className="w-full font-bold justify-start text-xs py-2.5"
-                        onClick={openCloseModal}
-                      >
-                        <Lock className="w-4 h-4 mr-2" /> Realizar Arqueo y Cierre Z
-                      </Button>
-                    </div>
-                  </CardContent>
-                </Card>
-
-                {/* Card de Resumen de Arqueo Guía */}
-                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
-                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3">
-                    <CardTitle className="text-xs uppercase font-extrabold tracking-wider text-slate-500">
-                      Resumen Físico Sugerido
-                    </CardTitle>
-                  </CardHeader>
-                  <CardContent className="p-4 space-y-3 text-xs">
-                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                      <span>Base Inicial:</span>
-                      <span className="font-mono font-semibold">{formatCurrency(totals.openingBalance)}</span>
-                    </div>
-                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
-                      <span>Ventas Efectivo:</span>
-                      <span className="font-mono font-semibold">{formatCurrency(totals.cashTotal)}</span>
-                    </div>
-                    <div className="flex justify-between text-emerald-600">
-                      <span>Ingresos Manuales (+):</span>
-                      <span className="font-mono font-semibold">+{formatCurrency(totals.manualIncomes)}</span>
-                    </div>
-                    <div className="flex justify-between text-rose-600">
-                      <span>Retiros Manuales (-):</span>
-                      <span className="font-mono font-semibold">-{formatCurrency(totals.manualExpenses)}</span>
-                    </div>
-                    <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between font-bold text-slate-900 dark:text-white text-sm">
-                      <span>Efectivo en Billete:</span>
-                      <span className="font-mono text-amber-600 dark:text-amber-400">{formatCurrency(expectedCash)}</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              </div>
-
+            <div className="text-xs font-bold text-slate-500">
+              Total: {filteredRegisters.length} cajas
             </div>
           </div>
-        )
+
+          {loadingRegisters ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              <Skeleton className="h-48 rounded-2xl" />
+              <Skeleton className="h-48 rounded-2xl" />
+              <Skeleton className="h-48 rounded-2xl" />
+            </div>
+          ) : filteredRegisters.length === 0 ? (
+            <EmptyState
+              title="No se encontraron cajas registradoras"
+              description="No hay cajas creadas o ninguna coincide con los filtros de búsqueda."
+              icon={Wallet}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {filteredRegisters.map((reg: any) => {
+                const latestSession = reg.sessions?.[0];
+                const isOpen = latestSession?.status === 'OPEN';
+
+                return (
+                  <Card
+                    key={reg.id}
+                    className={`bg-white dark:bg-slate-900 border ${
+                      isOpen
+                        ? 'border-emerald-200 dark:border-emerald-900/60 shadow-emerald-50/50'
+                        : 'border-slate-200 dark:border-slate-800 shadow-sm'
+                    } rounded-2xl overflow-hidden hover:shadow-md transition-all`}
+                  >
+                    <CardHeader className="bg-slate-50/60 dark:bg-slate-900/40 border-b border-slate-100 dark:border-slate-800/80 p-4 flex flex-row justify-between items-center">
+                      <div>
+                        <h3 className="font-extrabold text-slate-900 dark:text-white text-sm tracking-tight flex items-center gap-2">
+                          <Wallet className="w-4 h-4 text-indigo-500 shrink-0" />
+                          {reg.name}
+                        </h3>
+                        <span className="text-[10px] font-mono font-bold text-slate-400">
+                          {reg.code}
+                        </span>
+                      </div>
+                      <Badge status={isOpen ? 'open' : 'closed'}>
+                        {isOpen ? '🟢 ABIERTA' : '🔴 CERRADA'}
+                      </Badge>
+                    </CardHeader>
+                    <CardContent className="p-4 space-y-3.5 text-xs text-slate-600 dark:text-slate-300">
+                      <div className="flex items-center gap-2">
+                        <Building2 className="w-4 h-4 text-slate-400" />
+                        <span className="font-semibold">Depósito:</span>
+                        <span>🏭 {reg.warehouse?.name || 'Sin depósito'}</span>
+                      </div>
+
+                      {isOpen ? (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <User className="w-4 h-4 text-slate-400" />
+                            <span className="font-semibold">Abierta por:</span>
+                            <span>{latestSession.openedBy?.name}</span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Clock className="w-4 h-4 text-slate-400" />
+                            <span className="font-semibold">Apertura:</span>
+                            <span>
+                              {format(new Date(latestSession.openedAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                            </span>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <DollarSign className="w-4 h-4 text-emerald-500" />
+                            <span className="font-semibold">Fondo inicial:</span>
+                            <span className="font-mono font-bold text-emerald-600 dark:text-emerald-400">
+                              {formatCurrency(latestSession.openingBalance)}
+                            </span>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          {latestSession ? (
+                            <>
+                              <div className="flex items-center gap-2">
+                                <User className="w-4 h-4 text-slate-400" />
+                                <span className="font-semibold">Cerrada por:</span>
+                                <span>{latestSession.closedBy?.name || latestSession.openedBy?.name}</span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Clock className="w-4 h-4 text-slate-400" />
+                                <span className="font-semibold">Cierre:</span>
+                                <span>
+                                  {format(new Date(latestSession.closedAt || latestSession.updatedAt), 'dd/MM/yyyy HH:mm', { locale: es })}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <DollarSign className="w-4 h-4 text-slate-400" />
+                                <span className="font-semibold">Saldo final:</span>
+                                <span className="font-mono font-bold text-slate-700 dark:text-slate-200">
+                                  {formatCurrency(latestSession.closingBalance || 0)}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-slate-400 italic">Esta caja nunca ha sido abierta.</div>
+                          )}
+                        </>
+                      )}
+
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 flex gap-2">
+                        {isOpen ? (
+                          <>
+                            <Button
+                              variant="primary"
+                              size="sm"
+                              className="flex-1 font-bold"
+                              onClick={() => {
+                                setActiveDetailSessionId(latestSession.id);
+                                setIsDetailModalOpen(true);
+                              }}
+                            >
+                              <Eye className="w-3.5 h-3.5 mr-1" /> Ver
+                            </Button>
+                            <Button
+                              variant="danger"
+                              size="sm"
+                              className="flex-1 font-bold"
+                              onClick={() => {
+                                setActiveDetailSessionId(latestSession.id);
+                                setCountedBalance('');
+                                setIsCloseModalOpen(true);
+                              }}
+                            >
+                              <Lock className="w-3.5 h-3.5 mr-1" /> Cerrar Caja
+                            </Button>
+                          </>
+                        ) : (
+                          <>
+                            {latestSession && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="flex-1 font-bold"
+                                onClick={() => setSelectedSessionId(latestSession.id)}
+                              >
+                                <History className="w-3.5 h-3.5 mr-1" /> Ver Historial
+                              </Button>
+                            )}
+                            <Button
+                              variant="success"
+                              size="sm"
+                              className="flex-1 font-bold"
+                              onClick={() => {
+                                setOpenWarehouseId(reg.warehouseId);
+                                setOpenRegisterId(reg.id);
+                                setIsOpenModalOpen(true);
+                              }}
+                            >
+                              <Play className="w-3.5 h-3.5 mr-1" /> Abrir Turno
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
       )}
 
       {/* 3. Pestaña HISTORIAL DE ARQUEOS */}
@@ -753,18 +445,18 @@ export const Cash: React.FC = () => {
               <div className="flex-1">
                 <Input
                   placeholder="Buscar operador o caja..."
-                  value={searchTerm}
+                  value={historySearchTerm}
                   onChange={(e: any) => {
-                    setSearchTerm(e.target.value);
+                    setHistorySearchTerm(e.target.value);
                     setCurrentPage(1);
                   }}
                   leftIcon={Search}
                 />
               </div>
-              {searchTerm && (
+              {historySearchTerm && (
                 <button
                   onClick={() => {
-                    setSearchTerm('');
+                    setHistorySearchTerm('');
                     setCurrentPage(1);
                   }}
                   className="text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 px-1 py-1 transition-colors flex-shrink-0"
@@ -891,39 +583,470 @@ export const Cash: React.FC = () => {
         </Card>
       )}
 
-      {/* 4. MODAL MOVIMIENTO MANUAL (INGRESO / RETIRO) */}
+      {/* 4. MODAL ABRIR NUEVA CAJA */}
+      <Modal
+        isOpen={isOpenModalOpen}
+        onClose={() => setIsOpenModalOpen(false)}
+        title="Apertura de Turno de Caja"
+        size="lg"
+      >
+        <div className="space-y-4 pt-1">
+          <p className="text-xs text-slate-600 dark:text-slate-300">
+            Selecciona el depósito y la caja registradora correspondiente e ingresa el monto inicial del turno.
+          </p>
+
+          <Select
+            label="Depósito *"
+            value={openWarehouseId}
+            onChange={(e: any) => {
+              setOpenWarehouseId(e.target.value);
+              setOpenRegisterId('');
+            }}
+            leftIcon={Building2}
+          >
+            <option value="">Selecciona un depósito...</option>
+            {warehouses.map((w: any) => (
+              <option key={w.id} value={w.id}>
+                🏭 {w.name}
+              </option>
+            ))}
+          </Select>
+
+          <Select
+            label="Caja Registradora *"
+            value={openRegisterId}
+            onChange={(e: any) => setOpenRegisterId(e.target.value)}
+            leftIcon={Building2}
+            disabled={!openWarehouseId}
+          >
+            <option value="">Selecciona una caja registrada...</option>
+            {availableRegistersForOpen.map((r: any) => (
+              <option key={r.id} value={r.id}>
+                {r.name} ({r.code})
+              </option>
+            ))}
+          </Select>
+
+          {openWarehouseId && availableRegistersForOpen.length === 0 && (
+            <div className="text-xs text-rose-500 font-bold flex items-center gap-1">
+              <AlertTriangle className="w-4 h-4" /> No hay cajas registradoras cerradas disponibles para este depósito.
+            </div>
+          )}
+
+          <Input
+            label="Monto Inicial ($ ARS) *"
+            type="number"
+            step="0.01"
+            min="0"
+            value={openBalance}
+            onChange={(e: any) => setOpenBalance(e.target.value)}
+            placeholder="0.00"
+            leftIcon={Wallet}
+            helperText="Efectivo en billetes con el que arranca la jornada."
+          />
+
+          <Input
+            label="Observaciones de Apertura (Opcional)"
+            type="text"
+            value={openNotes}
+            onChange={(e: any) => setOpenNotes(e.target.value)}
+            placeholder="Ej. Cambio de billetes de $1.000"
+          />
+
+          <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
+            <Button variant="outline" onClick={() => setIsOpenModalOpen(false)}>
+              Cancelar
+            </Button>
+            <Button
+              variant="primary"
+              onClick={() =>
+                openMutation.mutate({
+                  warehouseId: openWarehouseId,
+                  cashRegisterId: openRegisterId,
+                  openingBalance: Number(openBalance),
+                  notes: openNotes,
+                })
+              }
+              disabled={!openWarehouseId || !openRegisterId || openBalance === '' || openMutation.isPending}
+              isLoading={openMutation.isPending}
+            >
+              Iniciar Turno y Abrir Caja
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* 5. MODAL DETALLE DE OPERACIÓN EN VIVO (Ver Caja Abierta) */}
+      <Modal
+        isOpen={isDetailModalOpen}
+        onClose={() => {
+          setIsDetailModalOpen(false);
+          setActiveDetailSessionId(null);
+        }}
+        title={
+          activeSessionDetail ? (
+            <div className="flex items-center gap-2">
+              <Wallet className="w-5 h-5 text-indigo-500" />
+              <span>Operando en {activeSessionDetail.cashRegister?.name || 'Caja'} ({activeSessionDetail.cashRegister?.code})</span>
+            </div>
+          ) : (
+            'Cargando detalles de caja...'
+          )
+        }
+        size="7xl"
+      >
+        {loadingSessionDetail ? (
+          <div className="p-8 text-center text-slate-500">Cargando detalles de la sesión activa...</div>
+        ) : !activeSessionDetail ? (
+          <EmptyState
+            title="Caja no activa"
+            description="La sesión no pudo ser recuperada o ya se encuentra cerrada."
+            icon={Wallet}
+          />
+        ) : (
+          <div className="space-y-6 min-h-0 overflow-y-auto">
+            {/* Cabecera / Info del turno */}
+            <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-slate-50 dark:bg-slate-900/60 p-4 rounded-xl border border-slate-100 dark:border-slate-800/80">
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                  <span className="text-xs font-extrabold uppercase text-emerald-600 tracking-wider">Turno Activo</span>
+                </div>
+                <div className="text-xs text-slate-500">
+                  Apertura: {format(new Date(activeSessionDetail.openedAt), 'HH:mm - dd MMM', { locale: es })} • Operador: {activeSessionDetail.openedBy?.name}
+                </div>
+              </div>
+              <div className="flex items-center gap-2 text-xs font-bold text-slate-700 bg-slate-200/50 dark:bg-slate-800 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                🏭 Depósito: {activeSessionDetail.warehouse?.name || activeSessionDetail.cashRegister?.warehouse?.name}
+              </div>
+            </div>
+
+            {/* KPIs */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <Card className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border-l-4 border-l-amber-500 dark:bg-slate-900 shadow-sm relative overflow-hidden">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 uppercase tracking-wider">
+                      Efectivo en Caja (Esperado)
+                    </span>
+                    <div className="p-2 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400">
+                      <Banknote className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-xl md:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                    {formatCurrency(expectedCash)}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 flex items-center gap-1 font-medium">
+                    Base {formatCurrency(totals.openingBalance)} + Efectivo neto
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent border-l-4 border-l-indigo-500 dark:bg-slate-900 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 uppercase tracking-wider">
+                      Ventas Digitales
+                    </span>
+                    <div className="p-2 rounded-xl bg-indigo-500/20 text-indigo-600 dark:text-indigo-400">
+                      <CreditCard className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-xl md:text-2xl font-black text-slate-900 dark:text-white font-mono">
+                    {formatCurrency(digitalTotal)}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
+                    MP, Transf. y Tarjetas
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-emerald-500/10 via-emerald-500/5 to-transparent border-l-4 border-l-emerald-500 dark:bg-slate-900 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-wider">
+                      Total Vendido Turno
+                    </span>
+                    <div className="p-2 rounded-xl bg-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                      <TrendingUp className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-xl md:text-2xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+                    {formatCurrency(totalVendido)}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
+                    Suma total de todos los medios
+                  </p>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-gradient-to-br from-slate-500/10 via-slate-500/5 to-transparent border-l-4 border-l-slate-500 dark:bg-slate-900 shadow-sm">
+                <CardContent className="p-4">
+                  <div className="flex justify-between items-start mb-2">
+                    <span className="text-[10px] font-bold text-slate-600 dark:text-slate-400 uppercase tracking-wider">
+                      Fondo Inicial
+                    </span>
+                    <div className="p-2 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                  </div>
+                  <div className="text-xl md:text-2xl font-black text-slate-800 dark:text-slate-100 font-mono">
+                    {formatCurrency(totals.openingBalance)}
+                  </div>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-2 font-medium">
+                    Monto inicial de apertura
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Desglose y Timeline */}
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+              <div className="lg:col-span-2 space-y-6">
+                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                    <CardTitle className="text-xs md:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center justify-between">
+                      <span className="flex items-center gap-2">
+                        <Receipt className="w-4 h-4 text-indigo-500" /> Desglose Financiero por Medio de Pago
+                      </span>
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4">
+                    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+                      <div className="p-2.5 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-900/40 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-amber-700 dark:text-amber-400 block uppercase">💵 Efectivo</span>
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {formatCurrency(totals.cashTotal)}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-sky-50/50 dark:bg-sky-950/20 border border-sky-200/60 dark:border-sky-900/40 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-sky-700 dark:text-sky-400 block uppercase">💙 MP</span>
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {formatCurrency(totals.mercadoPagoTotal)}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-purple-50/50 dark:bg-purple-950/20 border border-purple-200/60 dark:border-purple-900/40 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-purple-700 dark:text-purple-400 block uppercase">🏦 Transf.</span>
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {formatCurrency(totals.transferTotal)}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200/60 dark:border-blue-900/40 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-blue-700 dark:text-blue-400 block uppercase">💳 Débito</span>
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {formatCurrency(totals.debitCardTotal)}
+                        </div>
+                      </div>
+
+                      <div className="p-2.5 bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-200/60 dark:border-indigo-900/40 rounded-xl space-y-1">
+                        <span className="text-[10px] font-bold text-indigo-700 dark:text-indigo-400 block uppercase">💳 Crédito</span>
+                        <div className="text-sm font-black text-slate-900 dark:text-white font-mono">
+                          {formatCurrency(totals.creditCardTotal)}
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center justify-between text-[11px] text-slate-500 gap-3">
+                      <div className="flex items-center gap-4">
+                        <span className="text-emerald-600 dark:text-emerald-400 font-semibold flex items-center gap-1">
+                          <ArrowUpCircle className="w-3.5 h-3.5" /> Ingresos (+): {formatCurrency(totals.manualIncomes)}
+                        </span>
+                        <span className="text-rose-600 dark:text-rose-400 font-semibold flex items-center gap-1">
+                          <ArrowDownCircle className="w-3.5 h-3.5" /> Retiros (-): {formatCurrency(totals.manualExpenses)}
+                        </span>
+                      </div>
+                      <span className="font-mono text-slate-400">Total Operaciones: {activeSessionDetail.cashMovements?.length || 0}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Timeline */}
+                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3 flex flex-row items-center justify-between">
+                    <CardTitle className="text-xs md:text-sm font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                      <History className="w-4 h-4 text-indigo-500" /> Actividad del Turno (Línea de Tiempo)
+                    </CardTitle>
+                    <Badge variant="outline" className="text-[10px] font-mono">
+                      {activeSessionDetail.cashMovements?.length || 0} registros
+                    </Badge>
+                  </CardHeader>
+                  <CardContent className="p-4 max-h-[300px] overflow-y-auto">
+                    {activeSessionDetail.cashMovements?.length === 0 ? (
+                      <EmptyState
+                        title="Sin movimientos aún"
+                        description="Las ventas y cobros aparecerán en esta línea de tiempo automáticamente."
+                        icon={History}
+                      />
+                    ) : (
+                      <div className="space-y-3">
+                        {activeSessionDetail.cashMovements?.map((mov: any) => {
+                          const isIncome = mov.type === 'IN' || mov.type === 'INCOME';
+                          const isCreditCollection =
+                            mov.referenceType === 'ACCOUNT_RECEIVABLE_PAYMENT' ||
+                            mov.referenceType === 'ACCOUNT_PAYMENT' ||
+                            mov.reason?.includes('Cuenta Corriente');
+
+                          return (
+                            <div
+                              key={mov.id}
+                              className="flex items-start justify-between p-3 rounded-xl border border-slate-100 dark:border-slate-800/70 bg-slate-50/50 dark:bg-slate-900/40 hover:bg-slate-100/50 dark:hover:bg-slate-800/50 transition-all gap-3"
+                            >
+                              <div className="flex items-start gap-3">
+                                <div
+                                  className={`p-1.5 rounded-lg shrink-0 mt-0.5 ${
+                                    isIncome
+                                      ? 'bg-emerald-100 text-emerald-600 dark:bg-emerald-950/60 dark:text-emerald-400'
+                                      : 'bg-rose-100 text-rose-600 dark:bg-rose-950/60 dark:text-rose-400'
+                                  }`}
+                                >
+                                  {isIncome ? (
+                                    <ArrowUpCircle className="w-3.5 h-3.5" />
+                                  ) : (
+                                    <ArrowDownCircle className="w-3.5 h-3.5" />
+                                  )}
+                                </div>
+                                <div>
+                                  <div className="flex items-center gap-2">
+                                    <span className="font-bold text-xs text-slate-800 dark:text-slate-100">
+                                      {isCreditCollection
+                                        ? 'Cobro Cuenta Corriente'
+                                        : mov.referenceType === 'SALE'
+                                        ? 'Venta POS'
+                                        : mov.referenceType === 'MANUAL'
+                                        ? 'Ajuste Manual'
+                                        : mov.referenceType === 'OPENING_BALANCE'
+                                        ? 'Fondo de Apertura'
+                                        : 'Movimiento'}
+                                    </span>
+                                    {mov.paymentMethod && (
+                                      <span className="text-[9px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-slate-200 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
+                                        {mov.paymentMethod}
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    {mov.reason}
+                                  </p>
+                                  <span className="text-[9px] text-slate-400 font-mono mt-1 block">
+                                    {format(new Date(mov.createdAt), 'HH:mm:ss - dd MMM', { locale: es })}
+                                  </span>
+                                </div>
+                              </div>
+
+                              <div className="text-right shrink-0">
+                                <span
+                                  className={`text-xs font-black font-mono block ${
+                                    isIncome ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'
+                                  }`}
+                                >
+                                  {isIncome ? '+' : '-'}{formatCurrency(mov.amount)}
+                                </span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Panel Lateral Acciones de Caja */}
+              <div className="space-y-6">
+                <Card className="bg-gradient-to-br from-indigo-900 to-slate-900 text-white border-0 shadow-lg relative overflow-hidden">
+                  <CardContent className="p-4 space-y-4">
+                    <div>
+                      <span className="text-[9px] font-black uppercase tracking-widest text-indigo-300">
+                        ACCIONES RÁPIDAS
+                      </span>
+                      <h3 className="text-sm font-bold text-white mt-0.5">Gestión de Turno</h3>
+                    </div>
+
+                    <div className="space-y-2.5 pt-1">
+                      <Button
+                        variant="success"
+                        className="w-full font-bold justify-start text-xs py-2"
+                        onClick={() => {
+                          setMovType('INCOME');
+                          setMovAmount('');
+                          setMovConcept('');
+                          setIsMovementModalOpen(true);
+                        }}
+                      >
+                        <Plus className="w-4 h-4 mr-2" /> Registrar Ingreso Manual
+                      </Button>
+                      <Button
+                        variant="danger"
+                        className="w-full font-bold justify-start text-xs py-2"
+                        onClick={() => {
+                          setMovType('EXPENSE');
+                          setMovAmount('');
+                          setMovConcept('');
+                          setIsMovementModalOpen(true);
+                        }}
+                      >
+                        <Minus className="w-4 h-4 mr-2" /> Registrar Retiro de Caja
+                      </Button>
+                      <Button
+                        variant="warning"
+                        className="w-full font-bold justify-start text-xs py-2"
+                        onClick={() => {
+                          setCountedBalance('');
+                          setIsCloseModalOpen(true);
+                        }}
+                      >
+                        <Lock className="w-4 h-4 mr-2" /> Realizar Cierre Z
+                      </Button>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm">
+                  <CardHeader className="border-b border-slate-100 dark:border-slate-800/80 pb-3">
+                    <CardTitle className="text-[10px] uppercase font-extrabold tracking-wider text-slate-500">
+                      Resumen Físico Sugerido
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-4 space-y-3 text-xs">
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Base Inicial:</span>
+                      <span className="font-mono font-semibold">{formatCurrency(totals.openingBalance)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600 dark:text-slate-400">
+                      <span>Ventas Efectivo:</span>
+                      <span className="font-mono font-semibold">{formatCurrency(totals.cashTotal)}</span>
+                    </div>
+                    <div className="flex justify-between text-emerald-600">
+                      <span>Ingresos Manuales (+):</span>
+                      <span className="font-mono font-semibold">+{formatCurrency(totals.manualIncomes)}</span>
+                    </div>
+                    <div className="flex justify-between text-rose-600">
+                      <span>Retiros Manuales (-):</span>
+                      <span className="font-mono font-semibold">-{formatCurrency(totals.manualExpenses)}</span>
+                    </div>
+                    <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between font-bold text-slate-900 dark:text-white text-xs md:text-sm">
+                      <span>Efectivo Sugerido:</span>
+                      <span className="font-mono text-amber-600 dark:text-amber-400">{formatCurrency(expectedCash)}</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
+
+      {/* 6. MODAL MOVIMIENTO MANUAL INGRESO / RETIRO EN VIVO */}
       <Modal
         isOpen={isMovementModalOpen}
         onClose={() => setIsMovementModalOpen(false)}
         title={movType === 'INCOME' ? 'Registrar Ingreso de Caja' : 'Registrar Retiro de Caja'}
         size="md"
       >
-        <div className="space-y-4 pt-2">
-          <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800 rounded-xl">
-            <button
-              type="button"
-              onClick={() => setMovType('INCOME')}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                movType === 'INCOME'
-                  ? 'bg-emerald-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              <Plus className="w-4 h-4" /> Ingreso (+)
-            </button>
-            <button
-              type="button"
-              onClick={() => setMovType('EXPENSE')}
-              className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all flex items-center justify-center gap-1.5 ${
-                movType === 'EXPENSE'
-                  ? 'bg-rose-600 text-white shadow-sm'
-                  : 'text-slate-500 hover:text-slate-800 dark:hover:text-slate-200'
-              }`}
-            >
-              <Minus className="w-4 h-4" /> Retiro (-)
-            </button>
-          </div>
-
+        <div className="space-y-4 pt-1">
           <Input
             label="Monto a Registrar ($ ARS) *"
             type="number"
@@ -932,9 +1055,8 @@ export const Cash: React.FC = () => {
             value={movAmount}
             onChange={(e: any) => setMovAmount(e.target.value)}
             placeholder="0.00"
-            leftIcon={DollarSign}
+            leftIcon={Wallet}
           />
-
           <div>
             <label className="block text-xs font-semibold text-slate-700 dark:text-slate-300 mb-1.5">
               Concepto / Motivo *
@@ -945,7 +1067,6 @@ export const Cash: React.FC = () => {
               onChange={(e: any) => setMovConcept(e.target.value)}
               placeholder="Ej: Cambio de billetes / Viáticos de entrega"
             />
-            {/* Chips de motivos habituales */}
             <div className="flex flex-wrap gap-1.5 mt-2">
               {[
                 'Cambio de billetes',
@@ -958,14 +1079,13 @@ export const Cash: React.FC = () => {
                   key={chip}
                   type="button"
                   onClick={() => setMovConcept(chip)}
-                  className="px-2 py-0.5 text-[10px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
+                  className="px-2 py-0.5 text-[9px] font-semibold bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 rounded-md transition-colors"
                 >
                   + {chip}
                 </button>
               ))}
             </div>
           </div>
-
           <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800">
             <Button variant="outline" onClick={() => setIsMovementModalOpen(false)}>
               Cancelar
@@ -988,7 +1108,7 @@ export const Cash: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 5. MODAL DE ARQUEO Y CIERRE Z DE CAJA */}
+      {/* 7. MODAL DE CIERRE Z DE CAJA EN VIVO */}
       <Modal
         isOpen={isCloseModalOpen}
         onClose={() => setIsCloseModalOpen(false)}
@@ -1002,7 +1122,7 @@ export const Cash: React.FC = () => {
 
           <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-2 text-xs">
             <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-              <span>💵 Efectivo por Ventas:</span>
+              <span>💵 Ventas Efectivo:</span>
               <span className="font-mono font-bold text-slate-800 dark:text-slate-100">
                 {formatCurrency(totals.cashTotal)}
               </span>
@@ -1013,19 +1133,15 @@ export const Cash: React.FC = () => {
                 {formatCurrency(totals.openingBalance)}
               </span>
             </div>
-            {totals.manualIncomes > 0 && (
-              <div className="flex justify-between items-center text-emerald-600">
-                <span>Ingresos Manuales (+):</span>
-                <span className="font-mono font-semibold">+{formatCurrency(totals.manualIncomes)}</span>
-              </div>
-            )}
-            {totals.manualExpenses > 0 && (
-              <div className="flex justify-between items-center text-rose-600">
-                <span>Retiros Manuales (-):</span>
-                <span className="font-mono font-semibold">-{formatCurrency(totals.manualExpenses)}</span>
-              </div>
-            )}
-            <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between font-bold text-slate-900 dark:text-white text-sm">
+            <div className="flex justify-between items-center text-emerald-600">
+              <span>Ingresos Manuales (+):</span>
+              <span className="font-mono font-semibold">+{formatCurrency(totals.manualIncomes)}</span>
+            </div>
+            <div className="flex justify-between items-center text-rose-600">
+              <span>Retiros Manuales (-):</span>
+              <span className="font-mono font-semibold">-{formatCurrency(totals.manualExpenses)}</span>
+            </div>
+            <div className="border-t border-slate-200 dark:border-slate-700 pt-2 flex justify-between font-bold text-slate-900 dark:text-white text-xs">
               <span>Efectivo Físico Esperado:</span>
               <span className="font-mono text-amber-600 dark:text-amber-400">
                 {formatCurrency(expectedCash)}
@@ -1042,13 +1158,12 @@ export const Cash: React.FC = () => {
             onChange={(e: any) => setCountedBalance(e.target.value)}
             placeholder="0.00"
             leftIcon={Banknote}
-            helperText="Cuenta el dinero en billetes físicamente presente en la caja."
+            helperText="Cuenta el dinero físicamente presente en la caja."
           />
 
-          {/* Cálculo de Diferencia en Tiempo Real */}
           {countedBalance !== '' && (
             <div
-              className={`p-3.5 rounded-xl border ${
+              className={`p-3 rounded-xl border ${
                 Number(countedBalance) - expectedCash === 0
                   ? 'bg-emerald-50 border-emerald-300 text-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800'
                   : Number(countedBalance) - expectedCash > 0
@@ -1056,7 +1171,7 @@ export const Cash: React.FC = () => {
                   : 'bg-rose-50 border-rose-300 text-rose-900 dark:bg-rose-950/40 dark:text-rose-300 dark:border-rose-800'
               }`}
             >
-              <div className="flex justify-between items-center text-xs md:text-sm font-bold">
+              <div className="flex justify-between items-center text-xs font-bold">
                 <span>
                   {Number(countedBalance) - expectedCash === 0
                     ? '🟢 Arqueo Exacto (Sin Diferencia)'
@@ -1064,7 +1179,7 @@ export const Cash: React.FC = () => {
                     ? '🔵 Sobrante de Caja'
                     : '🔴 Faltante de Caja'}
                 </span>
-                <span className="font-mono text-base font-black">
+                <span className="font-mono text-sm font-black">
                   {Number(countedBalance) - expectedCash > 0 ? '+' : ''}
                   {formatCurrency(Number(countedBalance) - expectedCash)}
                 </span>
@@ -1089,7 +1204,7 @@ export const Cash: React.FC = () => {
         </div>
       </Modal>
 
-      {/* 6. MODAL DE DETALLE DE ARQUEO HISTÓRICO */}
+      {/* 8. MODAL DE ARQUEO HISTÓRICO */}
       {selectedSessionId && (
         <SessionDetailModal
           sessionId={selectedSessionId}

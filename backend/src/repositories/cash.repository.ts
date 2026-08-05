@@ -31,9 +31,34 @@ export class CashRepository {
 
   async findActiveSessionWithDetails(businessId: string, userId?: string, warehouseId?: string) {
     const validWhId = warehouseId && warehouseId !== 'ALL' ? warehouseId : undefined;
-    
+
+    // Load user role to check Administrator / isStaff
+    const user = userId
+      ? await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            isStaff: true,
+            role: { select: { name: true } }
+          }
+        })
+      : null;
+
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
     // 1. Search OPEN session directly for specified warehouseId
     if (validWhId) {
+      // If restricted user, verify they have permission for this warehouse
+      if (!isAdminOrStaff && userId) {
+        const userWarehouses = await prisma.userWarehouse.findMany({
+          where: { userId },
+          select: { warehouseId: true },
+        });
+        const allowedWhIds = userWarehouses.map((uw) => uw.warehouseId);
+        if (!allowedWhIds.includes(validWhId)) {
+          return null; // Restricted user not allowed to access this warehouse's session!
+        }
+      }
+
       const sessionByWh = await prisma.cashSession.findFirst({
         where: {
           businessId,
@@ -98,29 +123,33 @@ export class CashRepository {
       }
     }
 
-    // 3. Global fallback for business
-    return prisma.cashSession.findFirst({
-      where: {
-        businessId,
-        status: 'OPEN',
-      },
-      include: {
-        cashRegister: { include: { warehouse: true } },
-        warehouse: true,
-        openedBy: { select: { id: true, name: true, email: true } },
-        cashMovements: {
-          include: {
-            paymentMethodRel: true,
-            createdByUser: { select: { id: true, name: true, email: true } },
+    // 3. Global fallback for business (ONLY for Admin / Staff!)
+    if (isAdminOrStaff) {
+      return prisma.cashSession.findFirst({
+        where: {
+          businessId,
+          status: 'OPEN',
+        },
+        include: {
+          cashRegister: { include: { warehouse: true } },
+          warehouse: true,
+          openedBy: { select: { id: true, name: true, email: true } },
+          cashMovements: {
+            include: {
+              paymentMethodRel: true,
+              createdByUser: { select: { id: true, name: true, email: true } },
+            },
+            orderBy: { createdAt: 'desc' },
           },
-          orderBy: { createdAt: 'desc' },
+          sales: {
+            orderBy: { createdAt: 'desc' },
+          },
         },
-        sales: {
-          orderBy: { createdAt: 'desc' },
-        },
-      },
-      orderBy: { openedAt: 'desc' },
-    });
+        orderBy: { openedAt: 'desc' },
+      });
+    }
+
+    return null;
   }
 
   async findActiveSessionByRegister(cashRegisterId: string, businessId: string) {
@@ -218,6 +247,20 @@ export class CashRepository {
     if (warehouseId && warehouseId !== 'ALL') {
       where.warehouseId = warehouseId;
     }
-    return prisma.cashRegister.findMany({ where });
+    return prisma.cashRegister.findMany({
+      where,
+      include: {
+        warehouse: true,
+        sessions: {
+          orderBy: { openedAt: 'desc' },
+          take: 1,
+          include: {
+            openedBy: { select: { id: true, name: true, email: true } },
+            closedBy: { select: { id: true, name: true, email: true } },
+            warehouse: true,
+          }
+        }
+      }
+    });
   }
 }

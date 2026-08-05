@@ -229,13 +229,24 @@ export class CashService {
       throw new NotFoundError('Depósito no encontrado o inactivo.');
     }
 
-    const userWarehouses = await prisma.userWarehouse.findMany({
-      where: { userId: data.userId },
+    const user = await prisma.user.findUnique({
+      where: { id: data.userId },
+      select: {
+        isStaff: true,
+        role: { select: { name: true } }
+      }
     });
-    if (userWarehouses.length > 0) {
-      const allowed = userWarehouses.some((uw) => uw.warehouseId === data.warehouseId);
-      if (!allowed) {
-        throw new ForbiddenError(`No tienes permisos autorizados para operar en el depósito "${warehouse.name}".`);
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
+    if (!isAdminOrStaff) {
+      const userWarehouses = await prisma.userWarehouse.findMany({
+        where: { userId: data.userId },
+      });
+      if (userWarehouses.length > 0) {
+        const allowed = userWarehouses.some((uw) => uw.warehouseId === data.warehouseId);
+        if (!allowed) {
+          throw new ForbiddenError(`No tienes permisos autorizados para operar en el depósito "${warehouse.name}".`);
+        }
       }
     }
 
@@ -313,14 +324,20 @@ export class CashService {
     });
   }
 
-  async closeSession(data: { businessId: string; userId: string; countedBalance: number; notes?: string; warehouseId?: string }) {
+  async closeSession(data: { businessId: string; userId: string; countedBalance: number; notes?: string; warehouseId?: string; sessionId?: string }) {
     if (data.countedBalance < 0) {
       throw new BadRequestError('El saldo contado no puede ser negativo.');
     }
 
-    const session = await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
+    const session = data.sessionId
+      ? await prisma.cashSession.findUnique({
+          where: { id: data.sessionId, businessId: data.businessId },
+          include: { cashRegister: { include: { warehouse: true } }, warehouse: true }
+        })
+      : await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
+
     if (!session) {
-      throw new ConflictError('No existe ninguna sesión de caja abierta en este depósito.');
+      throw new ConflictError('No existe ninguna sesión de caja abierta correspondiente.');
     }
 
     // Security check: verify user is authorized for session's warehouse
@@ -368,7 +385,7 @@ export class CashService {
     return mapToCashSessionSummaryDTO(closedWithDetails || sessionDetails);
   }
 
-  async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string }) {
+  async registerManualMovement(data: { businessId: string; userId: string; type: 'INCOME' | 'EXPENSE'; amount: number; concept: string; notes?: string; warehouseId?: string; sessionId?: string }) {
     if (!data.concept || !data.concept.trim()) {
       throw new BadRequestError('El motivo del movimiento es obligatorio.');
     }
@@ -377,9 +394,15 @@ export class CashService {
       throw new BadRequestError('El monto del movimiento debe ser mayor a cero.');
     }
 
-    const session = await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
+    const session = data.sessionId
+      ? await prisma.cashSession.findUnique({
+          where: { id: data.sessionId, businessId: data.businessId },
+          include: { cashRegister: { include: { warehouse: true } }, warehouse: true }
+        })
+      : await this.cashRepo.findActiveSessionWithDetails(data.businessId, data.userId, data.warehouseId);
+
     if (!session) {
-      throw new ConflictError('No existe una caja abierta en esta sucursal para registrar movimientos manuales.');
+      throw new ConflictError('No existe una caja abierta correspondiente para registrar movimientos manuales.');
     }
 
     if (session.warehouseId) {
@@ -431,7 +454,37 @@ export class CashService {
   }
 
   async getActiveSession(businessId: string, userId: string, warehouseId?: string): Promise<CashSessionSummaryDTO | null> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        isStaff: true,
+        role: { select: { name: true } }
+      }
+    });
+
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
+    const userWarehouses = await prisma.userWarehouse.findMany({
+      where: { userId },
+      select: { warehouseId: true }
+    });
+    const allowedWhIds = userWarehouses.map(uw => uw.warehouseId);
+
+    // Count open sessions before filter/permission application
+    const allOpenSessions = await prisma.cashSession.findMany({
+      where: { businessId, status: 'OPEN' }
+    });
+
     let sessionDetails = await this.cashRepo.findActiveSessionWithDetails(businessId, userId, warehouseId);
+
+    console.log(`[CashService.getActiveSession] AUDIT LOG:
+- userId: ${userId}
+- role: ${user?.role?.name || 'N/A'}
+- businessId: ${businessId}
+- depósitos autorizados: ${isAdminOrStaff ? 'ALL (Administrator bypass)' : allowedWhIds.join(', ')}
+- cantidad de cajas/sesiones abiertas antes del filtro: ${allOpenSessions.length}
+- cantidad de cajas/sesiones abiertas encontradas después del filtro: ${sessionDetails ? 1 : 0}`);
+
     if (!sessionDetails) {
       return null;
     }
@@ -456,10 +509,37 @@ export class CashService {
     return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
-  async getHistory(businessId: string, warehouseId?: string): Promise<CashSessionSummaryDTO[]> {
+  async getHistory(businessId: string, warehouseId?: string, userId?: string): Promise<CashSessionSummaryDTO[]> {
+    const user = userId
+      ? await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            isStaff: true,
+            role: { select: { name: true } }
+          }
+        })
+      : null;
+
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
+    let allowedWhIds: string[] = [];
+    if (userId && !isAdminOrStaff) {
+      const userWarehouses = await prisma.userWarehouse.findMany({
+        where: { userId },
+        select: { warehouseId: true }
+      });
+      allowedWhIds = userWarehouses.map(uw => uw.warehouseId);
+    }
+
     const sessions = await this.cashRepo.listSessions(businessId, {}, warehouseId);
+
+    const filteredSessions = sessions.filter((s: any) => {
+      if (!userId || isAdminOrStaff) return true;
+      return allowedWhIds.includes(s.warehouseId || '');
+    });
+
     return Promise.all(
-      sessions.map(async (s: any) => {
+      filteredSessions.map(async (s: any) => {
         const details = await this.cashRepo.getSessionWithDetails(s.id, businessId);
         return mapToCashSessionSummaryDTO(details || s);
       })
@@ -472,33 +552,134 @@ export class CashService {
     return mapToCashSessionSummaryDTO(sessionDetails);
   }
 
-  async getRegisters(businessId: string, warehouseId?: string) {
+  async getRegisters(businessId: string, warehouseId?: string, userId?: string) {
+    const user = userId
+      ? await prisma.user.findUnique({
+          where: { id: userId },
+          select: {
+            isStaff: true,
+            role: { select: { name: true } }
+          }
+        })
+      : null;
+
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
+    let allowedWhIds: string[] = [];
+    if (userId && !isAdminOrStaff) {
+      const userWarehouses = await prisma.userWarehouse.findMany({
+        where: { userId },
+        select: { warehouseId: true }
+      });
+      allowedWhIds = userWarehouses.map(uw => uw.warehouseId);
+    }
+
     let registers = await this.cashRepo.listRegisters(businessId, warehouseId);
+
+    // Filter registers for restricted users
+    if (userId && !isAdminOrStaff) {
+      registers = registers.filter(r => allowedWhIds.includes(r.warehouseId || ''));
+    }
     
     // Lazy creation fallback for existing tenants / warehouses that missed provisioning
     if (registers.length === 0) {
-      const codeSuffix = warehouseId && warehouseId !== 'ALL' ? warehouseId.slice(-4).toUpperCase() : '01';
-      const newRegister = await prisma.cashRegister.create({
-        data: {
+      // If restricted user has no warehouses assigned, we don't auto-create anything
+      if (userId && !isAdminOrStaff && allowedWhIds.length === 0) {
+        return [];
+      }
+
+      // If a specific warehouseId is requested (or if we fallback to the first allowed one)
+      const targetWhId = warehouseId && warehouseId !== 'ALL' 
+        ? warehouseId 
+        : (!isAdminOrStaff && allowedWhIds.length > 0 ? allowedWhIds[0] : undefined);
+
+      if (targetWhId || isAdminOrStaff) {
+        const codeSuffix = targetWhId ? targetWhId.slice(-4).toUpperCase() : '01';
+        const newRegister = await prisma.cashRegister.create({
+          data: {
+            businessId,
+            warehouseId: targetWhId as string,
+            name: 'Caja Principal',
+            code: `CAJA-${codeSuffix}`,
+            isActive: true,
+          },
+        });
+
+        // Re-fetch to get the relations populated correctly
+        const reFetched = await prisma.cashRegister.findUnique({
+          where: { id: newRegister.id },
+          include: {
+            warehouse: true,
+            sessions: {
+              orderBy: { openedAt: 'desc' },
+              take: 1,
+              include: {
+                openedBy: { select: { id: true, name: true, email: true } },
+                closedBy: { select: { id: true, name: true, email: true } },
+                warehouse: true,
+              }
+            }
+          }
+        });
+
+        registers = reFetched ? [reFetched as any] : [];
+        
+        await this.activityLogRepo.log({
           businessId,
-          warehouseId: warehouseId && warehouseId !== 'ALL' ? warehouseId : undefined,
-          name: 'Caja Principal',
-          code: `CAJA-${codeSuffix}`,
-          isActive: true,
-        },
-      });
-      registers = [newRegister];
-      
-      await this.activityLogRepo.log({
-        businessId,
-        userId: 'SYSTEM',
-        entityName: 'CashRegister',
-        entityId: newRegister.id,
-        actionType: 'CREATE_SYSTEM_DEFAULT',
-        newValues: JSON.stringify({ name: 'Caja Principal', warehouseId }),
-      } as any);
+          userId: 'SYSTEM',
+          entityName: 'CashRegister',
+          entityId: newRegister.id,
+          actionType: 'CREATE_SYSTEM_DEFAULT',
+          newValues: JSON.stringify({ name: 'Caja Principal', warehouseId: targetWhId }),
+        } as any);
+      }
     }
     
     return registers;
+  }
+
+  async getOpenSessions(businessId: string, userId: string): Promise<CashSessionSummaryDTO[]> {
+    const user = await prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        isStaff: true,
+        role: { select: { name: true } }
+      }
+    });
+
+    const isAdminOrStaff = user?.isStaff || user?.role?.name === 'Administrator';
+
+    let allowedWhIds: string[] = [];
+    if (!isAdminOrStaff) {
+      const userWarehouses = await prisma.userWarehouse.findMany({
+        where: { userId },
+        select: { warehouseId: true }
+      });
+      allowedWhIds = userWarehouses.map(uw => uw.warehouseId);
+    }
+
+    const where: any = {
+      businessId,
+      status: 'OPEN'
+    };
+
+    if (!isAdminOrStaff) {
+      where.warehouseId = { in: allowedWhIds };
+    }
+
+    const openSessions = await prisma.cashSession.findMany({
+      where,
+      include: {
+        cashRegister: { include: { warehouse: true } },
+        warehouse: true,
+        openedBy: true,
+      },
+      orderBy: { openedAt: 'desc' }
+    });
+
+    return Promise.all(openSessions.map(async (session: any) => {
+      const details = await this.cashRepo.getSessionWithDetails(session.id, businessId);
+      return mapToCashSessionSummaryDTO(details || session);
+    }));
   }
 }
