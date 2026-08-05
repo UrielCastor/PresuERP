@@ -60,6 +60,7 @@ export class SaleRepository {
           customer: { select: { id: true, name: true, taxId: true } },
           documentType: { select: { id: true, name: true, code: true } },
           createdBy: { select: { id: true, name: true } },
+          warehouse: { select: { id: true, name: true } },
         },
         orderBy: { createdAt: 'desc' },
         skip,

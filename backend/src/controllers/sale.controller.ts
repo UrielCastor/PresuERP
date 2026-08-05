@@ -1,7 +1,9 @@
 import { Request, Response, NextFunction } from 'express';
 import { SaleService } from '../services/sale.service';
+import { WarehouseService } from '../services/warehouse.service';
 
 const saleService = new SaleService();
+const warehouseService = new WarehouseService();
 
 export class SaleController {
   static async list(req: Request, res: Response, next: NextFunction) {
@@ -20,11 +22,28 @@ export class SaleController {
         limit,
       } = req.query;
 
+      // Obtener depósitos autorizados para el usuario
+      const allowedWarehouses = await warehouseService.list(businessId, req.user!.id);
+      const allowedIds = allowedWarehouses.map((w: any) => w.id);
+
+      let effectiveWarehouseId: any = warehouseId ? String(warehouseId) : undefined;
+
+      // Restricción por rol/staff
+      if (!req.user!.isStaff && req.user!.role !== 'Administrator') {
+        if (effectiveWarehouseId) {
+          if (!allowedIds.includes(effectiveWarehouseId)) {
+            effectiveWarehouseId = { in: [] };
+          }
+        } else {
+          effectiveWarehouseId = { in: allowedIds };
+        }
+      }
+
       const filters: any = {
         customerId: customerId ? String(customerId) : undefined,
         cashSessionId: cashSessionId ? String(cashSessionId) : undefined,
         documentTypeId: documentTypeId ? String(documentTypeId) : undefined,
-        warehouseId: warehouseId ? String(warehouseId) : undefined,
+        warehouseId: effectiveWarehouseId,
         status: status ? String(status) : undefined,
         search: search ? String(search) : undefined,
         page: page ? Number(page) : undefined,

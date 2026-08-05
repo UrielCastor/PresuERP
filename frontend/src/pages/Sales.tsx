@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -20,13 +20,15 @@ import {
   ArrowRight,
   ChevronLeft,
   ChevronRight,
-  MoreVertical
+  MoreVertical,
+  Building2
 } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
 import { saleApi, Sale } from '../services/sale.service';
 import { warehouseApi } from '../services/warehouse.service';
 import { getCustomers } from '../services/customer.service';
+import { getInitialWarehouseId } from '../utils/warehouse';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { Select } from '../components/ui/Select';
@@ -39,7 +41,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 type PeriodPreset = 'HOY' | 'AYER' | 'SEMANA' | 'MES' | 'CUSTOM';
 
 export const Sales: React.FC = () => {
-  const { hasPermission } = useAuth();
+  const { hasPermission, user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -54,7 +56,13 @@ export const Sales: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
   const [customerFilter, setCustomerFilter] = useState('');
-  const [warehouseFilter, setWarehouseFilter] = useState('');
+  const [warehouseFilter, setWarehouseFilter] = useState<string>(() => {
+    const isCompanyAdmin = user?.role === 'Administrator' || user?.isStaff;
+    if (isCompanyAdmin) {
+      return user?.defaultWarehouseId || user?.defaultWarehouse?.id || '';
+    }
+    return getInitialWarehouseId(user) || '';
+  });
   const [page, setPage] = useState(1);
 
   // Modales
@@ -161,6 +169,22 @@ export const Sales: React.FC = () => {
     queryKey: ['warehousesListAll'],
     queryFn: warehouseApi.list,
   });
+
+  const isCompanyAdmin = user?.role === 'Administrator' || user?.isStaff;
+
+  useEffect(() => {
+    if (warehouses.length > 0 && !isCompanyAdmin) {
+      if (warehouses.length === 1) {
+        if (warehouseFilter !== warehouses[0].id) {
+          setWarehouseFilter(warehouses[0].id);
+        }
+      } else {
+        if (!warehouseFilter || !warehouses.some((w: any) => w.id === warehouseFilter)) {
+          setWarehouseFilter(warehouses[0].id);
+        }
+      }
+    }
+  }, [warehouses, isCompanyAdmin, warehouseFilter]);
 
   // Anulación Mutation
   const cancelMutation = useMutation({
@@ -283,6 +307,33 @@ export const Sales: React.FC = () => {
               </button>
             ))}
           </div>
+
+          {/* Selector de Sucursal */}
+          {!(warehouses.length === 1 && !isCompanyAdmin) && (
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800 p-1 rounded-xl border border-slate-200 dark:border-slate-700">
+              <span className="text-[10px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 px-2 flex items-center gap-1">
+                <Building2 className="w-3.5 h-3.5 text-primary-500" />
+                Sucursal:
+              </span>
+              <select
+                value={warehouseFilter}
+                onChange={(e) => {
+                  setWarehouseFilter(e.target.value);
+                  setPage(1);
+                }}
+                className="bg-transparent text-xs font-bold text-slate-800 dark:text-slate-200 focus:outline-none cursor-pointer pr-2.5"
+              >
+                {isCompanyAdmin && (
+                  <option value="">🏢 Todas las sucursales</option>
+                )}
+                {warehouses.map((w: any) => (
+                  <option key={w.id} value={w.id}>
+                    🏭 {w.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           <Button
             variant="outline"
@@ -412,6 +463,7 @@ export const Sales: React.FC = () => {
               <tr>
                 <th className="px-4 py-2.5">Comprobante</th>
                 <th className="px-4 py-2.5">Fecha</th>
+                <th className="px-4 py-2.5">Sucursal</th>
                 <th className="px-4 py-2.5">Cliente</th>
                 <th className="px-4 py-2.5 text-right">Monto Total</th>
                 <th className="px-4 py-2.5 text-center">Estado</th>
@@ -429,6 +481,9 @@ export const Sales: React.FC = () => {
                       <Skeleton className="h-4 w-20" />
                     </td>
                     <td className="px-4 py-2">
+                      <Skeleton className="h-4 w-24" />
+                    </td>
+                    <td className="px-4 py-2">
                       <Skeleton className="h-4 w-36" />
                     </td>
                     <td className="px-4 py-2">
@@ -444,7 +499,7 @@ export const Sales: React.FC = () => {
                 ))
               ) : salesData?.data?.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8">
+                  <td colSpan={7} className="p-8">
                     <EmptyState
                       title={`No hay operaciones registradas ${getPeriodLabelText().toLowerCase()}`}
                       description="Haz clic en 'Abrir POS' para iniciar una nueva venta."
@@ -475,6 +530,9 @@ export const Sales: React.FC = () => {
                         hour: '2-digit',
                         minute: '2-digit',
                       })}
+                    </td>
+                    <td className="px-4 py-2.5 text-slate-550 font-semibold text-xs whitespace-nowrap">
+                      {(sale as any).warehouse?.name || 'S/S'}
                     </td>
                     <td className="px-4 py-2.5 font-semibold text-slate-800 dark:text-slate-200">
                       {sale.customer?.name || (
@@ -785,12 +843,13 @@ export const Sales: React.FC = () => {
                 <table className="w-full text-left text-xs border-collapse table-fixed">
                   <thead className="bg-slate-50 dark:bg-slate-950 uppercase font-bold text-slate-500 border-b border-slate-200 dark:border-slate-800 sticky top-0 z-10">
                     <tr>
-                      <th className="px-3 py-2.5 w-[16%]">Comprobante</th>
-                      <th className="px-3 py-2.5 w-[14%]">Fecha</th>
-                      <th className="px-3 py-2.5 w-[35%]">Cliente</th>
-                      <th className="px-3 py-2.5 w-[15%] text-right">Monto Total</th>
-                      <th className="px-3 py-2.5 w-[12%] text-center">Estado</th>
-                      <th className="px-3 py-2.5 w-[8%] text-center">Acciones</th>
+                      <th className="px-3 py-2.5 w-[14%]">Comprobante</th>
+                      <th className="px-3 py-2.5 w-[12%]">Fecha</th>
+                      <th className="px-3 py-2.5 w-[16%]">Sucursal</th>
+                      <th className="px-3 py-2.5 w-[27%]">Cliente</th>
+                      <th className="px-3 py-2.5 w-[14%] text-right">Monto Total</th>
+                      <th className="px-3 py-2.5 w-[11%] text-center">Estado</th>
+                      <th className="px-3 py-2.5 w-[6%] text-center">Acciones</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
@@ -798,6 +857,7 @@ export const Sales: React.FC = () => {
                       Array.from({ length: 8 }).map((_, idx) => (
                         <tr key={idx} className="h-11">
                           <td className="px-3 py-2"><Skeleton className="h-4 w-24" /></td>
+                          <td className="px-3 py-2"><Skeleton className="h-4 w-20" /></td>
                           <td className="px-3 py-2"><Skeleton className="h-4 w-20" /></td>
                           <td className="px-3 py-2"><Skeleton className="h-4 w-36" /></td>
                           <td className="px-3 py-2 text-right"><Skeleton className="h-4 w-16 ml-auto" /></td>
@@ -807,7 +867,7 @@ export const Sales: React.FC = () => {
                       ))
                     ) : salesData?.data?.length === 0 ? (
                       <tr>
-                        <td colSpan={6} className="p-8">
+                        <td colSpan={7} className="p-8">
                           <EmptyState
                             title="No se encontraron comprobantes"
                             description="Prueba cambiando los filtros o el rango de fechas."
@@ -832,6 +892,9 @@ export const Sales: React.FC = () => {
                           </td>
                           <td className="px-3 py-2 whitespace-nowrap text-slate-500 font-mono text-[11px]">
                             {format(new Date(sale.createdAt), 'dd/MM HH:mm')}
+                          </td>
+                          <td className="px-3 py-2 text-slate-550 font-semibold text-xs whitespace-nowrap truncate animate-fade-in" title={(sale as any).warehouse?.name || 'S/S'}>
+                            {(sale as any).warehouse?.name || 'S/S'}
                           </td>
                           <td className="px-3 py-2 font-medium text-slate-800 dark:text-slate-200 truncate" title={sale.customer?.name || 'Consumidor Final'}>
                             {sale.customer?.name ? (
