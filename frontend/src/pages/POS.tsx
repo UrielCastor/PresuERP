@@ -85,6 +85,7 @@ export const POS: React.FC = () => {
   const [restoredBanner, setRestoredBanner] = useState<string | null>(null);
   const [tierNotice, setTierNotice] = useState<{ message: string; visible: boolean } | null>(null);
   const [isRoundingSessionEnabled, setIsRoundingSessionEnabled] = useState<boolean>(true);
+  const [loadedWarehouseId, setLoadedWarehouseId] = useState<string>('');
 
   // Inline Quantity Editing State in Cart
   const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
@@ -246,23 +247,9 @@ const isKgProduct = (p: any) => {
     setIsPriceListModalOpen(false);
   };
 
-  // 1. Cargar preferencias y borrador guardado en localStorage al iniciar
+  // 1. Cargar preferencias al iniciar
   useEffect(() => {
     try {
-      const savedDraft = localStorage.getItem(POS_DRAFT_KEY);
-      if (savedDraft) {
-        const parsed = JSON.parse(savedDraft);
-        if (parsed.cart && Array.isArray(parsed.cart) && parsed.cart.length > 0) {
-          setCart(parsed.cart);
-          if (parsed.discountType) setDiscountType(parsed.discountType);
-          if (parsed.discountValue !== undefined) setDiscountValue(parsed.discountValue);
-          if (parsed.paymentMethod) setPaymentMethod(parsed.paymentMethod);
-          if (parsed.selectedWarehouseId) setSelectedWarehouseId(parsed.selectedWarehouseId);
-          if (parsed.selectedCustomer) setSelectedCustomer(parsed.selectedCustomer);
-          setRestoredBanner('Se restauró automáticamente una venta que estaba en curso.');
-        }
-      }
-
       const savedPrefs = localStorage.getItem(POS_PREFERENCES_KEY);
       if (savedPrefs) {
         const prefs = JSON.parse(savedPrefs);
@@ -270,13 +257,46 @@ const isKgProduct = (p: any) => {
         if (prefs.selectedWarehouseId) setSelectedWarehouseId(prefs.selectedWarehouseId);
       }
     } catch (err) {
-      console.error('Error al cargar borrador/preferencias del POS:', err);
+      console.error('Error al cargar preferencias del POS:', err);
     }
   }, []);
 
+  // Cargar borrador dinámicamente al cambiar de sucursal
+  useEffect(() => {
+    if (!selectedWarehouseId) return;
+    try {
+      const draftKey = `presuerp_pos_draft_v1_${user?.businessId || 'default'}_${selectedWarehouseId}`;
+      const savedDraft = localStorage.getItem(draftKey);
+      if (savedDraft) {
+        const parsed = JSON.parse(savedDraft);
+        if (parsed.cart && Array.isArray(parsed.cart)) {
+          setCart(parsed.cart);
+          setDiscountType(parsed.discountType || 'PERCENTAGE');
+          setDiscountValue(parsed.discountValue !== undefined ? parsed.discountValue : '');
+          setPaymentMethod(parsed.paymentMethod || 'CASH');
+          setSelectedCustomer(parsed.selectedCustomer || null);
+          setRestoredBanner('Se restauró automáticamente una venta que estaba en curso.');
+          setLoadedWarehouseId(selectedWarehouseId);
+          return;
+        }
+      }
+      setCart([]);
+      setDiscountType('PERCENTAGE');
+      setDiscountValue('');
+      setPaymentMethod('CASH');
+      setSelectedCustomer(null);
+      setRestoredBanner(null);
+      setLoadedWarehouseId(selectedWarehouseId);
+    } catch (err) {
+      console.error('Error al cargar borrador del POS:', err);
+    }
+  }, [selectedWarehouseId, user?.businessId]);
+
   // 2. Persistir automáticamente la venta en curso ante cualquier cambio
   useEffect(() => {
+    if (!selectedWarehouseId || loadedWarehouseId !== selectedWarehouseId) return;
     try {
+      const draftKey = `presuerp_pos_draft_v1_${user?.businessId || 'default'}_${selectedWarehouseId}`;
       if (cart.length > 0) {
         const draft = {
           cart,
@@ -287,14 +307,14 @@ const isKgProduct = (p: any) => {
           selectedCustomer,
           timestamp: Date.now(),
         };
-        localStorage.setItem(POS_DRAFT_KEY, JSON.stringify(draft));
+        localStorage.setItem(draftKey, JSON.stringify(draft));
       } else {
-        localStorage.removeItem(POS_DRAFT_KEY);
+        localStorage.removeItem(draftKey);
       }
     } catch (err) {
       console.error('Error al guardar borrador del POS:', err);
     }
-  }, [cart, discountType, discountValue, paymentMethod, selectedWarehouseId, selectedCustomer]);
+  }, [cart, discountType, discountValue, paymentMethod, selectedWarehouseId, selectedCustomer, loadedWarehouseId, user?.businessId]);
 
   // 3. Persistir preferencias del usuario
   useEffect(() => {
@@ -481,8 +501,8 @@ const isKgProduct = (p: any) => {
   });
 
   const { data: dashboardRes } = useQuery({
-    queryKey: ['posDashboard'],
-    queryFn: posApi.getDashboard,
+    queryKey: ['posDashboard', selectedWarehouseId, activeSession?.id],
+    queryFn: () => posApi.getDashboard({ warehouseId: selectedWarehouseId, cashSessionId: activeSession?.id }),
   });
 
   const dashboard = dashboardRes?.data || {
@@ -836,7 +856,8 @@ const isKgProduct = (p: any) => {
       clearCart();
       setSelectedCustomer(null);
       setIsCheckoutOpen(false);
-      localStorage.removeItem(POS_DRAFT_KEY);
+      const draftKey = `presuerp_pos_draft_v1_${user?.businessId || 'default'}_${selectedWarehouseId}`;
+      localStorage.removeItem(draftKey);
       queryClient.invalidateQueries({ queryKey: ['posDashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['cash'] });
