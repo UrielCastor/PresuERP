@@ -42,6 +42,7 @@ export const createSaleSchema = z.object({
       )
       .optional()
       .default([]),
+    pointsRedeemed: z.number().int().min(0, 'La cantidad de puntos a canjear no puede ser negativa').optional().default(0),
   }),
 });
 

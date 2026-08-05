@@ -1,6 +1,7 @@
 datasource db {
-  provider = "postgresql"
-  url      = env("DATABASE_URL")
+  provider          = "postgresql"
+  url               = env("DATABASE_URL")
+  // shadowDatabaseUrl = env("SHADOW_DATABASE_URL")
 }
 
 generator client {
@@ -55,6 +56,7 @@ model Business {
   printSettings  PrintSettings?
   emailSettings  EmailSettings?
   numberSettings NumberSettings?
+  customerPointsSettings CustomerPointsSettings?
 
   // Module relations
   users              User[]
@@ -77,6 +79,7 @@ model Business {
   customers          Customer[]
   customerAccounts   CustomerAccount[]
   customerAccountMovements CustomerAccountMovement[]
+  customerPointsHistories CustomerPointsHistory[]
   purchases          Purchase[]
   sales              Sale[]
   paymentMethods     PaymentMethod[]
@@ -410,6 +413,7 @@ model User {
   closedSessions     CashSession[]       @relation("ClosedByUser")
   cashMovements      CashMovement[]
   productPriceUpdates ProductPriceUpdateHistory[]
+  pointsHistories        CustomerPointsHistory[] @relation("CreatedPointsHistoryByUser")
 
   @@index([businessId, email])
   @@map("users")
@@ -958,6 +962,8 @@ model Customer {
   isActive           Boolean                 @default(true)
   defaultPriceListId String?
   autoApplyPriceList Boolean                 @default(true)
+  pointsBalance      Int                     @default(0)
+  excludeFromLoyalty Boolean                 @default(false)
   createdAt          DateTime                @default(now())
   updatedAt          DateTime                @updatedAt
 
@@ -967,6 +973,7 @@ model Customer {
   accounts         CustomerAccount[]
   accountMovements CustomerAccountMovement[]
   sales            Sale[]
+  pointsHistories  CustomerPointsHistory[]
 
   @@unique([document, businessId])
   @@index([businessId, document])
@@ -1131,6 +1138,9 @@ model Sale {
   createdById      String
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
+  pointsRedeemed   Int      @default(0)
+  pointsEarned     Int      @default(0)
+  pointsDiscountAmount Decimal  @default(0.00) @db.Decimal(12, 2)
 
   business       Business        @relation(fields: [businessId], references: [id], onDelete: Cascade)
   customer       Customer?       @relation(fields: [customerId], references: [id], onDelete: SetNull)
@@ -1142,6 +1152,7 @@ model Sale {
   items          SaleItem[]
   payments       SalePayment[]
   electronicInvoices ElectronicInvoice[]
+  pointsHistories  CustomerPointsHistory[]
 
   @@unique([documentTypeId, documentSeriesId, documentNumber, businessId])
   @@index([businessId, createdAt])
@@ -1617,6 +1628,56 @@ model ProductPriceUpdateHistory {
   @@index([businessId, createdAt])
   @@index([userId])
   @@map("product_price_update_histories")
+}
+
+model CustomerPointsSettings {
+  id                      String   @id @default(uuid())
+  businessId              String   @unique
+  enabled                 Boolean  @default(false)
+  earnEveryAmount         Decimal  @default(1000.00) @db.Decimal(12, 2)
+  earnPoints              Int      @default(10)
+  minimumSaleAmount       Decimal  @default(500.00) @db.Decimal(12, 2)
+  pointValue              Decimal  @default(10.00) @db.Decimal(12, 2)
+  allowPartialRedemption  Boolean  @default(true)
+  allowRedemption         Boolean  @default(true)
+  maxRedemptionPercentage Decimal  @default(50.00) @db.Decimal(5, 2)
+  expirePoints            Boolean  @default(false)
+  expirationMonths        Int      @default(12)
+  roundingMode            String   @default("FLOOR") // FLOOR, ROUND, CEIL
+  pointsCalculationMode   String   @default("EFFECTIVELY_PAID") // GROSS, AFTER_DISCOUNTS, EFFECTIVELY_PAID
+  accumulateOnPointsPaid  Boolean  @default(false)
+  lastExpirationRun       DateTime?
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
+
+  business                Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  @@map("customer_points_settings")
+}
+
+model CustomerPointsHistory {
+  id           String    @id @default(uuid())
+  businessId   String
+  customerId   String
+  saleId       String?
+  type         String    // EARN, REDEEM, ADJUSTMENT, EXPIRED
+  reason       String    @default("SALE") // SALE, SALE_CANCEL, REDEEM, REDEEM_CANCEL, MANUAL, EXPIRATION, BONUS, MIGRATION, PROMOTION
+  points       Int
+  balanceAfter Int
+  description  String?
+  createdById  String?
+  expiresAt    DateTime?
+  expiredAt    DateTime?
+  createdAt    DateTime  @default(now())
+
+  business     Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  customer     Customer  @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  sale         Sale?     @relation(fields: [saleId], references: [id], onDelete: SetNull)
+  createdBy    User?     @relation("CreatedPointsHistoryByUser", fields: [createdById], references: [id], onDelete: SetNull)
+
+  @@index([businessId, customerId])
+  @@index([createdAt])
+  @@map("customer_points_history")
 }
 
 

@@ -33,6 +33,8 @@ export interface Customer {
     totalSalesCount: number;
     totalSpent: number;
   };
+  excludeFromLoyalty?: boolean;
+  pointsBalance?: number;
   sales?: any[];
 }
 
@@ -56,6 +58,8 @@ export interface CustomerFilterParams {
   active?: boolean;
   page?: number;
   limit?: number;
+  sortBy?: string;
+  sortOrder?: 'asc' | 'desc';
 }
 
 export const getCustomers = async (params: CustomerFilterParams = {}) => {

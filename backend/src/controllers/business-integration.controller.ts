@@ -7,10 +7,12 @@ import { MercadoPagoConfig, Preference, Payment } from 'mercadopago';
 import { AppError } from '../utils/appError';
 import { env } from '../config/env';
 import { logger } from '../config/logger';
+import { PointsService } from '../services/points.service';
 
 export class BusinessIntegrationController {
   private service = new BusinessIntegrationService();
   private qrService = new MercadoPagoQrService();
+  private pointsService = new PointsService();
 
   getIntegrations = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -556,6 +558,9 @@ export class BusinessIntegrationController {
               mpPaymentId: paymentId || sale.mpPaymentId
             }
           });
+
+          // Acreditación/Canje de puntos para Mercado Pago Webhook
+          await this.pointsService.processSale(sale.id, sale.createdById, tx);
 
           if (sale.cashSessionId) {
             await tx.cashMovement.create({

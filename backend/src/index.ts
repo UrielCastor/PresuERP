@@ -6,6 +6,7 @@ import { prisma } from './config/db';
 import { AuthService } from './services/auth.service';
 import { initTokenCleanupJob, stopTokenCleanupJob } from './jobs/tokenCleanup.job';
 import { initSubscriptionCleanupJob, stopSubscriptionCleanupJob } from './jobs/subscriptionCleanup.job';
+import { initPointsExpirationJob, stopPointsExpirationJob } from './jobs/pointsExpiration.job';
 
 async function main() {
   // Test DB connection
@@ -20,6 +21,7 @@ async function main() {
     // Initialize daily background maintenance jobs
     initTokenCleanupJob();
     initSubscriptionCleanupJob();
+    initPointsExpirationJob();
   } catch (error) {
     logger.error('❌ Failed to connect to the database:', error);
     process.exit(1);
@@ -36,6 +38,7 @@ const server = app.listen(env.PORT, "0.0.0.0", () => {
     logger.info('Shutting down server gracefully...');
     stopTokenCleanupJob();
     stopSubscriptionCleanupJob();
+    stopPointsExpirationJob();
     server.close(async () => {
       await prisma.$disconnect();
       logger.info('Database connections closed.');

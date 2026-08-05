@@ -21,7 +21,8 @@ import {
   ChevronLeft,
   ChevronRight,
   MoreVertical,
-  Building2
+  Building2,
+  Award
 } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -1118,6 +1119,33 @@ export const Sales: React.FC = () => {
                 </div>
               </div>
             </div>
+
+            {/* Resumen de Fidelización del Comprobante */}
+            {selectedSale.customer && ((selectedSale.pointsRedeemed && selectedSale.pointsRedeemed > 0) || (selectedSale.pointsEarned && selectedSale.pointsEarned > 0)) && (
+              <div className="flex justify-end text-xs mt-3">
+                <div className="w-64 p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-200/50 dark:border-amber-800/40 rounded-xl space-y-1">
+                  <div className="flex items-center gap-1 font-bold text-amber-800 dark:text-amber-300 pb-1 border-b border-amber-200/40 text-[11px] uppercase">
+                    <Award className="w-3.5 h-3.5 text-amber-500" /> Resumen de Puntos
+                  </div>
+                  {selectedSale.pointsRedeemed && selectedSale.pointsRedeemed > 0 ? (
+                    <div className="flex justify-between font-medium text-rose-600">
+                      <span>Puntos Utilizados:</span>
+                      <span className="font-mono font-bold">-{selectedSale.pointsRedeemed} pts</span>
+                    </div>
+                  ) : null}
+                  {selectedSale.pointsEarned && selectedSale.pointsEarned > 0 ? (
+                    <div className="flex justify-between font-medium text-emerald-600 dark:text-emerald-400">
+                      <span>Puntos Obtenidos:</span>
+                      <span className="font-mono font-bold">+{selectedSale.pointsEarned} pts</span>
+                    </div>
+                  ) : null}
+                  <div className="border-t border-amber-200/40 pt-1 flex justify-between font-black text-slate-700 dark:text-slate-200 text-[11px]">
+                    <span>Saldo Final Cliente:</span>
+                    <span className="font-mono">{selectedSale.customer.pointsBalance ?? 0} pts</span>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Footer Modal */}
             <div className="flex justify-between items-center pt-3 border-t border-slate-100 dark:border-slate-800">

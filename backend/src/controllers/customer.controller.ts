@@ -12,7 +12,7 @@ export class CustomerController {
   getCustomers = async (req: any, res: Response, next: any) => {
     try {
       const businessId = req.user.businessId;
-      const { search, type, active, page, limit } = req.query;
+      const { search, type, active, page, limit, sortBy, sortOrder } = req.query;
 
       const result = await this.service.getCustomers(businessId, {
         search: search ? String(search) : undefined,
@@ -20,6 +20,8 @@ export class CustomerController {
         activeOnly: active !== undefined ? active === 'true' : true,
         page: page ? Number(page) : 1,
         limit: limit ? Number(limit) : 50,
+        sortBy: sortBy ? String(sortBy) : undefined,
+        sortOrder: sortOrder === 'asc' || sortOrder === 'desc' ? sortOrder : undefined,
       });
 
       return res.status(200).json({

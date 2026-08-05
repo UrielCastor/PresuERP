@@ -3,8 +3,19 @@ import { normalizePaymentMethodCode } from '../services/cash.service';
 import { BadRequestError, NotFoundError } from '../utils/appError';
 
 export class CustomerRepository {
-  async findAll(businessId: string, options: { search?: string; type?: string; activeOnly?: boolean; page?: number; limit?: number }) {
-    const { search, type, activeOnly = true, page = 1, limit = 50 } = options;
+  async findAll(
+    businessId: string,
+    options: {
+      search?: string;
+      type?: string;
+      activeOnly?: boolean;
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ) {
+    const { search, type, activeOnly = true, page = 1, limit = 50, sortBy, sortOrder = 'desc' } = options;
     const skip = (page - 1) * limit;
 
     const where: any = {
@@ -30,10 +41,17 @@ export class CustomerRepository {
       ];
     }
 
+    let orderBy: any = { createdAt: 'desc' };
+    if (sortBy === 'points') {
+      orderBy = { pointsBalance: sortOrder };
+    } else if (sortBy === 'name') {
+      orderBy = { name: sortOrder };
+    }
+
     const [data, total] = await Promise.all([
       prisma.customer.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy,
         skip,
         take: limit,
         include: {

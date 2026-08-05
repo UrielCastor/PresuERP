@@ -27,6 +27,10 @@ export const Customers: React.FC = () => {
   const [search, setSearch] = useState('');
   const [typeFilter, setTypeFilter] = useState<string>('');
 
+  // Sorting state
+  const [sortBy, setSortBy] = useState<string>('');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
+
   // Modals state
   const [isFormOpen, setIsFormOpen] = useState(false);
   const [isDetailOpen, setIsDetailOpen] = useState(false);
@@ -41,6 +45,8 @@ export const Customers: React.FC = () => {
         type: typeFilter || undefined,
         page: pageNumber,
         limit: 50,
+        sortBy: sortBy || undefined,
+        sortOrder: sortBy ? sortOrder : undefined,
       });
       setCustomers(res.data);
       setMeta(res.meta);
@@ -49,14 +55,23 @@ export const Customers: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [search, typeFilter]);
+  }, [search, typeFilter, sortBy, sortOrder]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       loadCustomers(1);
     }, 300);
     return () => clearTimeout(timer);
-  }, [search, typeFilter, loadCustomers]);
+  }, [search, typeFilter, sortBy, sortOrder, loadCustomers]);
+
+  const handleSort = (field: string) => {
+    if (sortBy === field) {
+      setSortOrder(o => o === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(field);
+      setSortOrder('desc');
+    }
+  };
 
   const handleCreate = () => {
     setSelectedCustomer(null);
@@ -162,11 +177,22 @@ export const Customers: React.FC = () => {
             <table className="w-full text-left text-sm text-slate-600 dark:text-slate-400">
               <thead className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-100 dark:border-slate-800 text-xs uppercase font-bold text-slate-500">
                 <tr>
-                  <th className="px-6 py-4">Cliente / Razón Social</th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850/80 transition-colors select-none"
+                    onClick={() => handleSort('name')}
+                  >
+                    Cliente / Razón Social {sortBy === 'name' ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                  </th>
                   <th className="px-6 py-4">Tipo</th>
                   <th className="px-6 py-4">Documento / CUIT</th>
                   <th className="px-6 py-4">Contacto</th>
                   <th className="px-6 py-4">Lista de precios</th>
+                  <th 
+                    className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850/80 transition-colors select-none"
+                    onClick={() => handleSort('points')}
+                  >
+                    Puntos {sortBy === 'points' ? (sortOrder === 'asc' ? ' ▲' : ' ▼') : ''}
+                  </th>
                   <th className="px-6 py-4 text-center">Estado</th>
                   <th className="px-6 py-4 text-right">Acciones</th>
                 </tr>
@@ -226,6 +252,10 @@ export const Customers: React.FC = () => {
                           Sin asignar
                         </span>
                       )}
+                    </td>
+
+                    <td className="px-6 py-4 font-mono font-bold text-amber-600 dark:text-amber-400">
+                      {c.pointsBalance ?? 0}
                     </td>
 
                     <td className="px-6 py-4 text-center">

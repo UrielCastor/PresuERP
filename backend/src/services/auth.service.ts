@@ -67,6 +67,14 @@ const whitelistPermissions = [
   { name: 'cash:audit', description: 'View full history of cash registers', module: 'cash' },
   // Reports
   { name: 'reports:read', description: 'View business reports', module: 'reports' },
+  // Points (Loyalty Program)
+  { name: 'points:read', description: 'Read points balance, history, and settings (legacy)', module: 'points' },
+  { name: 'points:write', description: 'Modify points settings and execute manual adjustments (legacy)', module: 'points' },
+  { name: 'customerPoints:read', description: 'Read customer points balance and history', module: 'points' },
+  { name: 'customerPoints:redeem', description: 'Redeem points during sale', module: 'points' },
+  { name: 'customerPoints:settings', description: 'Modify loyalty settings', module: 'points' },
+  { name: 'customerPoints:adjust', description: 'Execute manual points adjustments', module: 'points' },
+  { name: 'customerPoints:reports', description: 'Access loyalty reports and KPIs', module: 'points' },
   // Audit
   { name: 'AUDIT_VIEW', description: 'View ERP audit logs', module: 'audit' },
 ];

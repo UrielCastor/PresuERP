@@ -5,11 +5,13 @@ import { normalizePaymentMethodCode } from './cash.service';
 import { prisma } from '../config/db';
 import { NotFoundError, BadRequestError } from '../utils/appError';
 import { Prisma } from '@prisma/client';
+import { PointsService } from './points.service';
 
 export class SaleService {
   private saleRepo = new SaleRepository();
   private stockMovementService = new StockMovementService();
   private activityLogRepo = new ActivityLogRepository();
+  private pointsService = new PointsService();
 
   private async generateNextNumber(businessId: string, tx: any) {
     const settings = await tx.numberSettings.upsert({
@@ -284,7 +286,21 @@ export class SaleService {
         calculatedSurcharges = Math.round(rawSurchargeValue * 100) / 100;
       }
 
-      const baseTotal = calculatedSubtotal - calculatedDiscounts + calculatedSurcharges + calculatedTax;
+      // Integración de Puntos (Loyalty Program)
+      const pointsCheckout = await this.pointsService.processSaleCheckout(
+        businessId,
+        data.customerId,
+        (data as any).pointsRedeemed || 0,
+        calculatedSubtotal - calculatedDiscounts + calculatedSurcharges + calculatedTax,
+        calculatedSubtotal,
+        calculatedDiscounts,
+        tx
+      );
+      const pointsRedeemed = pointsCheckout.pointsRedeemed;
+      const pointsDiscountAmount = pointsCheckout.pointsDiscountAmount;
+      const pointsEarned = pointsCheckout.pointsEarned;
+
+      const baseTotal = calculatedSubtotal - calculatedDiscounts + calculatedSurcharges + calculatedTax - pointsDiscountAmount;
 
       // Consultar configuración de redondeo automático del POS
       const posSettings = await (tx as any).pOSSettings.findUnique({
@@ -497,6 +513,9 @@ export class SaleService {
           documentNumber: saleNumber,
           status: initialStatus,
           paymentStatus: initialPaymentStatus,
+          pointsRedeemed,
+          pointsEarned,
+          pointsDiscountAmount,
           subtotal: calculatedSubtotal,
           discountType,
           discountValue: rawDiscountValue,
@@ -631,6 +650,11 @@ export class SaleService {
         console.log('[CASH DEBUG] OMITIDO: El bloque de pagos NO se ejecutó porque status !== COMPLETED o processedPayments.length === 0');
       }
 
+      // Acreditación/Canje automático de puntos si la venta está completada
+      if (sale.status === 'COMPLETED') {
+        await this.pointsService.processSale(sale.id, userId, tx);
+      }
+
       // 7. Generar log de auditoría
       await tx.activityLog.create({
         data: {
@@ -729,6 +753,9 @@ export class SaleService {
            });
         }
       }
+
+      // Reversión de puntos por cancelación de venta
+      await this.pointsService.reverseSalePoints(businessId, sale.id, userId, tx);
 
       // 4. Log auditoría
       await tx.activityLog.create({

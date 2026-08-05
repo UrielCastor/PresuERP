@@ -49,6 +49,23 @@ export const Settings: React.FC = () => {
 
   const [settings, setSettings] = useState<BusinessWithSettings | null>(null);
 
+  // Loyalty Program State
+  const [loyaltyData, setLoyaltyData] = useState({
+    enabled: false,
+    earnEveryAmount: 1000,
+    earnPoints: 10,
+    minimumSaleAmount: 500,
+    pointValue: 10,
+    allowPartialRedemption: true,
+    allowRedemption: true,
+    maxRedemptionPercentage: 50,
+    expirePoints: false,
+    expirationMonths: 12,
+    roundingMode: 'FLOOR' as 'FLOOR' | 'ROUND' | 'CEIL',
+    pointsCalculationMode: 'EFFECTIVELY_PAID' as 'GROSS' | 'AFTER_DISCOUNTS' | 'EFFECTIVELY_PAID',
+    accumulateOnPointsPaid: false,
+  });
+
   // States
   const [bizData, setBizData] = useState<BusinessData>({ name: '', email: '', phone: '', address: '', website: '', city: '', state: '', country: 'Argentina', zipCode: '', subscriptionPlan: 'Professional', subscriptionEndsAt: '' });
   const [prefData, setPrefData] = useState<BusinessSettingsData>({ currencyCode: 'ARS', currencySymbol: '$', timezone: 'America/Argentina/Buenos_Aires', dateFormat: 'DD/MM/YYYY', timeFormat: '24h', decimalSeparator: ',', thousandSeparator: '.', decimalPlaces: 2, showCents: true, language: 'es', logoUrl: '', allowNegativeStock: false, warnMinimumStock: true, autoDeductStock: true, allowManualAdjustments: true, costingMethod: 'Promedio Ponderado' });
@@ -419,10 +436,11 @@ export const Settings: React.FC = () => {
   const fetchSettings = async () => {
     try {
       setLoading(true); setError(null);
-      const [data, plansRes, subRes] = await Promise.all([
+      const [data, plansRes, subRes, loyaltyRes] = await Promise.all([
         SettingsService.getSettings(),
         api.get('/businesses/plans'),
-        api.get('/businesses/subscription')
+        api.get('/businesses/subscription'),
+        api.get('/points/settings').catch(() => ({ data: { data: null } }))
       ]);
       
       setSettings(data);
@@ -439,6 +457,25 @@ export const Settings: React.FC = () => {
       if (data.printSettings) setPrintData(data.printSettings);
       if (data.emailSettings) setEmailData({ ...data.emailSettings, smtpPassword: '' });
       if (data.numberSettings) setNumberData(data.numberSettings);
+
+      const lData = loyaltyRes.data?.data;
+      if (lData) {
+        setLoyaltyData({
+          enabled: !!lData.enabled,
+          earnEveryAmount: Number(lData.earnEveryAmount),
+          earnPoints: Number(lData.earnPoints),
+          minimumSaleAmount: Number(lData.minimumSaleAmount),
+          pointValue: Number(lData.pointValue),
+          allowPartialRedemption: !!lData.allowPartialRedemption,
+          allowRedemption: !!lData.allowRedemption,
+          maxRedemptionPercentage: Number(lData.maxRedemptionPercentage),
+          expirePoints: !!lData.expirePoints,
+          expirationMonths: Number(lData.expirationMonths),
+          roundingMode: lData.roundingMode || 'FLOOR',
+          pointsCalculationMode: lData.pointsCalculationMode || 'EFFECTIVELY_PAID',
+          accumulateOnPointsPaid: !!lData.accumulateOnPointsPaid,
+        });
+      }
 
       setPlans(plansRes.data.data || []);
       const sub = subRes.data.data;
@@ -598,6 +635,27 @@ export const Settings: React.FC = () => {
         const updated = await SettingsService.updatePreferences(prefData);
         setPrefData(updated as BusinessSettingsData);
         setSuccessMessage('Reglas de inventario guardadas');
+      } else if (section === 'loyalty') {
+        const res = await api.put('/points/settings', loyaltyData);
+        if (res.data?.data) {
+          const lData = res.data.data;
+          setLoyaltyData({
+            enabled: !!lData.enabled,
+            earnEveryAmount: Number(lData.earnEveryAmount),
+            earnPoints: Number(lData.earnPoints),
+            minimumSaleAmount: Number(lData.minimumSaleAmount),
+            pointValue: Number(lData.pointValue),
+            allowPartialRedemption: !!lData.allowPartialRedemption,
+            allowRedemption: !!lData.allowRedemption,
+            maxRedemptionPercentage: Number(lData.maxRedemptionPercentage),
+            expirePoints: !!lData.expirePoints,
+            expirationMonths: Number(lData.expirationMonths),
+            roundingMode: lData.roundingMode || 'FLOOR',
+            pointsCalculationMode: lData.pointsCalculationMode || 'EFFECTIVELY_PAID',
+            accumulateOnPointsPaid: !!lData.accumulateOnPointsPaid,
+          });
+        }
+        setSuccessMessage('Configuración de fidelización guardada');
       }
     } catch (err: any) {
       setError(err.response?.data?.message || 'Error al guardar');
@@ -636,6 +694,7 @@ export const Settings: React.FC = () => {
       { id: 'appearance', label: 'Apariencia', icon: Palette, permission: 'settings:read' },
       { id: 'security', label: 'Seguridad', icon: Shield, permission: 'settings:read' },
       { id: 'integrations', label: 'Integraciones', icon: Share2, permission: 'settings:read' },
+      { id: 'loyalty', label: 'Fidelización', icon: Award, permissions: ['customerPoints:settings', 'points:write'] },
     ]},
     { label: 'Administración', items: [
       { id: 'license', label: 'Licencia', icon: Award, permission: 'settings:read' },
@@ -644,7 +703,11 @@ export const Settings: React.FC = () => {
 
   const menuGroups = rawMenuGroups.map(group => ({
     ...group,
-    items: group.items.filter(item => !item.permission || hasPermission(item.permission))
+    items: group.items.filter(item => {
+      if (item.permission && !hasPermission(item.permission)) return false;
+      if (item.permissions && !item.permissions.some(p => hasPermission(p))) return false;
+      return true;
+    })
   })).filter(group => group.items.length > 0);
 
   return (
@@ -2124,7 +2187,196 @@ export const Settings: React.FC = () => {
                    </div>
                 </div>
               </div>
-            )}
+            )},
+            { id: 'loyalty', label: 'Fidelización', content: (
+               <div className="space-y-6 mt-6">
+                 <Card>
+                   <CardHeader>
+                     <CardTitle>Programa de Fidelización de Clientes</CardTitle>
+                   </CardHeader>
+                   <CardContent className="space-y-6 pt-4">
+                     <div className="flex flex-col gap-4">
+                       <label className="flex items-center gap-2 cursor-pointer">
+                         <input
+                           type="checkbox"
+                           checked={loyaltyData.enabled}
+                           onChange={e => setLoyaltyData({...loyaltyData, enabled: e.target.checked})}
+                           className="w-4 h-4 rounded text-indigo-650"
+                         />
+                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Habilitar programa de fidelización</span>
+                       </label>
+                     </div>
+                     
+                     {loyaltyData.enabled && (
+                       <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Valor del Punto ($)</label>
+                             <input
+                               type="number"
+                               className="input-class"
+                               value={loyaltyData.pointValue}
+                               onChange={e => setLoyaltyData({...loyaltyData, pointValue: Number(e.target.value)})}
+                             />
+                             <span className="text-xs text-slate-500 mt-1 block">Equivalencia en dinero por cada punto canjeado (ej: 1 punto = $10)</span>
+                           </div>
+                           
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Monto Mínimo de Compra para Acumular ($)</label>
+                             <input
+                               type="number"
+                               className="input-class"
+                               value={loyaltyData.minimumSaleAmount}
+                               onChange={e => setLoyaltyData({...loyaltyData, minimumSaleAmount: Number(e.target.value)})}
+                             />
+                             <span className="text-xs text-slate-500 mt-1 block">Venta mínima requerida para sumar puntos</span>
+                           </div>
+                         </div>
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Regla de Acumulación (Monto de tramo, $)</label>
+                             <input
+                               type="number"
+                               className="input-class"
+                               value={loyaltyData.earnEveryAmount}
+                               onChange={e => setLoyaltyData({...loyaltyData, earnEveryAmount: Number(e.target.value)})}
+                             />
+                             <span className="text-xs text-slate-500 mt-1 block">Cada cuánto dinero abonado se otorgan puntos (ej: Cada $1000)</span>
+                           </div>
+
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Puntos por tramo</label>
+                             <input
+                               type="number"
+                               className="input-class"
+                               value={loyaltyData.earnPoints}
+                               onChange={e => setLoyaltyData({...loyaltyData, earnPoints: Number(e.target.value)})}
+                             />
+                             <span className="text-xs text-slate-500 mt-1 block">Cuántos puntos se otorgan por cada tramo (ej: genera 10 puntos)</span>
+                           </div>
+                         </div>
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-sans">
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Cálculo de puntos sobre</label>
+                             <select
+                               className="w-full text-xs font-semibold py-2 px-3 border rounded-lg focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:text-white"
+                               value={loyaltyData.pointsCalculationMode}
+                               onChange={e => setLoyaltyData({...loyaltyData, pointsCalculationMode: e.target.value as any})}
+                             >
+                               <option value="GROSS">Monto Bruto (Sin descuentos)</option>
+                               <option value="AFTER_DISCOUNTS">Monto con Descuento</option>
+                               <option value="EFFECTIVELY_PAID">Monto Efectivamente Pagado (Neto de puntos/canjes)</option>
+                             </select>
+                             <span className="text-xs text-slate-500 mt-1 block">Base de cálculo del monto de la venta para otorgar puntos</span>
+                           </div>
+
+                           <div>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Modo de Redondeo</label>
+                             <select
+                               className="w-full text-xs font-semibold py-2 px-3 border rounded-lg focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:text-white"
+                               value={loyaltyData.roundingMode}
+                               onChange={e => setLoyaltyData({...loyaltyData, roundingMode: e.target.value as any})}
+                             >
+                               <option value="FLOOR">Hacia abajo (Piso)</option>
+                               <option value="ROUND">Matemático tradicional (Próximo)</option>
+                               <option value="CEIL">Hacia arriba (Techo)</option>
+                             </select>
+                             <span className="text-xs text-slate-500 mt-1 block">Cómo redondear los puntos calculados</span>
+                           </div>
+                         </div>
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                           <div>
+                             <label className="flex items-center gap-2 cursor-pointer mt-4">
+                               <input
+                                 type="checkbox"
+                                 checked={loyaltyData.allowRedemption}
+                                 onChange={e => setLoyaltyData({...loyaltyData, allowRedemption: e.target.checked})}
+                                 className="w-4 h-4 rounded text-indigo-650"
+                               />
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir canje / uso de puntos</span>
+                             </label>
+                             <span className="text-xs text-slate-500 mt-1 block">Habilita a los cajeros en el POS a cobrar ventas usando puntos</span>
+                           </div>
+
+                           <div>
+                             <label className="flex items-center gap-2 cursor-pointer mt-4">
+                               <input
+                                 type="checkbox"
+                                 checked={loyaltyData.accumulateOnPointsPaid}
+                                 onChange={e => setLoyaltyData({...loyaltyData, accumulateOnPointsPaid: e.target.checked})}
+                                 className="w-4 h-4 rounded text-indigo-650"
+                               />
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Compras usando puntos generan puntos</span>
+                             </label>
+                             <span className="text-xs text-slate-500 mt-1 block">Define si la porción pagada con puntos también genera nuevos puntos</span>
+                           </div>
+                         </div>
+
+                         {loyaltyData.allowRedemption && (
+                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                             <div>
+                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Porcentaje máximo de descuento (%)</label>
+                               <input
+                                 type="number"
+                                 className="input-class"
+                                 value={loyaltyData.maxRedemptionPercentage}
+                                 onChange={e => setLoyaltyData({...loyaltyData, maxRedemptionPercentage: Number(e.target.value)})}
+                               />
+                               <span className="text-xs text-slate-500 mt-1 block">Porcentaje máximo de la venta que se puede abonar con puntos (ej: 50%)</span>
+                             </div>
+
+                             <div>
+                               <label className="flex items-center gap-2 cursor-pointer mt-6">
+                                 <input
+                                   type="checkbox"
+                                   checked={loyaltyData.allowPartialRedemption}
+                                   onChange={e => setLoyaltyData({...loyaltyData, allowPartialRedemption: e.target.checked})}
+                                   className="w-4 h-4 rounded text-indigo-650"
+                                 />
+                                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir canje parcial de saldo</span>
+                               </label>
+                               <span className="text-xs text-slate-500 mt-1 block">Permite canjear menos puntos del máximo permitido para la venta</span>
+                             </div>
+                           </div>
+                         )}
+
+                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
+                           <div>
+                             <label className="flex items-center gap-2 cursor-pointer mt-2">
+                               <input
+                                 type="checkbox"
+                                 checked={loyaltyData.expirePoints}
+                                 onChange={e => setLoyaltyData({...loyaltyData, expirePoints: e.target.checked})}
+                                 className="w-4 h-4 rounded text-indigo-650"
+                               />
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Expirar puntos ganados</span>
+                             </label>
+                             <span className="text-xs text-slate-500 mt-1 block">Los puntos acumulados caducarán tras un período determinado</span>
+                           </div>
+
+                           {loyaltyData.expirePoints && (
+                             <div>
+                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Meses de validez</label>
+                               <input
+                                 type="number"
+                                 className="input-class"
+                                 value={loyaltyData.expirationMonths}
+                                 onChange={e => setLoyaltyData({...loyaltyData, expirationMonths: Number(e.target.value)})}
+                               />
+                               <span className="text-xs text-slate-500 mt-1 block">Cantidad de meses antes del vencimiento del lote (ej: 12)</span>
+                             </div>
+                           )}
+                         </div>
+                       </div>
+                     )}
+                   </CardContent>
+                 </Card>
+                 {renderSubmitButton('loyalty')}
+               </div>
+             )}
           ].filter(tab => {
             return menuGroups.some(group => group.items.some(item => item.id === tab.id));
           }).find(s => s.id === activeSection)?.content}

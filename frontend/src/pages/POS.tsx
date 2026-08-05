@@ -32,6 +32,7 @@ import {
   Loader2,
   RotateCcw,
   Gift,
+  Award,
   Zap,
   HelpCircle
 } from 'lucide-react';
@@ -129,6 +130,41 @@ const isKgProduct = (p: any) => {
   const [isCustomerModalOpen, setIsCustomerModalOpen] = useState(false);
   const [customerSearchTerm, setCustomerSearchTerm] = useState('');
   const [isNewCustomerModalOpen, setIsNewCustomerModalOpen] = useState(false);
+
+  // Loyalty Program POS States
+  const [loyaltyBalance, setLoyaltyBalance] = useState<{
+    pointsBalance: number;
+    pointValue: number;
+    enabled: boolean;
+    excludeFromLoyalty: boolean;
+    maxRedemptionPercentage: number;
+  } | null>(null);
+
+  const [pointsToRedeemInput, setPointsToRedeemInput] = useState<string>('');
+  const [appliedPointsRedeemed, setAppliedPointsRedeemed] = useState<number>(0);
+  const [pointsDiscountAmount, setPointsDiscountAmount] = useState<number>(0);
+  const [pointsPreviewError, setPointsPreviewError] = useState<string | null>(null);
+  const [earnedPointsPreview, setEarnedPointsPreview] = useState<number>(0);
+  const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
+  const [loyaltyToast, setLoyaltyToast] = useState<{
+    show: boolean;
+    pointsRedeemed: number;
+    pointsDiscountAmount: number;
+    pointsEarned: number;
+    newBalance: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let t: any;
+    if (loyaltyToast?.show) {
+      t = setTimeout(() => setLoyaltyToast(null), 6000);
+    }
+    return () => {
+      if (t) clearTimeout(t);
+    };
+  }, [loyaltyToast]);
+
+  // Loyalty handlers and effects are defined below after cartTotal is calculated.
 
   // Price List Selection State
   const [selectedPriceListId, setSelectedPriceListId] = useState<string>('');
@@ -725,6 +761,11 @@ const isKgProduct = (p: any) => {
     setCart([]);
     setDiscountValue('');
     localStorage.removeItem(POS_DRAFT_KEY);
+    setPointsToRedeemInput('');
+    setAppliedPointsRedeemed(0);
+    setPointsDiscountAmount(0);
+    setPointsPreviewError(null);
+    setEarnedPointsPreview(0);
   };
 
   // Totals
@@ -745,6 +786,136 @@ const isKgProduct = (p: any) => {
 
   const discountAmount = Math.min(subtotal, Math.max(0, calculatedDiscountAmount));
   const cartTotal = Math.max(0, subtotal - discountAmount);
+
+  // Fetch points balance on customer selection
+  useEffect(() => {
+    if (selectedCustomer) {
+      api.get(`/points/customers/${selectedCustomer.id}/balance`)
+        .then(res => {
+          if (res.data?.success) {
+            setLoyaltyBalance({
+              pointsBalance: Number(res.data.data.pointsBalance),
+              pointValue: Number(res.data.data.pointValue),
+              enabled: Boolean(res.data.data.enabled),
+              excludeFromLoyalty: Boolean(res.data.data.excludeFromLoyalty),
+              maxRedemptionPercentage: Number(res.data.data.maxRedemptionPercentage || 50),
+            });
+          }
+        })
+        .catch(() => {
+          setLoyaltyBalance(null);
+        });
+    } else {
+      setLoyaltyBalance(null);
+    }
+  }, [selectedCustomer]);
+
+  // Preview points to earn dynamically
+  useEffect(() => {
+    if (selectedCustomer && loyaltyBalance?.enabled && !loyaltyBalance?.excludeFromLoyalty) {
+      const finalPaid = Math.max(0, cartTotal - pointsDiscountAmount);
+      api.post('/sales/points/earn-preview', {
+        customerId: selectedCustomer.id,
+        totalAmount: finalPaid
+      })
+      .then(res => {
+        if (res.data?.success) {
+          setEarnedPointsPreview(Number(res.data.data.pointsEarned));
+        }
+      })
+      .catch(() => {
+        setEarnedPointsPreview(0);
+      });
+    } else {
+      setEarnedPointsPreview(0);
+    }
+  }, [selectedCustomer, cartTotal, pointsDiscountAmount, loyaltyBalance]);
+
+  const handleApplyPointsRedeem = async () => {
+    if (!selectedCustomer) return;
+    const pts = parseInt(pointsToRedeemInput);
+    if (isNaN(pts) || pts <= 0) {
+      setPointsPreviewError('Ingrese una cantidad válida de puntos.');
+      return;
+    }
+
+    try {
+      setIsPreviewLoading(true);
+      setPointsPreviewError(null);
+      
+      const res = await api.post('/sales/points/preview', {
+        customerId: selectedCustomer.id,
+        pointsToRedeem: pts,
+        saleTotalBeforePoints: cartTotal,
+      });
+
+      if (res.data?.success) {
+        const preview = res.data.data;
+        if (preview.applicable) {
+          setAppliedPointsRedeemed(pts);
+          setPointsDiscountAmount(preview.finalDiscount);
+        } else {
+          setPointsPreviewError(preview.reason || 'No se puede aplicar el canje.');
+          setAppliedPointsRedeemed(0);
+          setPointsDiscountAmount(0);
+        }
+      }
+    } catch (err: any) {
+      setPointsPreviewError(err.response?.data?.message || 'Error al validar canje de puntos.');
+      setAppliedPointsRedeemed(0);
+      setPointsDiscountAmount(0);
+    } finally {
+      setIsPreviewLoading(false);
+    }
+  };
+
+  const handleRemovePointsRedeem = () => {
+    setAppliedPointsRedeemed(0);
+    setPointsDiscountAmount(0);
+    setPointsToRedeemInput('');
+    setPointsPreviewError(null);
+  };
+
+  // Reset redemption input and status whenever customer changes manually
+  useEffect(() => {
+    setPointsToRedeemInput('');
+    setAppliedPointsRedeemed(0);
+    setPointsDiscountAmount(0);
+    setPointsPreviewError(null);
+  }, [selectedCustomer]);
+
+  // Recalcular automáticamente la simulación de canje si el total del carrito cambia
+  useEffect(() => {
+    if (appliedPointsRedeemed > 0 && selectedCustomer) {
+      setIsPreviewLoading(true);
+      api.post('/sales/points/preview', {
+        customerId: selectedCustomer.id,
+        pointsToRedeem: appliedPointsRedeemed,
+        saleTotalBeforePoints: cartTotal,
+      })
+      .then(res => {
+        if (res.data?.success) {
+          const preview = res.data.data;
+          if (preview.applicable) {
+            setPointsDiscountAmount(preview.finalDiscount);
+            setPointsPreviewError(null);
+          } else {
+            // Si ya no cumple con las reglas, se remueve el descuento y se le notifica
+            setAppliedPointsRedeemed(0);
+            setPointsDiscountAmount(0);
+            setPointsPreviewError(preview.reason || 'El canje ya no es aplicable para el nuevo total de la venta.');
+          }
+        }
+      })
+      .catch(() => {
+        setAppliedPointsRedeemed(0);
+        setPointsDiscountAmount(0);
+      })
+      .finally(() => {
+        setIsPreviewLoading(false);
+      });
+    }
+  }, [cartTotal]);
 
   const paymentAdjustmentDetails = useMemo(() => {
     return calculatePaymentAdjustment(cartTotal, paymentMethod, adjustmentRules as any);
@@ -852,6 +1023,23 @@ const isKgProduct = (p: any) => {
         return;
       }
 
+      const targetCustomer = selectedCustomer;
+      if (targetCustomer && (data.pointsEarned > 0 || data.pointsRedeemed > 0)) {
+        api.get(`/points/customers/${targetCustomer.id}/balance`)
+          .then(res => {
+            if (res.data?.success) {
+              setLoyaltyToast({
+                show: true,
+                pointsRedeemed: data.pointsRedeemed || 0,
+                pointsDiscountAmount: Number(data.pointsDiscountAmount || 0),
+                pointsEarned: data.pointsEarned || 0,
+                newBalance: Number(res.data.data.pointsBalance),
+              });
+            }
+          })
+          .catch(err => console.error('Error fetching new points balance for toast:', err));
+      }
+
       alert(`¡Venta registrada exitosamente! Comprobante: ${data.documentNumber}`);
       clearCart();
       setSelectedCustomer(null);
@@ -875,7 +1063,7 @@ const isKgProduct = (p: any) => {
       return;
     }
 
-    const finalTotalAmount = roundedFinalTotal;
+    const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
 
     if (paymentMethod === 'CREDIT_ACCOUNT') {
       if (!selectedCustomer) {
@@ -959,6 +1147,7 @@ const isKgProduct = (p: any) => {
         amount: finalTotalAmount,
         details: paymentMethod,
       }],
+      pointsRedeemed: appliedPointsRedeemed,
     });
   };
 
@@ -1782,6 +1971,68 @@ const isKgProduct = (p: any) => {
                 </div>
               </div>
 
+              {/* Tarjeta de Fidelización Ampliada en Carrito */}
+              {selectedCustomer && loyaltyBalance && loyaltyBalance.enabled && !loyaltyBalance.excludeFromLoyalty && (
+                <div className="p-3.5 bg-amber-50/60 dark:bg-amber-950/20 border border-amber-200/60 dark:border-amber-800/40 rounded-2xl space-y-2 text-xs shadow-sm animate-fadeIn">
+                  <div className="flex items-center justify-between font-bold border-b border-amber-200/30 dark:border-amber-800/20 pb-1.5">
+                    <span className="flex items-center gap-1.5 text-amber-800 dark:text-amber-300 font-black">
+                      ⭐ Programa de Fidelización
+                    </span>
+                  </div>
+
+                  <div className="space-y-1.5 font-medium text-slate-700 dark:text-slate-300">
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Puntos disponibles:</span>
+                      <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{loyaltyBalance.pointsBalance} pts</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-slate-500">Equivalencia monetaria:</span>
+                      <span className="font-mono font-bold text-slate-950 dark:text-slate-100">{formatCurrency(loyaltyBalance.pointsBalance * loyaltyBalance.pointValue)}</span>
+                    </div>
+                    
+                    {earnedPointsPreview > 0 && (
+                      <div className="flex justify-between pt-1 border-t border-amber-200/30 dark:border-amber-800/20 text-emerald-700 dark:text-emerald-400 font-bold">
+                        <span>Puntos estimados a obtener:</span>
+                        <span className="font-mono font-black">+{earnedPointsPreview} pts</span>
+                      </div>
+                    )}
+                    {earnedPointsPreview > 0 && (
+                      <div className="flex justify-between text-emerald-600 dark:text-emerald-555 text-[11px] pl-2">
+                        <span>Valor estimado de puntos:</span>
+                        <span className="font-mono">+{formatCurrency(earnedPointsPreview * loyaltyBalance.pointValue)}</span>
+                      </div>
+                    )}
+
+                    {/* Detalles extendidos del canje aplicado */}
+                    {appliedPointsRedeemed > 0 && (
+                      <div className="mt-2 pt-2 border-t border-amber-200 dark:border-amber-800/40 space-y-1.5 text-[11px] bg-amber-50/80 dark:bg-amber-950/30 p-2 rounded-xl border border-amber-100 dark:border-amber-900/30">
+                        <div className="font-extrabold text-amber-950 dark:text-amber-300">Canje Aplicado:</div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Puntos utilizados:</span>
+                          <span className="font-mono font-bold text-rose-600">-{appliedPointsRedeemed} pts</span>
+                        </div>
+                        <div className="flex justify-between font-bold text-rose-600">
+                          <span>Descuento aplicado:</span>
+                          <span className="font-mono">-{formatCurrency(pointsDiscountAmount)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-slate-500">Saldo estimado tras venta:</span>
+                          <span className="font-mono font-bold">{Math.max(0, loyaltyBalance.pointsBalance - appliedPointsRedeemed)} pts</span>
+                        </div>
+                        <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-semibold">
+                          <span>Puntos que volverá a obtener:</span>
+                          <span className="font-mono font-bold">+{earnedPointsPreview} pts</span>
+                        </div>
+                        <div className="flex justify-between pt-1 border-t border-amber-200/50 dark:border-amber-800/30 font-black text-slate-900 dark:text-white">
+                          <span>Saldo final estimado:</span>
+                          <span className="font-mono">{Math.max(0, loyaltyBalance.pointsBalance - appliedPointsRedeemed) + earnedPointsPreview} pts</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
+
               {/* Subtotal y Total */}
               <div className="space-y-0.5 text-xs">
                 <div className="flex justify-between text-slate-500">
@@ -1883,6 +2134,86 @@ const isKgProduct = (p: any) => {
             </div>
           </div>
 
+          {/* MÓDULO DE CANJE DE PUNTOS */}
+          {selectedCustomer && loyaltyBalance && loyaltyBalance.enabled && !loyaltyBalance.excludeFromLoyalty && (
+            <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-800/30 rounded-xl space-y-3 animate-fadeIn">
+              <div className="flex items-center gap-1.5 font-extrabold text-amber-800 dark:text-amber-300 text-xs">
+                <Award className="w-4 h-4 text-amber-500" />
+                <span>PROGRAMA DE FIDELIZACIÓN</span>
+              </div>
+              
+              {loyaltyBalance.pointsBalance > 0 && (
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <input
+                      type="number"
+                      min="0"
+                      placeholder={`Max ${Math.min(loyaltyBalance.pointsBalance, Math.floor((cartTotal * (loyaltyBalance.maxRedemptionPercentage || 50) / 100) / loyaltyBalance.pointValue))} pts`}
+                      value={pointsToRedeemInput}
+                      onChange={(e) => {
+                        setPointsToRedeemInput(e.target.value);
+                        setPointsPreviewError(null);
+                      }}
+                      className="w-full text-xs font-mono font-bold py-1.5 px-2.5 border border-slate-200 dark:border-slate-800 rounded-lg focus:ring-1 focus:ring-amber-500 bg-white dark:bg-slate-900 dark:text-white"
+                    />
+                  </div>
+                  <Button
+                    type="button"
+                    variant="primary"
+                    size="sm"
+                    onClick={handleApplyPointsRedeem}
+                    disabled={isPreviewLoading || !pointsToRedeemInput}
+                  >
+                    {isPreviewLoading ? 'Cotizando...' : 'Aplicar'}
+                  </Button>
+                  {appliedPointsRedeemed > 0 && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="text-rose-600 hover:text-rose-700"
+                      onClick={handleRemovePointsRedeem}
+                    >
+                      Quitar
+                    </Button>
+                  )}
+                </div>
+              )}
+
+              {pointsPreviewError && (
+                <div className="text-[11px] font-semibold text-rose-600 bg-rose-50 dark:bg-rose-950/40 p-2 rounded-lg border border-rose-200 dark:border-rose-800">
+                  {pointsPreviewError}
+                </div>
+              )}
+
+              <div className="mt-2.5 pt-2.5 border-t border-amber-200/50 dark:border-amber-800/30 space-y-2 text-xs font-semibold text-slate-700 dark:text-slate-300">
+                <div className="flex justify-between">
+                  <span className="text-slate-500">Puntos disponibles:</span>
+                  <span className="font-mono font-bold text-slate-900 dark:text-white">{loyaltyBalance.pointsBalance} pts</span>
+                </div>
+                
+                {appliedPointsRedeemed > 0 && (
+                  <div className="flex justify-between text-rose-600 dark:text-rose-400 font-bold">
+                    <span>Canje aplicado:</span>
+                    <span className="font-mono">-{appliedPointsRedeemed} pts (-{formatCurrency(pointsDiscountAmount)})</span>
+                  </div>
+                )}
+                
+                {earnedPointsPreview > 0 && (
+                  <div className="flex justify-between text-emerald-600 dark:text-emerald-400 font-bold">
+                    <span>Ganará con esta compra:</span>
+                    <span className="font-mono">+{earnedPointsPreview} pts</span>
+                  </div>
+                )}
+                
+                <div className="flex justify-between pt-1.5 border-t border-amber-200/30 dark:border-amber-800/20 font-black text-slate-900 dark:text-white">
+                  <span>Saldo estimado luego de la venta:</span>
+                  <span className="font-mono">{Math.max(0, loyaltyBalance.pointsBalance - appliedPointsRedeemed)} pts</span>
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 text-xs">
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
               <span>Monto Base Carrito:</span>
@@ -1915,10 +2246,17 @@ const isKgProduct = (p: any) => {
               </div>
             )}
 
+            {appliedPointsRedeemed > 0 && pointsDiscountAmount > 0 && (
+              <div className="flex justify-between font-bold text-rose-600">
+                <span>Descuento por Puntos:</span>
+                <span className="font-mono">-{formatCurrency(pointsDiscountAmount)}</span>
+              </div>
+            )}
+
             <div className="border-t border-slate-200 dark:border-slate-700 pt-1.5 flex justify-between font-black text-slate-900 dark:text-white text-sm">
               <span>TOTAL FINAL A COBRAR:</span>
               <span className="font-mono text-primary-600 dark:text-primary-400">
-                {formatCurrency(roundedFinalTotal)}
+                {formatCurrency(Math.max(0, roundedFinalTotal - pointsDiscountAmount))}
               </span>
             </div>
           </div>
@@ -2197,6 +2535,47 @@ const isKgProduct = (p: any) => {
           </div>
         </div>
       </Modal>
+
+      {loyaltyToast && loyaltyToast.show && (
+        <div className="fixed bottom-4 right-4 z-[9999] w-80 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-2xl shadow-2xl border border-slate-800 dark:border-slate-200 p-4.5 space-y-3 animate-slideIn">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5 font-black text-xs text-amber-400">
+              <Award className="w-5 h-5 text-amber-500 fill-amber-500" /> PROGRAMA DE FIDELIZACIÓN
+            </span>
+            <button
+              onClick={() => setLoyaltyToast(null)}
+              className="text-slate-400 hover:text-white dark:text-slate-500 dark:hover:text-slate-900 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+          
+          <div className="space-y-2 text-xs font-semibold">
+            {loyaltyToast.pointsRedeemed > 0 && (
+              <div className="flex justify-between border-b border-slate-800 dark:border-slate-100 pb-1.5">
+                <span className="text-slate-400 dark:text-slate-500">Canjeaste:</span>
+                <span className="font-mono font-black text-rose-450 dark:text-rose-600">
+                  {loyaltyToast.pointsRedeemed} pts (-{formatCurrency(loyaltyToast.pointsDiscountAmount)})
+                </span>
+              </div>
+            )}
+            
+            <div className="flex justify-between">
+              <span className="text-slate-400 dark:text-slate-500">Ganaste:</span>
+              <span className="font-mono font-black text-emerald-400 dark:text-emerald-600">
+                +{loyaltyToast.pointsEarned} pts
+              </span>
+            </div>
+            
+            <div className="flex justify-between pt-1.5 border-t border-slate-800 dark:border-slate-100 font-black text-sm">
+              <span>Nuevo saldo:</span>
+              <span className="font-mono text-amber-400 dark:text-amber-600">
+                {loyaltyToast.newBalance} pts
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

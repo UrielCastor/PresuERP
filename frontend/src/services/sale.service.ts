@@ -50,7 +50,10 @@ export interface Sale {
   createdAt: string;
   updatedAt: string;
   
-  customer?: { id: string; name: string; taxId?: string | null; } | null;
+  pointsRedeemed?: number;
+  pointsEarned?: number;
+  pointsDiscountAmount?: number;
+  customer?: { id: string; name: string; taxId?: string | null; pointsBalance?: number; } | null;
   documentType?: { id: string; name: string; code: string; };
   createdBy?: { id: string; name: string; email: string; };
   items: SaleItem[];

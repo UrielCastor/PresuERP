@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { X, User, Building, Phone, Mail, MapPin, FileText, ShoppingBag, DollarSign, Calendar, CreditCard, Tag, PlusCircle, ArrowUpRight, ArrowDownLeft, Wallet, Check } from 'lucide-react';
+import { X, User, Building, Phone, Mail, MapPin, FileText, ShoppingBag, DollarSign, Calendar, CreditCard, Tag, PlusCircle, ArrowUpRight, ArrowDownLeft, Wallet, Check, Award, Gift } from 'lucide-react';
 import { Customer, getCustomerById, getCustomerAccountMovements, registerCustomerAccountPayment, CustomerAccountMovement } from '../../services/customer.service';
+import { api } from '../../services/api';
 import { paymentAdjustmentRuleService, calculatePaymentAdjustment } from '../../services/paymentAdjustmentRule.service';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
@@ -20,9 +21,48 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const queryClient = useQueryClient();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
-  const [activeTab, setActiveTab] = useState<'PURCHASES' | 'CREDIT_ACCOUNT'>('PURCHASES');
+  const [activeTab, setActiveTab] = useState<'PURCHASES' | 'CREDIT_ACCOUNT' | 'LOYALTY'>('PURCHASES');
   const [movements, setMovements] = useState<CustomerAccountMovement[]>([]);
   const [loadingMovements, setLoadingMovements] = useState(false);
+
+  // Loyalty states
+  const [loyaltyInfo, setLoyaltyInfo] = useState<any>(null);
+  const [loyaltyHistory, setLoyaltyHistory] = useState<any[]>([]);
+  const [loadingLoyalty, setLoadingLoyalty] = useState(false);
+  const [isFullHistoryOpen, setIsFullHistoryOpen] = useState(false);
+  const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
+
+  const { data: saleData, isLoading: loadingSale } = useQuery({
+    queryKey: ['posSaleDetails', selectedSaleId],
+    queryFn: async () => {
+      if (!selectedSaleId) return null;
+      const res = await api.get(`/sales/${selectedSaleId}`);
+      return res.data?.data;
+    },
+    enabled: !!selectedSaleId,
+  });
+
+  const fetchLoyaltyData = () => {
+    if (customerId) {
+      setLoadingLoyalty(true);
+      api.get(`/points/customers/${customerId}/balance`)
+        .then((res) => {
+          if (res.data?.success) {
+            setLoyaltyInfo(res.data.data);
+          }
+        })
+        .catch((err) => console.error('Error al cargar datos de fidelización:', err));
+
+      api.get(`/points/history`, { params: { customerId, limit: 5 } })
+        .then((res) => {
+          if (res.data?.success) {
+            setLoyaltyHistory(res.data.data || []);
+          }
+        })
+        .catch((err) => console.error('Error al cargar historial de fidelización:', err))
+        .finally(() => setLoadingLoyalty(false));
+    }
+  };
 
   // Payment form state
   const [isPaymentModalOpen, setIsPaymentModalOpen] = useState(false);
@@ -91,12 +131,27 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
     if (isOpen && customerId) {
       setActiveTab('PURCHASES');
       fetchCustomerData();
+
+      // Pre-cargar info básica de fidelización para la badge
+      api.get(`/points/customers/${customerId}/balance`)
+        .then((res) => {
+          if (res.data?.success) {
+            setLoyaltyInfo(res.data.data);
+          }
+        })
+        .catch(() => {});
     }
   }, [isOpen, customerId]);
 
   useEffect(() => {
     if (isOpen && customerId && activeTab === 'CREDIT_ACCOUNT') {
       fetchMovements();
+    }
+  }, [isOpen, customerId, activeTab]);
+
+  useEffect(() => {
+    if (isOpen && customerId && activeTab === 'LOYALTY') {
+      fetchLoyaltyData();
     }
   }, [isOpen, customerId, activeTab]);
 
@@ -199,6 +254,21 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
             {customer?.allowCreditAccount && (
               <span className="ml-1 px-1.5 py-0.2 rounded text-[10px] bg-indigo-100 text-indigo-700 dark:bg-indigo-950 dark:text-indigo-300 font-semibold">
                 Habilitada
+              </span>
+            )}
+          </button>
+          <button
+            onClick={() => setActiveTab('LOYALTY')}
+            className={`pb-3 px-4 text-xs font-bold transition-all border-b-2 flex items-center gap-1.5 ${
+              activeTab === 'LOYALTY'
+                ? 'border-indigo-600 text-indigo-600 dark:border-indigo-400 dark:text-indigo-400'
+                : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+            }`}
+          >
+            <Award className="w-3.5 h-3.5" /> Programa de Fidelización
+            {loyaltyInfo?.enabled && !loyaltyInfo?.excludeFromLoyalty && (
+              <span className="ml-1 px-1.5 py-0.2 rounded text-[10px] bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 font-semibold">
+                Activa ({loyaltyInfo.pointsBalance} pts)
               </span>
             )}
           </button>
@@ -328,6 +398,252 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                   )}
                 </div>
               </>
+            )}
+
+            {/* TAB 3: FIDELIZACIÓN */}
+            {activeTab === 'LOYALTY' && (
+              <div className="space-y-6">
+                {loadingLoyalty && !loyaltyInfo ? (
+                  <div className="p-8 text-center text-slate-500 text-xs">Cargando datos de fidelización...</div>
+                ) : !loyaltyInfo ? (
+                  <div className="p-8 text-center bg-slate-50 border border-slate-200 rounded-2xl text-slate-500 text-xs">
+                    No se pudieron obtener los datos del programa de fidelización.
+                  </div>
+                ) : (() => {
+                  const lastExpired = loyaltyHistory.find((h: any) => h.type === 'EXPIRED');
+                  const statusText = !loyaltyInfo.enabled
+                    ? 'Sin programa'
+                    : loyaltyInfo.excludeFromLoyalty
+                    ? 'Excluido'
+                    : 'Activo';
+
+                  return (
+                    <>
+                      {/* loyalty KPI Cards */}
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4 text-xs">
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl">
+                          <p className="font-semibold uppercase tracking-wider text-slate-500">Saldo Actual</p>
+                          <p className="text-2xl font-black text-amber-600 dark:text-amber-400 mt-1 flex items-baseline gap-1">
+                            {loyaltyInfo.pointsBalance} <span className="text-xs font-bold text-slate-400 font-sans">pts</span>
+                          </p>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl">
+                          <p className="font-semibold uppercase tracking-wider text-slate-500">Equivalente en Dinero</p>
+                          <p className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1">
+                            {formatCurrency(loyaltyInfo.pointsBalance * loyaltyInfo.pointValue)}
+                          </p>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl">
+                          <p className="font-semibold uppercase tracking-wider text-slate-500">Estado</p>
+                          <div className="mt-2.5">
+                            <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-bold uppercase tracking-wider ${
+                              statusText === 'Activo'
+                                ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300'
+                                : statusText === 'Excluido'
+                                ? 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-300'
+                                : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-400'
+                            }`}>
+                              {statusText}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 rounded-2xl">
+                          <p className="font-semibold uppercase tracking-wider text-slate-500">Fecha de alta</p>
+                          <p className="text-2xl font-black text-slate-800 dark:text-slate-100 mt-1 font-mono">
+                            {customer?.createdAt ? format(new Date(customer.createdAt), 'dd/MM/yyyy') : '-'}
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* loyalty Summary Cards */}
+                      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4.5 space-y-4">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 border-b border-slate-200 dark:border-slate-800 pb-2 flex items-center gap-1.5">
+                          <Gift className="w-4.5 h-4.5 text-amber-500" /> Resumen de Acumulación y Canjes
+                        </h4>
+                        
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-xs font-semibold text-slate-600 dark:text-slate-400">
+                          {/* Column Acreditaciones */}
+                          <div className="space-y-2 border-r border-slate-100 dark:border-slate-800/80 pr-4">
+                            <p className="font-extrabold text-[10px] text-slate-400 uppercase tracking-wider mb-2">Acreditaciones</p>
+                            <div className="flex justify-between">
+                              <span>Total histórico ganado:</span>
+                              <span className="text-emerald-600 font-bold font-mono">+{loyaltyInfo.totalEarned} pts</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Última acreditación:</span>
+                              <span className="text-slate-800 dark:text-slate-200 font-bold font-mono">
+                                {loyaltyInfo.lastEarnedDate ? format(new Date(loyaltyInfo.lastEarnedDate), 'dd/MM/yyyy') : '-'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Puntos acreditados:</span>
+                              <span className="text-emerald-650 font-black font-mono">
+                                {loyaltyInfo.lastEarnedAmount ? `+${loyaltyInfo.lastEarnedAmount} pts` : '-'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Column Canjes */}
+                          <div className="space-y-2 border-r border-slate-100 dark:border-slate-800/80 pr-4">
+                            <p className="font-extrabold text-[10px] text-slate-400 uppercase tracking-wider mb-2">Canjes</p>
+                            <div className="flex justify-between">
+                              <span>Total histórico canjeado:</span>
+                              <span className="text-rose-600 font-bold font-mono">-{loyaltyInfo.totalRedeemed} pts</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Último canje:</span>
+                              <span className="text-slate-800 dark:text-slate-200 font-bold font-mono">
+                                {loyaltyInfo.lastRedeemedDate ? format(new Date(loyaltyInfo.lastRedeemedDate), 'dd/MM/yyyy') : '-'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Puntos canjeados:</span>
+                              <span className="text-rose-650 font-black font-mono">
+                                {loyaltyInfo.lastRedeemedAmount ? `-${loyaltyInfo.lastRedeemedAmount} pts` : '-'}
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Column Vencimientos */}
+                          <div className="space-y-2">
+                            <p className="font-extrabold text-[10px] text-slate-400 uppercase tracking-wider mb-2">Vencimientos</p>
+                            <div className="flex justify-between">
+                              <span>Total histórico vencido:</span>
+                              <span className="text-slate-500 font-bold font-mono">{loyaltyInfo.totalExpired} pts</span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Último vencimiento:</span>
+                              <span className="text-slate-800 dark:text-slate-200 font-bold font-mono">
+                                {lastExpired ? format(new Date(lastExpired.createdAt), 'dd/MM/yyyy') : '-'}
+                              </span>
+                            </div>
+                            <div className="flex justify-between">
+                              <span>Puntos vencidos:</span>
+                              <span className="text-slate-500 font-black font-mono">
+                                {lastExpired ? `${Math.abs(lastExpired.points)} pts` : '-'}
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+
+                    {/* Historial Resumido de Puntos */}
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-2">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                          Historial Reciente de Movimientos
+                        </h4>
+                        <button
+                          type="button"
+                          onClick={() => setIsFullHistoryOpen(true)}
+                          className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl transition-all shadow-sm flex items-center gap-1.5"
+                        >
+                          Ver Historial Completo
+                        </button>
+                      </div>
+
+                      {loyaltyHistory.length === 0 ? (
+                        <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 text-xs font-medium">
+                          No hay registros de puntos en la cuenta de este cliente.
+                        </div>
+                      ) : (
+                        <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+                          <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400">
+                            <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 uppercase font-bold tracking-wider">
+                              <tr>
+                                <th className="px-4 py-3">Fecha</th>
+                                <th className="px-4 py-3">Tipo</th>
+                                <th className="px-4 py-3">Motivo</th>
+                                <th className="px-4 py-3 text-right">Puntos</th>
+                                <th className="px-4 py-3 text-right">Saldo resultante</th>
+                                <th className="px-4 py-3">Descripción</th>
+                                <th className="px-4 py-3">Acciones</th>
+                              </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                              {loyaltyHistory.map((h) => {
+                                const isPositive = h.points > 0;
+                                const mapReason = (r: string) => {
+                                  const mapping: Record<string, string> = {
+                                    'SALE': 'Venta',
+                                    'SALE_CANCEL': 'Anulación de Venta',
+                                    'REDEEM': 'Canje',
+                                    'REDEEM_CANCEL': 'Anulación de Canje',
+                                    'MANUAL': 'Ajuste Manual',
+                                    'EXPIRATION': 'Vencimiento',
+                                    'BONUS': 'Acreditación Especial',
+                                    'MIGRATION': 'Migración',
+                                    'PROMOTION': 'Promoción'
+                                  };
+                                  return mapping[r] || r;
+                                };
+
+                                return (
+                                  <tr key={h.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                                    <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                                      {format(new Date(h.createdAt), 'dd/MM/yyyy - HH:mm')}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                                        h.type === 'EARN'
+                                          ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-350 border-emerald-200/50'
+                                          : h.type === 'REDEEM'
+                                          ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200/50'
+                                          : h.type === 'EXPIRED'
+                                          ? 'bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-slate-200/30'
+                                          : h.type === 'ADJUSTMENT'
+                                          ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/50'
+                                          : 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-305 border-rose-200/50' // CANCEL
+                                      }`}>
+                                        {h.type === 'EARN'
+                                          ? 'Acreditación'
+                                          : h.type === 'REDEEM'
+                                          ? 'Canje'
+                                          : h.type === 'EXPIRED'
+                                          ? 'Vencimiento'
+                                          : h.type === 'ADJUSTMENT'
+                                          ? 'Ajuste'
+                                          : 'Anulación'}
+                                      </span>
+                                    </td>
+                                    <td className="px-4 py-3 font-medium text-slate-750 dark:text-slate-250">
+                                      {mapReason(h.reason)}
+                                    </td>
+                                    <td className={`px-4 py-3 text-right font-bold font-mono text-sm ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                      {isPositive ? `+${h.points}` : h.points}
+                                    </td>
+                                    <td className="px-4 py-3 text-right font-bold font-mono text-slate-800 dark:text-slate-200">
+                                      {h.balanceAfter}
+                                    </td>
+                                    <td className="px-4 py-3 text-slate-500 dark:text-slate-450 max-w-[150px] truncate" title={h.description}>
+                                      {h.description || '-'}
+                                    </td>
+                                    <td className="px-4 py-3">
+                                      {h.saleId && (
+                                        <button
+                                          type="button"
+                                          onClick={() => setSelectedSaleId(h.saleId)}
+                                          className="text-indigo-650 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-extrabold text-xs flex items-center gap-0.5 hover:underline"
+                                        >
+                                          ⭐ Ver Venta
+                                        </button>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+              </div>
             )}
 
             {/* TAB 2: CREDIT ACCOUNT */}
@@ -652,6 +968,274 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
             </form>
           </div>
         </div>
+      )}
+
+      {/* SUB-MODAL DE HISTORIAL COMPLETO DE FIDELIZACIÓN */}
+      {isFullHistoryOpen && (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-xl overflow-hidden flex flex-col p-6 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                <Award className="w-5 h-5 text-amber-500" /> Historial de Puntos — {customer?.name}
+              </h3>
+              <button
+                type="button"
+                onClick={() => setIsFullHistoryOpen(false)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            <div className="flex-1 overflow-y-auto max-h-[50vh] pr-1">
+              <CustomerPointsHistoryTable customerId={customerId} onViewSale={setSelectedSaleId} />
+            </div>
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
+              <button
+                type="button"
+                onClick={() => setIsFullHistoryOpen(false)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-350 font-bold text-xs rounded-xl"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSaleId && (
+        <div className="fixed inset-0 z-[80] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col p-6 animate-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3 mb-4">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-1.5 font-sans">
+                <FileText className="w-5 h-5 text-indigo-500" /> Detalle de Venta
+              </h3>
+              <button
+                type="button"
+                onClick={() => setSelectedSaleId(null)}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            
+            {loadingSale ? (
+              <div className="p-8 text-center text-slate-500 text-xs">Cargando detalles de la venta...</div>
+            ) : !saleData ? (
+              <div className="p-8 text-center text-slate-500 text-xs">No se pudieron cargar los detalles de esta venta.</div>
+            ) : (
+              <div className="space-y-4 text-xs overflow-y-auto max-h-[60vh] pr-1">
+                <div className="grid grid-cols-2 gap-4 border-b border-slate-100 dark:border-slate-800 pb-3 font-semibold text-slate-600 dark:text-slate-400">
+                  <div>
+                    <span className="text-slate-400">Comprobante:</span>
+                    <p className="text-slate-900 dark:text-white font-mono text-sm font-black mt-0.5">
+                      {saleData.documentType?.code || 'FAC'}-{String(saleData.documentNumber).padStart(6, '0')}
+                    </p>
+                  </div>
+                  <div>
+                    <span className="text-slate-400">Fecha:</span>
+                    <p className="text-slate-900 dark:text-white mt-0.5 font-mono">
+                      {format(new Date(saleData.createdAt), 'dd/MM/yyyy - HH:mm')}
+                    </p>
+                  </div>
+                </div>
+
+                <div>
+                  <h4 className="font-extrabold text-slate-900 dark:text-white mb-2 uppercase tracking-wider text-[10px] text-slate-400">Productos</h4>
+                  <div className="border border-slate-150 dark:border-slate-800 rounded-xl overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+                    {saleData.items?.map((item: any) => (
+                      <div key={item.id} className="p-2.5 flex justify-between items-center hover:bg-slate-50/40 dark:hover:bg-slate-800/40">
+                        <div>
+                          <p className="font-bold text-slate-800 dark:text-slate-200">{item.product?.name || 'Producto Sin Nombre'}</p>
+                          <p className="text-slate-400 font-mono text-[10px] mt-0.5">{item.quantity} x {formatCurrency(Number(item.unitPrice))}</p>
+                        </div>
+                        <span className="font-mono font-bold text-slate-900 dark:text-white">{formatCurrency(Number(item.totalAmount))}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="bg-slate-50 dark:bg-slate-900 p-3 rounded-xl border border-slate-100 dark:border-slate-800 space-y-1.5 font-semibold text-slate-600 dark:text-slate-400">
+                  <div className="flex justify-between">
+                    <span>Subtotal:</span>
+                    <span className="font-mono">{formatCurrency(Number(saleData.subtotal))}</span>
+                  </div>
+                  {Number(saleData.discountAmount) > 0 && (
+                    <div className="flex justify-between text-emerald-600 dark:text-emerald-450 font-bold">
+                      <span>Descuento:</span>
+                      <span className="font-mono">-{formatCurrency(Number(saleData.discountAmount))}</span>
+                    </div>
+                  )}
+                  {Number(saleData.pointsDiscountAmount) > 0 && (
+                    <div className="flex justify-between text-rose-605 dark:text-rose-400 font-bold">
+                      <span>Descuento por Puntos:</span>
+                      <span className="font-mono">-{formatCurrency(Number(saleData.pointsDiscountAmount))}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between border-t border-slate-200 dark:border-slate-800 pt-1.5 font-black text-slate-900 dark:text-white text-sm">
+                    <span>Total:</span>
+                    <span className="font-mono text-indigo-650 dark:text-indigo-400">{formatCurrency(Number(saleData.totalAmount))}</span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-4 border-t border-slate-100 dark:border-slate-800 mt-4">
+              <button
+                type="button"
+                onClick={() => setSelectedSaleId(null)}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-350 font-bold text-xs rounded-xl"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// Helper table component for paginated points history
+const CustomerPointsHistoryTable: React.FC<{ customerId: string | null; onViewSale: (saleId: string) => void }> = ({ customerId, onViewSale }) => {
+  const [page, setPage] = useState(1);
+  const [limit] = useState(10);
+  const { data, isLoading } = useQuery({
+    queryKey: ['posCustomerPointsHistoryFull', customerId, page],
+    queryFn: async () => {
+      const res = await api.get('/points/history', {
+        params: { customerId, page, limit }
+      });
+      return res.data;
+    },
+    enabled: !!customerId,
+  });
+
+  const items = data?.data || [];
+  const pagination = data?.pagination || { total: 0, totalPages: 1 };
+
+  if (isLoading) {
+    return <div className="p-8 text-center text-slate-500 text-xs">Cargando historial de puntos...</div>;
+  }
+
+  return (
+    <div className="space-y-3">
+      {items.length === 0 ? (
+        <div className="p-8 text-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-slate-500 text-xs font-medium">
+          No hay registros de puntos.
+        </div>
+      ) : (
+        <>
+          <div className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
+            <table className="w-full text-left text-xs text-slate-600 dark:text-slate-400">
+              <thead className="bg-slate-100 dark:bg-slate-800 text-slate-500 uppercase font-bold tracking-wider">
+                <tr>
+                  <th className="px-4 py-3">Fecha</th>
+                  <th className="px-4 py-3">Tipo</th>
+                  <th className="px-4 py-3">Motivo</th>
+                  <th className="px-4 py-3 text-right">Puntos</th>
+                  <th className="px-4 py-3 text-right">Saldo resultante</th>
+                  <th className="px-4 py-3">Descripción</th>
+                  <th className="px-4 py-3">Acciones</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                {items.map((h: any) => {
+                  const isPositive = h.points > 0;
+                  const mapReason = (r: string) => {
+                    const mapping: Record<string, string> = {
+                      'SALE': 'Venta',
+                      'SALE_CANCEL': 'Anulación de Venta',
+                      'REDEEM': 'Canje',
+                      'REDEEM_CANCEL': 'Anulación de Canje',
+                      'MANUAL': 'Ajuste Manual',
+                      'EXPIRATION': 'Vencimiento',
+                      'BONUS': 'Acreditación Especial',
+                      'MIGRATION': 'Migración',
+                      'PROMOTION': 'Promoción'
+                    };
+                    return mapping[r] || r;
+                  };
+
+                  return (
+                    <tr key={h.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-800 dark:text-slate-200">
+                        {format(new Date(h.createdAt), 'dd/MM/yyyy - HH:mm')}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex items-center px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
+                          h.type === 'EARN'
+                            ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-350 border-emerald-200/50'
+                            : h.type === 'REDEEM'
+                            ? 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300 border-blue-200/50'
+                            : h.type === 'EXPIRED'
+                            ? 'bg-slate-50 text-slate-700 dark:bg-slate-800 dark:text-slate-400 border-slate-200/30'
+                            : h.type === 'ADJUSTMENT'
+                            ? 'bg-amber-50 text-amber-700 dark:bg-amber-950/50 dark:text-amber-300 border-amber-200/50'
+                            : 'bg-rose-50 text-rose-700 dark:bg-rose-950/50 dark:text-rose-305 border-rose-200/50' // CANCEL
+                        }`}>
+                          {h.type === 'EARN'
+                            ? 'Acreditación'
+                            : h.type === 'REDEEM'
+                            ? 'Canje'
+                            : h.type === 'EXPIRED'
+                            ? 'Vencimiento'
+                            : h.type === 'ADJUSTMENT'
+                            ? 'Ajuste'
+                            : 'Anulación'}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3 font-medium text-slate-750 dark:text-slate-250">
+                        {mapReason(h.reason)}
+                      </td>
+                      <td className={`px-4 py-3 text-right font-bold font-mono text-sm ${isPositive ? 'text-emerald-600' : 'text-rose-600'}`}>
+                        {isPositive ? `+${h.points}` : h.points}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold font-mono text-slate-800 dark:text-slate-200">
+                        {h.balanceAfter}
+                      </td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-450 max-w-[150px] truncate" title={h.description}>
+                        {h.description || '-'}
+                      </td>
+                      <td className="px-4 py-3">
+                        {h.saleId && (
+                          <button
+                            type="button"
+                            onClick={() => onViewSale(h.saleId)}
+                            className="text-indigo-650 hover:text-indigo-800 dark:text-indigo-400 dark:hover:text-indigo-300 font-extrabold text-xs flex items-center gap-0.5 hover:underline"
+                          >
+                            ⭐ Ver Venta
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <div className="flex justify-between items-center text-xs pt-1">
+            <span className="text-slate-500">Pág. {page} de {pagination.totalPages} ({pagination.total} registros)</span>
+            <div className="flex gap-1">
+              <button
+                disabled={page <= 1}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+                className="py-1 px-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl disabled:opacity-50"
+              >
+                Anterior
+              </button>
+              <button
+                disabled={page >= pagination.totalPages}
+                onClick={() => setPage(p => Math.min(pagination.totalPages, p + 1))}
+                className="py-1 px-2.5 border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl disabled:opacity-50"
+              >
+                Siguiente
+              </button>
+            </div>
+          </div>
+        </>
       )}
     </div>
   );

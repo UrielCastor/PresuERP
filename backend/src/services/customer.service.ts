@@ -9,7 +9,18 @@ export class CustomerService {
     this.repo = new CustomerRepository();
   }
 
-  async getCustomers(businessId: string, options: { search?: string; type?: string; activeOnly?: boolean; page?: number; limit?: number }) {
+  async getCustomers(
+    businessId: string,
+    options: {
+      search?: string;
+      type?: string;
+      activeOnly?: boolean;
+      page?: number;
+      limit?: number;
+      sortBy?: string;
+      sortOrder?: 'asc' | 'desc';
+    }
+  ) {
     return this.repo.findAll(businessId, options);
   }
 
