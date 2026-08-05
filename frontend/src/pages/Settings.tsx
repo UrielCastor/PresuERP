@@ -648,7 +648,7 @@ export const Settings: React.FC = () => {
   })).filter(group => group.items.length > 0);
 
   return (
-    <div className="space-y-5 pb-20 max-w-7xl mx-auto">
+    <div className="space-y-5 pb-20 w-full">
       <PageHeader title="Centro de Administración" subtitle="Gestiona todos los parámetros de tu organización de forma centralizada." />
 
       {error && <div className="flex items-center gap-2 p-3 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100"><AlertCircle className="h-4 w-4 shrink-0"/><span>{error}</span></div>}
