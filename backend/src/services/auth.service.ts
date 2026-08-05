@@ -67,6 +67,8 @@ const whitelistPermissions = [
   { name: 'cash:audit', description: 'View full history of cash registers', module: 'cash' },
   // Reports
   { name: 'reports:read', description: 'View business reports', module: 'reports' },
+  // Audit
+  { name: 'AUDIT_VIEW', description: 'View ERP audit logs', module: 'audit' },
 ];
 
 export class AuthService {

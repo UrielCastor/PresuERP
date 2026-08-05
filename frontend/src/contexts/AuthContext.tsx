@@ -100,6 +100,9 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // system:* permissions are STRICTLY reserved for Staff
     if (permission.startsWith('system:')) return false;
 
+    // Tenant Administrator bypasses permission checks (except for system:*)
+    if (user.role === 'Administrator') return true;
+
     return user.permissions.includes(permission);
   };
 

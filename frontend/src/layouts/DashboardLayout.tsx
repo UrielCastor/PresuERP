@@ -105,6 +105,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       return item;
     })
     .filter((item) => {
+      if (item.name === 'Auditorías') {
+        return user?.role === 'Administrator' && !user?.isStaff;
+      }
       if (item.permission && !hasPermission(item.permission)) {
         return false;
       }
