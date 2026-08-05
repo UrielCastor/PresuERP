@@ -899,7 +899,19 @@ export class ReportRepository {
     const limit = Math.min(100, Math.max(1, Number(filters?.limit) || 20));
     const skip = (page - 1) * limit;
 
-    const where: any = { businessId };
+    const where: any = {
+      businessId,
+      NOT: [
+        { businessId: 'SYSTEM' },
+        { entityName: { in: ['PLAN', 'SUBSCRIPTION', 'INVOICE', 'PLAN_PRICE'] } },
+        { actionType: { in: [
+          'CREATE_STAFF', 'REMOVE_STAFF',
+          'VIEW_BUSINESS', 'VIEW_USER', 'SUSPEND_USER', 'RESTORE_USER', 'DELETE_USER_FORCED', 'DELETE_USER',
+          'PLAN_PRICE_REACTIVATED', 'PLAN_PRICE_CREATED', 'PLAN_PRICE_UPDATED', 'PLAN_PRICE_ACTIVATED', 'PLAN_PRICE_DEACTIVATED', 'PLAN_PRICE_DELETED',
+          'PAYMENT_APPROVED', 'PAYMENT_PENDING', 'SUBSCRIPTION_RENEWED', 'PLAN_CHANGED'
+        ] } }
+      ]
+    };
 
     if (filters?.userId) {
       where.userId = filters.userId;
