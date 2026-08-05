@@ -86,9 +86,17 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const filteredNav = menuConfig
     .map((item) => {
       if (item.children) {
-        const filteredChildren = item.children.filter(
+        let filteredChildren = item.children.filter(
           (child) => !child.permission || hasPermission(child.permission)
         );
+
+        // Ocultar acceso redundante Configuración -> POS para el rol Administrator
+        if (user?.role === 'Administrator') {
+          filteredChildren = filteredChildren.filter(
+            (child) => !(item.name === 'Configuración' && child.name === 'POS')
+          );
+        }
+
         return {
           ...item,
           children: filteredChildren,
