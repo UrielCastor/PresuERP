@@ -5,9 +5,13 @@ import { NotFoundError, BadRequestError } from '../utils/appError';
 export class TransferRequestService {
   private repo = new TransferRequestRepository();
 
-  async list(businessId: string, filters: TransferRequestFilterInput = {}, userRole?: string, userDefaultWarehouseId?: string) {
-    const isCashier = userRole?.toLowerCase() === 'cajero' || userRole?.toLowerCase() === 'cashier';
-    if (isCashier && userDefaultWarehouseId) {
+  async list(businessId: string, filters: TransferRequestFilterInput = {}, userRole?: string, userDefaultWarehouseId?: string, userWarehouseIds?: string[]) {
+    // Depot isolation: restrict by assigned warehouses when user is NOT an admin
+    // This is warehouse-based filtering, NOT role-based
+    const isAdmin = userRole?.toLowerCase() === 'administrator' || userRole?.toLowerCase() === 'superadmin';
+    if (!isAdmin && userWarehouseIds && userWarehouseIds.length > 0) {
+      filters.userWarehouseId = userDefaultWarehouseId || userWarehouseIds[0];
+    } else if (!isAdmin && userDefaultWarehouseId) {
       filters.userWarehouseId = userDefaultWarehouseId;
     }
     return this.repo.list(businessId, filters);
@@ -37,10 +41,11 @@ export class TransferRequestService {
       throw new BadRequestError('El depósito de origen y de destino no pueden ser el mismo');
     }
 
-    // Restrict originWarehouseId to user's assigned default warehouse if role is Cajero
-    const isCashier = userRole?.toLowerCase() === 'cajero' || userRole?.toLowerCase() === 'cashier';
-    if (isCashier && userDefaultWarehouseId && input.originWarehouseId !== userDefaultWarehouseId) {
-      throw new BadRequestError('El rol Cajero solo puede crear pedidos solicitando stock para su propio depósito asignado');
+    // Depot isolation: if user has a defaultWarehouse assigned, they can only create
+    // requests originating from their assigned depot. This is warehouse-scoped, NOT role-based.
+    const isAdmin = userRole?.toLowerCase() === 'administrator' || userRole?.toLowerCase() === 'superadmin';
+    if (!isAdmin && userDefaultWarehouseId && input.originWarehouseId !== userDefaultWarehouseId) {
+      throw new BadRequestError('Solo puedes crear pedidos solicitando stock para tu depósito asignado');
     }
 
     // 2. Validate warehouses exist in business

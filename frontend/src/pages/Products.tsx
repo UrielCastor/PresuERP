@@ -50,7 +50,7 @@ type EditProductFormData = z.infer<typeof editProductFormSchema>;
 
 export const Products: React.FC = () => {
   const navigate = useNavigate();
-  const { hasPermission } = useAuth();
+  const { hasPermission, hasCapability } = useAuth();
   const queryClient = useQueryClient();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
@@ -65,9 +65,18 @@ export const Products: React.FC = () => {
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
 
-  const canCreate = hasPermission('products:create');
-  const canUpdate = hasPermission('products:update');
-  const canDelete = hasPermission('products:delete');
+  const canCreate = hasCapability('products.create') || hasPermission('products:create');
+  const canUpdate = hasCapability('products.update') || hasPermission('products:update');
+  const canDelete = hasCapability('products.delete') || hasPermission('products:delete');
+
+  // Enterprise Granular Action Capabilities
+  const canEditCost = hasCapability('products.edit_cost') || hasCapability('products.cost.update') || canUpdate;
+  const canEditMargin = hasCapability('products.edit_margin') || canUpdate;
+  const canEditPrice = hasCapability('products.edit_price') || canUpdate;
+  const canEditName = hasCapability('products.edit_name') || canUpdate;
+  const canEditBarcode = hasCapability('products.edit_barcode') || canUpdate;
+  const canEditSupplier = hasCapability('products.edit_supplier') || canUpdate;
+  const canEditCategory = hasCapability('products.edit_category') || canUpdate;
 
   const currentSchema = editingProduct ? editProductFormSchema : createProductFormSchema;
 
@@ -881,11 +890,12 @@ export const Products: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
+                          disabled={!canEditCost}
                           {...register('purchasePrice')}
                           placeholder="0.00"
                           className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
                             errors.purchasePrice ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700'
-                          }`}
+                          } ${!canEditCost ? 'opacity-60 bg-slate-100 dark:bg-slate-800 cursor-not-allowed' : ''}`}
                         />
                         {errors.purchasePrice && <p className="mt-1 text-xs text-red-500 font-medium">{errors.purchasePrice.message}</p>}
                       </div>
@@ -897,10 +907,11 @@ export const Products: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
+                          disabled={!canEditMargin}
                           {...register('profitMargin')}
                           onChange={handleMarginChange}
                           placeholder="30"
-                          className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                          className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${!canEditMargin ? 'opacity-60 bg-slate-100 dark:bg-slate-800 cursor-not-allowed' : ''}`}
                         />
                       </div>
 
@@ -911,12 +922,13 @@ export const Products: React.FC = () => {
                         <input
                           type="number"
                           step="0.01"
+                          disabled={!canEditPrice}
                           {...register('salePrice')}
                           onChange={handleSalePriceChange}
                           placeholder="0.00"
                           className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border rounded-lg text-xs md:text-sm font-mono text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${
                             errors.salePrice ? 'border-red-500 focus:ring-red-500' : 'border-slate-300 dark:border-slate-700'
-                          }`}
+                          } ${!canEditPrice ? 'opacity-60 bg-slate-100 dark:bg-slate-800 cursor-not-allowed' : ''}`}
                         />
                         {errors.salePrice && <p className="mt-1 text-xs text-red-500 font-medium">{errors.salePrice.message}</p>}
                       </div>

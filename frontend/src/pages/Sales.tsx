@@ -42,7 +42,7 @@ import { EmptyState } from '../components/ui/EmptyState';
 type PeriodPreset = 'HOY' | 'AYER' | 'SEMANA' | 'MES' | 'CUSTOM';
 
 export const Sales: React.FC = () => {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, hasCapability, user } = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -72,9 +72,13 @@ export const Sales: React.FC = () => {
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
 
-  const canRead = hasPermission('sales:read');
-  const canCreate = hasPermission('sales:write');
-  const canCancel = hasPermission('sales:cancel');
+  const canRead = hasCapability('sales.view') || hasPermission('sales:read');
+  const canCreate = hasCapability('sales.create') || hasPermission('sales:write');
+  const canCancel = hasCapability('sales.cancel') || hasPermission('sales:cancel');
+  const canDiscount = hasCapability('sales.discount') || canCreate;
+  const canChangePrice = hasCapability('sales.change_price') || canCreate;
+  const canReprint = hasCapability('sales.reprint') || canRead;
+  const canOpenDrawer = hasCapability('sales.open_drawer') || hasCapability('cash.open');
 
   // Manejador del Selector de Período
   const handlePeriodChange = (preset: PeriodPreset) => {

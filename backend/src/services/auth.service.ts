@@ -172,23 +172,49 @@ export class AuthService {
       const supervisorRole = await tx.role.create({
         data: {
           name: 'Supervisor',
-          description: 'Store operations supervisor',
+          description: 'Supervisor de operaciones — configurar capacidades desde Roles y Capacidades',
           businessId: business.id,
-          isSystem: true,
+          isSystem: false,
         },
       });
 
       const cajeroRole = await tx.role.create({
         data: {
           name: 'Cajero',
-          description: 'Cashier checkout access',
+          description: 'Cajero de ventas — configurar capacidades desde Roles y Capacidades',
           businessId: business.id,
-          isSystem: true,
+          isSystem: false,
         },
       });
 
+      const empleadoRole = await tx.role.create({
+        data: {
+          name: 'Empleado',
+          description: 'Empleado general — configurar capacidades desde Roles y Capacidades',
+          businessId: business.id,
+          isSystem: false,
+        },
+      });
 
+      // Note: Supervisor, Cajero, Empleado are created empty.
+      // The Administrator can assign capabilities from Configuración → Roles y Capacidades.
 
+      // 4.4 Seed Capabilities
+      const { defaultCapabilities } = await import('../seeds/capabilities.seed');
+      const capabilitiesMap = [];
+      for (const cap of defaultCapabilities) {
+        const dbCap = await tx.capability.upsert({
+          where: { id: cap.id },
+          update: {
+            name: cap.name,
+            description: cap.description,
+            module: cap.module,
+            technicalPermission: cap.technicalPermission,
+          },
+          create: cap,
+        });
+        capabilitiesMap.push(dbCap);
+      }
 
       // Assign all permissions to Administrator
       for (const p of permissionsMap) {
@@ -200,53 +226,22 @@ export class AuthService {
         });
       }
 
-      // Assign subset of permissions to Supervisor
-      const supervisorPermCodes = [
-        'products:read', 'products:create', 'products:update', 'products:delete', 'products:write',
-        'categories:read', 'categories:create', 'categories:update', 'categories:delete',
-        'suppliers:read', 'suppliers:create', 'suppliers:update', 'suppliers:delete',
-        'warehouses:read', 'warehouses:create', 'warehouses:update', 'warehouses:delete',
-        'stocks:read', 'stocks:update',
-        'kardex:read', 'kardex:export',
-        'sales:read', 'sales:write', 'sales:cancel',
-        'customers:read', 'customers:write',
-        'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve', 'purchases:cancel',
-        'cash:view', 'cash:open', 'cash:close', 'cash:movement', 'cash:audit',
-        'reports:read',
-        'settings:pos:read', 'settings:pos:write',
-        'transfer_requests:read', 'transfer_requests:create', 'transfer_requests:update', 'transfer_requests:send', 'transfer_requests:approve', 'transfer_requests:reject',
-        'transfers:read', 'transfers:create', 'transfers:prepare', 'transfers:dispatch', 'transfers:receive',
-      ];
-      const supervisorPerms = permissionsMap.filter((p) => supervisorPermCodes.includes(p.name));
-      for (const p of supervisorPerms) {
-        await tx.rolePermission.create({
+      // Assign all capabilities to Administrator
+      for (const cap of capabilitiesMap) {
+        await tx.roleCapability.create({
           data: {
-            roleId: supervisorRole.id,
-            permissionId: p.id,
+            roleId: adminRole.id,
+            capabilityId: cap.id,
           },
         });
       }
 
-      // Assign to Cashier (Cajero)
-      const cashierPermCodes = [
-        'products:read',
-        'warehouses:read',
-        'stocks:read',
-        'sales:read', 'sales:write',
-        'customers:read', 'customers:write',
-        'cash:view', 'cash:open', 'cash:close', 'cash:movement',
-        'transfer_requests:read', 'transfer_requests:create', 'transfer_requests:update', 'transfer_requests:send',
-        'transfers:read', 'transfers:prepare', 'transfers:receive',
-      ];
-      const cashierPerms = permissionsMap.filter((p) => cashierPermCodes.includes(p.name));
-      for (const p of cashierPerms) {
-        await tx.rolePermission.create({
-          data: {
-            roleId: cajeroRole.id,
-            permissionId: p.id,
-          },
-        });
-      }
+      // Supervisor, Cajero, Empleado are created empty.
+      // The Administrator can configure capabilities from Configuración → Roles y Capacidades.
+      // Keeping role references to avoid unused variable errors:
+      void supervisorRole;
+      void cajeroRole;
+      void empleadoRole;
 
       // Hash Password
       const salt = await bcrypt.genSalt(10);
@@ -313,6 +308,40 @@ export class AuthService {
     });
   }
 
+  async resolveRolePermissions(roleId: string): Promise<string[]> {
+    const permissions = await this.roleRepo.listPermissions(roleId);
+    const permissionSet = new Set<string>(permissions.map((p) => p.name));
+
+    const roleCapabilities = await prisma.roleCapability.findMany({
+      where: { roleId },
+      include: { capability: true },
+    });
+
+    for (const rc of roleCapabilities) {
+      if (rc.capability?.technicalPermission) {
+        const techPerm = rc.capability.technicalPermission;
+        permissionSet.add(techPerm);
+
+        if (techPerm.startsWith('purchases:')) permissionSet.add('purchases:read');
+        if (techPerm.startsWith('sales:')) permissionSet.add('sales:read');
+        if (techPerm.startsWith('products:')) permissionSet.add('products:read');
+        if (techPerm.startsWith('categories:')) permissionSet.add('categories:read');
+        if (techPerm.startsWith('suppliers:')) permissionSet.add('suppliers:read');
+        if (techPerm.startsWith('warehouses:')) permissionSet.add('warehouses:read');
+        if (techPerm.startsWith('stocks:')) permissionSet.add('stocks:read');
+        if (techPerm.startsWith('customers:')) permissionSet.add('customers:read');
+        if (techPerm.startsWith('users:')) permissionSet.add('users:read');
+        if (techPerm.startsWith('settings:')) permissionSet.add('settings:read');
+        if (techPerm.startsWith('reports:')) permissionSet.add('reports:read');
+        if (techPerm.startsWith('transfer_requests:')) permissionSet.add('transfer_requests:read');
+        if (techPerm.startsWith('transfers:')) permissionSet.add('transfers:read');
+        if (techPerm.startsWith('cash:')) permissionSet.add('cash:view');
+      }
+    }
+
+    return Array.from(permissionSet);
+  }
+
   async login(email: string, passwordPlain: string): Promise<{ accessToken: string; refreshToken: string; user: any }> {
     const user = await this.userRepo.findByEmail(email);
     if (!user || !user.isActive) {
@@ -324,8 +353,7 @@ export class AuthService {
       throw new UnauthorizedError('Invalid credentials');
     }
 
-    const permissions = user.roleId ? await this.roleRepo.listPermissions(user.roleId as string) : [];
-    const permissionCodes = permissions.map((p) => p.name);
+    const permissionCodes = user.roleId ? await this.resolveRolePermissions(user.roleId as string) : [];
 
     console.log('🔥 [DEBUG LOGIN PRISMA USER]', {
       id: user.id,
@@ -336,6 +364,20 @@ export class AuthService {
       defaultWarehouse: (user as any).defaultWarehouse,
     });
 
+    // Build structured warehouses list for JWT payload
+    const jwtWarehouses = (
+      (user as any).userWarehouses?.map((uw: any) => ({
+        id: uw.warehouse?.id || uw.warehouseId,
+        name: uw.warehouse?.name || 'Depósito',
+      })) || []
+    );
+    if ((user as any).defaultWarehouse) {
+      const dw = (user as any).defaultWarehouse;
+      if (!jwtWarehouses.find((w: any) => w.id === dw.id)) {
+        jwtWarehouses.unshift({ id: dw.id, name: dw.name });
+      }
+    }
+
     const accessToken = jwt.sign(
       {
         userId: user.id,
@@ -344,6 +386,7 @@ export class AuthService {
         businessId: user.businessId || '',
         permissions: permissionCodes,
         isStaff: (user as any).isStaff,
+        warehouses: jwtWarehouses,
       },
       env.JWT_SECRET,
       { expiresIn: env.JWT_EXPIRES_IN as any }
@@ -403,8 +446,22 @@ export class AuthService {
       });
 
       const user = storedToken.user;
-      const permissions = user.roleId ? await this.roleRepo.listPermissions(user.roleId as string) : [];
-      const permissionCodes = permissions.map((p) => p.name);
+      const permissionCodes = user.roleId ? await this.resolveRolePermissions(user.roleId as string) : [];
+
+      // Fetch fresh warehouses for refreshed token
+      const freshUser = await this.userRepo.findByEmail(user.email);
+      const refreshWarehouses = (
+        freshUser?.userWarehouses?.map((uw: any) => ({
+          id: uw.warehouse?.id || uw.warehouseId,
+          name: uw.warehouse?.name || 'Depósito',
+        })) || []
+      );
+      if (freshUser?.defaultWarehouse) {
+        const dw = freshUser.defaultWarehouse;
+        if (!refreshWarehouses.find((w: any) => w.id === dw.id)) {
+          refreshWarehouses.unshift({ id: dw.id, name: dw.name });
+        }
+      }
 
       const newAccessToken = jwt.sign(
         {
@@ -414,6 +471,7 @@ export class AuthService {
           businessId: user.businessId || '',
           permissions: permissionCodes,
           isStaff: (user as any).isStaff,
+          warehouses: refreshWarehouses,
         },
         env.JWT_SECRET,
         { expiresIn: env.JWT_EXPIRES_IN as any }
@@ -482,8 +540,6 @@ export class AuthService {
       });
 
       const adminRole = roles.find((r) => r.name.toLowerCase() === 'administrator');
-      const supervisorRole = roles.find((r) => r.name.toLowerCase() === 'supervisor');
-      const cashierRole = roles.find((r) => r.name.toLowerCase() === 'cajero');
 
       // Administrator assigns all permissions
       if (adminRole) {
@@ -497,68 +553,6 @@ export class AuthService {
             },
             create: {
               roleId: adminRole.id,
-              permissionId: p.id,
-            },
-            update: {},
-          });
-        }
-      }
-
-      // Supervisor assigns subset
-      if (supervisorRole) {
-        const supervisorPermCodes = [
-          'products:read', 'products:create', 'products:update', 'products:delete', 'products:write',
-          'categories:read', 'categories:create', 'categories:update', 'categories:delete',
-          'suppliers:read', 'suppliers:create', 'suppliers:update', 'suppliers:delete',
-          'warehouses:read', 'warehouses:create', 'warehouses:update', 'warehouses:delete',
-          'stocks:read', 'stocks:update',
-          'kardex:read', 'kardex:export',
-          'sales:read', 'sales:write', 'sales:cancel',
-          'customers:read', 'customers:write',
-          'purchases:read', 'purchases:create', 'purchases:update', 'purchases:approve', 'purchases:cancel',
-          'cash:view', 'cash:open', 'cash:close', 'cash:movement', 'cash:audit',
-          'reports:read',
-          'settings:pos:read', 'settings:pos:write',
-        ];
-        const supervisorPerms = permissionsMap.filter((p) => supervisorPermCodes.includes(p.name));
-        for (const p of supervisorPerms) {
-          await prisma.rolePermission.upsert({
-            where: {
-              roleId_permissionId: {
-                roleId: supervisorRole.id,
-                permissionId: p.id,
-              },
-            },
-            create: {
-              roleId: supervisorRole.id,
-              permissionId: p.id,
-            },
-            update: {},
-          });
-        }
-      }
-
-      // Cashier assigns subset
-      if (cashierRole) {
-        const cashierPermCodes = [
-          'products:read',
-          'warehouses:read',
-          'stocks:read',
-          'sales:read', 'sales:write',
-          'customers:read', 'customers:write',
-          'cash:view', 'cash:open', 'cash:close', 'cash:movement',
-        ];
-        const cashierPerms = permissionsMap.filter((p) => cashierPermCodes.includes(p.name));
-        for (const p of cashierPerms) {
-          await prisma.rolePermission.upsert({
-            where: {
-              roleId_permissionId: {
-                roleId: cashierRole.id,
-                permissionId: p.id,
-              },
-            },
-            create: {
-              roleId: cashierRole.id,
               permissionId: p.id,
             },
             update: {},

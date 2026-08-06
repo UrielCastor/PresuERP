@@ -30,8 +30,8 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 
 export const PriceListsPage: React.FC = () => {
-  const { user } = useAuth();
-  const isCashier = user?.role === 'Cajero';
+  const { user, hasCapability, hasPermission } = useAuth();
+  const canManagePriceLists = hasCapability('products.update') || hasPermission('products:update');
   const queryClient = useQueryClient();
   const navigate = useNavigate();
 
@@ -283,7 +283,7 @@ export const PriceListsPage: React.FC = () => {
           </p>
         </div>
 
-        {!isCashier && (
+        {canManagePriceLists && (
           <div className="flex items-center gap-3">
             <Button
               onClick={openCreateModal}
@@ -336,11 +336,11 @@ export const PriceListsPage: React.FC = () => {
           <p className="mt-1 text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-xs">
             {searchTerm
               ? 'No se encontraron listas que coincidan con la búsqueda.'
-              : isCashier
+              : !canManagePriceLists
                 ? 'No hay listas de precios activas registradas en el sistema.'
                 : 'Crea tu primera lista de precios para definir tarifas especiales.'}
           </p>
-          {!searchTerm && !isCashier && (
+          {!searchTerm && canManagePriceLists && (
             <Button onClick={openCreateModal} className="mt-4 flex items-center gap-2 text-xs font-bold rounded-xl shadow-md">
               <Plus className="h-4 w-4" />
               Crear primera lista
@@ -419,7 +419,7 @@ export const PriceListsPage: React.FC = () => {
                     onClick={() => setSelectedListForItems(list)}
                     className="flex-1 text-xs font-bold py-2 rounded-xl shadow-2xs flex items-center justify-center gap-1.5"
                   >
-                    {isCashier ? (
+                    {!canManagePriceLists ? (
                       <>
                         <span>👁️</span>
                         Consultar Precios
@@ -433,7 +433,7 @@ export const PriceListsPage: React.FC = () => {
                   </Button>
 
                   {/* Menú Tres Puntos (⋮) */}
-                  {!isCashier && (
+                  {canManagePriceLists && (
                     <div className="relative">
                       <button
                         type="button"
@@ -626,7 +626,7 @@ export const PriceListsPage: React.FC = () => {
       >
         <div className="space-y-5">
           {/* FORMULARIO AGREGAR PRECIO ESPECIAL A PRODUCTO */}
-          {!isCashier && (
+          {canManagePriceLists && (
             <form
               onSubmit={handleAddItem}
               className="p-4 bg-slate-50 dark:bg-slate-850 border border-slate-200 dark:border-slate-800 rounded-xl space-y-3"
@@ -742,7 +742,7 @@ export const PriceListsPage: React.FC = () => {
                     <th className="px-4 py-2.5 text-right">Precio Base</th>
                     <th className="px-4 py-2.5 text-right">Precio Lista</th>
                     <th className="px-4 py-2.5 text-center">Cant. Mínima</th>
-                    {!isCashier && <th className="px-4 py-2.5 text-right">Acciones</th>}
+                    {canManagePriceLists && <th className="px-4 py-2.5 text-right">Acciones</th>}
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-medium">
@@ -798,7 +798,7 @@ export const PriceListsPage: React.FC = () => {
                           )}
                         </td>
 
-                        {!isCashier && (
+                        {canManagePriceLists && (
                           <td className="px-4 py-3 text-right">
                             <div className="flex items-center justify-end gap-1">
                               {isEditing ? (

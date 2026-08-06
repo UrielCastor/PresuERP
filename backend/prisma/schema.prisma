@@ -61,6 +61,7 @@ model Business {
   // Module relations
   users              User[]
   roles              Role[]
+  roleCapabilityHistories RoleCapabilityHistory[]
   auditLogs          AuditLog[]
   activityLogs       ActivityLog[]
   notifications      Notification[]
@@ -423,6 +424,7 @@ model User {
   dispatchedStockTransfers  StockTransfer[]     @relation("StockTransferDispatchedByUser")
   receivedStockTransfers    StockTransfer[]     @relation("StockTransferReceivedByUser")
   receivedStockTransferReceipts StockTransferReceipt[] @relation("StockTransferReceiptReceivedByUser")
+  roleCapabilityHistories   RoleCapabilityHistory[]
 
   @@index([businessId, email])
   @@map("users")
@@ -453,6 +455,8 @@ model Role {
   business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
   users       User[]
   permissions RolePermission[]
+  capabilities RoleCapability[]
+  capabilityHistories RoleCapabilityHistory[]
 
   @@unique([name, businessId])
   @@index([businessId])
@@ -1891,5 +1895,58 @@ model StockReservation {
   @@map("stock_reservations")
 }
 
+// ==========================================
+// 20. DYNAMIC CAPABILITIES & ROLE SYSTEM
+// ==========================================
 
+model Capability {
+  id                  String   @id // e.g., "logistics.request.create"
+  name                String   // e.g., "Crear pedidos internos"
+  description         String   // e.g., "Permite solicitar mercadería entre depósitos"
+  module              String   // e.g., "Logística"
+  type                String   @default("OPERATIVE") // "VIEW" | "OPERATIVE" | "CRITICAL"
+  technicalPermission String   // e.g., "transfer_requests:create"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 
+  roleCapabilities RoleCapability[]
+
+  @@index([module])
+  @@index([type])
+  @@map("capabilities")
+}
+
+model RoleCapability {
+  id           String     @id @default(uuid())
+  roleId       String
+  capabilityId String
+  createdAt    DateTime   @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  capability Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, capabilityId])
+  @@index([roleId])
+  @@index([capabilityId])
+  @@map("role_capabilities")
+}
+
+model RoleCapabilityHistory {
+  id           String   @id @default(uuid())
+  businessId   String
+  roleId       String
+  userId       String
+  capabilityId String
+  action       String   // "ADDED" | "REMOVED"
+  reason       String?  @db.Text
+  createdAt    DateTime @default(now())
+
+  business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([businessId])
+  @@index([roleId])
+  @@index([userId])
+  @@map("role_capability_history")
+}

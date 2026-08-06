@@ -3,6 +3,7 @@ import { useQuery } from '@tanstack/react-query';
 import { X, User, Building, CreditCard, Phone, Mail, MapPin, FileText, CheckCircle, Tag } from 'lucide-react';
 import { Customer, createCustomer, updateCustomer } from '../../services/customer.service';
 import { priceListService } from '../../services/priceList.service';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface CustomerFormModalProps {
   isOpen: boolean;
@@ -17,6 +18,9 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
   onSuccess,
   customer,
 }) => {
+  const { hasCapability } = useAuth();
+  const canEditCreditLimit = hasCapability('customers.edit_credit_limit') || hasCapability('customers.update') || !customer;
+  const canEditPriceList = hasCapability('customers.edit_price_list') || hasCapability('customers.update') || !customer;
   const { data: priceLists = [] } = useQuery({
     queryKey: ['priceListsAll'],
     queryFn: priceListService.getAll,
@@ -335,9 +339,10 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                     Lista de Precios Comercial
                   </label>
                   <select
+                    disabled={!canEditPriceList}
                     value={formData.defaultPriceListId}
                     onChange={(e) => setFormData({ ...formData, defaultPriceListId: e.target.value })}
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all font-bold"
+                    className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all font-bold ${!canEditPriceList ? 'opacity-60 bg-slate-100 dark:bg-slate-800 cursor-not-allowed' : ''}`}
                   >
                     <option value="">-- Sin lista asignada (Tarifa General Base) --</option>
                     {priceLists.map((pl: any) => (
@@ -349,9 +354,10 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                 </div>
 
                 <div className="flex items-center pt-5">
-                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                  <label className={`flex items-center gap-2 select-none ${canEditCreditLimit ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'}`}>
                     <input
                       type="checkbox"
+                      disabled={!canEditCreditLimit}
                       checked={formData.allowCreditAccount}
                       onChange={(e) => setFormData({ ...formData, allowCreditAccount: e.target.checked })}
                       className="h-4 w-4 text-primary-600 border-slate-300 rounded focus:ring-primary-500"
@@ -372,10 +378,11 @@ export const CustomerFormModal: React.FC<CustomerFormModalProps> = ({
                     type="number"
                     min="0"
                     step="100"
+                    disabled={!canEditCreditLimit}
                     value={formData.creditLimit === 0 ? '' : formData.creditLimit}
                     onChange={(e) => setFormData({ ...formData, creditLimit: e.target.value })}
                     placeholder="0.00"
-                    className="w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all"
+                    className={`w-full px-3 py-2 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg text-xs md:text-sm font-mono font-bold text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-primary-500 transition-all ${!canEditCreditLimit ? 'opacity-60 bg-slate-100 dark:bg-slate-800 cursor-not-allowed' : ''}`}
                   />
                 </div>
               )}

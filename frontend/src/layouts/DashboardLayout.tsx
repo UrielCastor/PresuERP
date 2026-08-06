@@ -29,13 +29,28 @@ import {
   Building2,
   Tag,
   CheckCircle2,
+  BadgeDollarSign,
+  Tags,
+  PackageOpen,
+  ArrowRightLeft,
+  ClipboardCheck,
+  PackageSearch,
+  ArrowLeftRight,
+  PackageCheck,
+  ScanLine,
+  UsersRound,
+  Wallet,
+  BarChart3,
+  FileSearch,
+  Cpu,
+  Shield,
 } from 'lucide-react';
 import { menuConfig } from '../config/menu';
 import { Button } from '../components/ui/Button';
 import { HelpButton } from '../components/ui/HelpButton';
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user, logout, hasPermission } = useAuth();
+  const { user, logout, hasPermission, hasCapability } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const { preferences, updatePreference } = useAppearance();
   const location = useLocation();
@@ -66,31 +81,43 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
   const getIcon = (iconName: string) => {
     switch (iconName) {
       case 'LayoutDashboard': return <LayoutDashboard className="h-5 w-5" />;
-      case 'Building': return <Building className="h-5 w-5" />;
+      case 'ShieldCheck': return <ShieldCheck className="h-5 w-5" />;
       case 'Users': return <Users className="h-5 w-5" />;
       case 'Package': return <Package className="h-5 w-5" />;
-      case 'FolderOpen': return <FolderOpen className="h-5 w-5" />;
+      case 'Boxes': return <Boxes className="h-5 w-5" />;
+      case 'BadgeDollarSign': return <BadgeDollarSign className="h-5 w-5" />;
+      case 'Tags': return <Tags className="h-5 w-5" />;
       case 'Truck': return <Truck className="h-5 w-5" />;
       case 'Warehouse': return <Warehouse className="h-5 w-5" />;
-      case 'Boxes': return <Boxes className="h-5 w-5" />;
-      case 'ClipboardList': return <ClipboardList className="h-5 w-5" />;
+      case 'PackageOpen': return <PackageOpen className="h-5 w-5" />;
       case 'ShoppingCart': return <ShoppingCart className="h-5 w-5" />;
-      case 'TrendingUp': return <TrendingUp className="h-5 w-5" />;
-      case 'Settings': return <Settings className="h-5 w-5" />;
-      case 'ShieldCheck': return <ShieldCheck className="h-5 w-5" />;
+      case 'ArrowRightLeft': return <ArrowRightLeft className="h-5 w-5" />;
+      case 'ClipboardList': return <ClipboardList className="h-5 w-5" />;
+      case 'ClipboardCheck': return <ClipboardCheck className="h-5 w-5" />;
+      case 'PackageSearch': return <PackageSearch className="h-5 w-5" />;
+      case 'ArrowLeftRight': return <ArrowLeftRight className="h-5 w-5" />;
+      case 'PackageCheck': return <PackageCheck className="h-5 w-5" />;
       case 'History': return <History className="h-5 w-5" />;
-      case 'Tag': return <Tag className="h-5 w-5" />;
-      case 'CheckCircle2': return <CheckCircle2 className="h-5 w-5" />;
-      default: return null;
+      case 'ScanLine': return <ScanLine className="h-5 w-5" />;
+      case 'UsersRound': return <UsersRound className="h-5 w-5" />;
+      case 'Wallet': return <Wallet className="h-5 w-5" />;
+      case 'BarChart3': return <BarChart3 className="h-5 w-5" />;
+      case 'FileSearch': return <FileSearch className="h-5 w-5" />;
+      case 'Settings': return <Settings className="h-5 w-5" />;
+      case 'Building2': return <Building2 className="h-5 w-5" />;
+      case 'Cpu': return <Cpu className="h-5 w-5" />;
+      case 'Shield': return <Shield className="h-5 w-5" />;
+      default: return <LayoutDashboard className="h-5 w-5" />;
     }
   };
 
   const filteredNav = menuConfig
     .map((item) => {
       if (item.children) {
-        let filteredChildren = item.children.filter(
-          (child) => !child.permission || hasPermission(child.permission)
-        );
+        let filteredChildren = item.children.filter((child) => {
+          if (child.capability && hasCapability(child.capability)) return true;
+          return !child.permission || hasPermission(child.permission);
+        });
 
         // Ocultar acceso redundante Configuración -> POS para el rol Administrator
         if (user?.role === 'Administrator') {
@@ -108,9 +135,10 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
     })
     .filter((item) => {
       if (item.name === 'Auditorías') {
-        const isAdmin = user?.role === 'Administrator';
-        const isStaffWithBusiness = user?.isStaff && !!user?.businessId;
-        return isAdmin || isStaffWithBusiness;
+        return hasCapability('audit.view') || hasPermission('AUDIT_VIEW') || user?.role === 'Administrator' || (user?.isStaff && !!user?.businessId);
+      }
+      if (item.capability && hasCapability(item.capability)) {
+        return true;
       }
       if (item.permission && !hasPermission(item.permission)) {
         return false;

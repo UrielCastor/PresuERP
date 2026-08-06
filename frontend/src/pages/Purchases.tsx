@@ -53,7 +53,7 @@ type PurchaseFormData = z.infer<typeof purchaseFormSchema>;
 
 // ─── Component ─────────────────────────────────────────────────────────────
 export const Purchases: React.FC = () => {
-  const { hasPermission, user } = useAuth();
+  const { hasPermission, hasCapability, user } = useAuth();
   const queryClient = useQueryClient();
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -105,11 +105,16 @@ export const Purchases: React.FC = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [focusedIndex, setFocusedIndex] = useState(-1);
 
-  const canRead = hasPermission('purchases:read');
-  const canCreate = hasPermission('purchases:create');
-  const canUpdate = hasPermission('purchases:update');
-  const canApprove = hasPermission('purchases:approve');
-  const canCancel = hasPermission('purchases:cancel');
+  const canRead = hasCapability('purchases.view') || hasPermission('purchases:read');
+  const canCreate = hasCapability('purchases.create') || hasPermission('purchases:create');
+  const canUpdate = hasCapability('purchases.update') || hasPermission('purchases:update');
+  const canApprove = hasCapability('purchases.approve') || hasPermission('purchases:approve');
+  const canCancel = hasCapability('purchases.cancel') || hasPermission('purchases:cancel');
+  const canDelete = hasCapability('purchases.delete') || canCancel;
+  const canEditPrices = hasCapability('purchases.edit_prices') || canUpdate;
+  const canEditSupplier = hasCapability('purchases.edit_supplier') || canUpdate;
+  const canEditItems = hasCapability('purchases.edit_items') || canUpdate;
+  const canEditDiscount = hasCapability('purchases.edit_discount') || canUpdate;
 
   const {
     register, handleSubmit, control, reset, watch, setValue,

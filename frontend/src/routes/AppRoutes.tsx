@@ -21,6 +21,7 @@ import { POS } from '../pages/POS';
 import { Cash } from '../pages/Cash';
 import { Reports } from '../pages/Reports';
 import { CompanyProfile } from '../pages/CompanyProfile';
+import { RoleCapabilitiesPage } from '../pages/settings/RoleCapabilitiesPage';
 import { Audit } from '../pages/Audit';
 import { NotFound } from '../pages/NotFound';
 
@@ -32,15 +33,17 @@ import { LogisticsAvailability } from '../pages/logistics/LogisticsAvailability'
 import { LogisticsTransfers } from '../pages/logistics/LogisticsTransfers';
 import { LogisticsReceipts } from '../pages/logistics/LogisticsReceipts';
 import { LogisticsHistory } from '../pages/logistics/LogisticsHistory';
+import { UserPermissionsAuditPage } from '../pages/settings/UserPermissionsAuditPage';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
   permission?: string;
   permissions?: string[];
+  capability?: string;
 }
 
-const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission, permissions }) => {
-  const { isAuthenticated, isLoading, hasPermission } = useAuth();
+const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission, permissions, capability }) => {
+  const { isAuthenticated, isLoading, hasPermission, hasCapability } = useAuth();
 
   if (isLoading) {
     return (
@@ -55,6 +58,7 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission, p
   }
 
   const hasAccess = 
+    (!capability || hasCapability(capability)) &&
     (!permission || hasPermission(permission)) &&
     (!permissions || permissions.some(p => hasPermission(p)));
 
@@ -69,16 +73,16 @@ const ProtectedRoute: React.FC<ProtectedRouteProps> = ({ children, permission, p
             Acceso Restringido
           </div>
           <h2 className="text-2xl font-bold mt-4 text-slate-800 dark:text-slate-100">
-            Módulo Exclusivo de Administrador
+            Acceso Denegado
           </h2>
           <p className="text-slate-500 dark:text-slate-400 mt-2 max-w-md">
-            Esta sección está reservada para el rol de Administrator. Tu rol actual no cuenta con los privilegios requeridos para ver o editar estos parámetros.
+            Tu usuario no cuenta con los permisos ni la capacidad requerida para ver o editar estos parámetros.
           </p>
           <button
             onClick={() => window.location.href = '/dashboard'}
             className="mt-8 px-6 py-2.5 bg-primary-600 text-white rounded-lg font-semibold hover:bg-primary-700 hover:scale-[1.02] active:scale-[0.98] transition-all duration-200 shadow-md hover:shadow-lg"
           >
-            Regresar al Dashboard
+            Volver al Dashboard
           </button>
         </div>
       </DashboardLayout>
@@ -369,6 +373,22 @@ export const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute permission="settings:pos:read">
             <Settings />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/roles-capabilities"
+        element={
+          <ProtectedRoute permission="users:write">
+            <RoleCapabilitiesPage />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/settings/user-permissions-audit"
+        element={
+          <ProtectedRoute capability="audit.view">
+            <UserPermissionsAuditPage />
           </ProtectedRoute>
         }
       />

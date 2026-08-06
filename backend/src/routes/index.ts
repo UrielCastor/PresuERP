@@ -28,6 +28,7 @@ import promotionRoutes from './promotion.routes';
 import productPriceUpdateRoutes from './productPriceUpdate.routes';
 import pointsRoutes from './points.routes';
 import logisticsRoutes from './logistics.routes';
+import capabilityRoutes from './capability.routes';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { requireActiveSubscription } from '../middlewares/subscription.middleware';
 
@@ -51,6 +52,9 @@ router.use('/business/integrations', businessIntegrationRoutes);
 router.use('/businesses', requireAuth, businessRoutes);
 router.use('/settings', requireAuth, settingsRoutes);
 
+import userPermissionsAuditRoutes from './userPermissionsAudit.routes';
+
+router.use('/users', requireAuth, requireActiveSubscription, userPermissionsAuditRoutes);
 router.use('/users', requireAuth, requireActiveSubscription, userRoutes);
 
 router.use('/roles', requireAuth, requireActiveSubscription, rolesRoutes);
@@ -95,5 +99,6 @@ router.use('/reports', requireAuth, requireActiveSubscription, reportRoutes);
 router.use('/fiscal', requireAuth, requireActiveSubscription, fiscalRoutes);
 
 router.use('/price-lists', priceListRoutes);
+router.use('/', requireAuth, requireActiveSubscription, capabilityRoutes);
 
 export default router;

@@ -30,16 +30,14 @@ import { LogisticsDocumentModal, LogisticsDocumentData } from '../../components/
 
 export const PendingApprovals: React.FC = () => {
   const navigate = useNavigate();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, hasCapability } = useAuth();
 
-  const isCashier =
-    user?.role?.toLowerCase() === 'cajero' || user?.role?.toLowerCase() === 'cashier';
   const canApprove =
-    !isCashier &&
-    (hasPermission('transfer_requests:approve') ||
-      hasPermission('transfer_requests:reject') ||
-      hasPermission('transfer_requests:write') ||
-      hasPermission('logistics:write'));
+    hasCapability('logistics.request.approve') ||
+    hasPermission('transfer_requests:approve') ||
+    hasPermission('transfer_requests:reject') ||
+    hasPermission('transfer_requests:write') ||
+    hasPermission('logistics:write');
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -299,8 +297,8 @@ export const PendingApprovals: React.FC = () => {
           Acceso Restringido
         </h2>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          El rol de <strong>Cajero</strong> no tiene permisos para acceder a la aprobación de
-          pedidos. Esta sección está reservada exclusivamente para supervisores y administradores.
+          Su usuario no posee la capacidad requerida para acceder a la aprobación de
+          pedidos. Esta sección requiere la capacidad de aprobación de solicitudes.
         </p>
         <button
           onClick={() => navigate('/logistics/orders')}

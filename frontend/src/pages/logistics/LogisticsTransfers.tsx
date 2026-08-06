@@ -20,13 +20,11 @@ import { useAuth } from '../../contexts/AuthContext';
 import { LogisticsDocumentModal, LogisticsDocumentData } from '../../components/logistics/LogisticsDocumentModal';
 
 export const LogisticsTransfers: React.FC = () => {
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, hasCapability } = useAuth();
 
-  // Role & Permissions check for Cajero vs Supervisor/Admin
-  const isCashier =
-    user?.role?.toLowerCase() === 'cajero' || user?.role?.toLowerCase() === 'cashier';
-  const canPrepare = !isCashier && hasPermission('transfers:prepare');
-  const canDispatch = !isCashier && hasPermission('transfers:dispatch');
+  const canPrepare = hasCapability('logistics.transfer.prepare') || hasPermission('transfers:prepare');
+  const canDispatch = hasCapability('logistics.transfer.dispatch') || hasPermission('transfers:dispatch');
+  const isReadOnly = !canPrepare && !canDispatch;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -188,11 +186,11 @@ export const LogisticsTransfers: React.FC = () => {
           </div>
         </div>
 
-        {/* Notice for Cashier */}
-        {isCashier && (
+        {/* Notice for Read-Only users */}
+        {isReadOnly && (
           <div className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-center gap-1.5 font-semibold">
             <ShieldAlert className="h-4 w-4 text-amber-600 flex-shrink-0" />
-            <span>Rol Cajero: Modo lectura (Preparación y Despacho deshabilitados)</span>
+            <span>Modo lectura (Preparación y Despacho deshabilitados)</span>
           </div>
         )}
       </div>

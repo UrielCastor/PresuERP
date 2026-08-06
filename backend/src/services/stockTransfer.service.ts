@@ -10,8 +10,10 @@ export class StockTransferService {
   }
 
   async list(businessId: string, filters: StockTransferFilterInput = {}, userRole?: string, userDefaultWarehouseId?: string) {
-    const isCashier = userRole?.toLowerCase() === 'cajero' || userRole?.toLowerCase() === 'cashier';
-    if (isCashier && userDefaultWarehouseId) {
+    // Depot isolation: restrict by assigned warehouse when user is NOT an admin.
+    // This is warehouse-scoped filtering, NOT role-based.
+    const isAdmin = userRole?.toLowerCase() === 'administrator' || userRole?.toLowerCase() === 'superadmin';
+    if (!isAdmin && userDefaultWarehouseId) {
       filters.userWarehouseId = userDefaultWarehouseId;
     }
     return this.repo.list(businessId, filters);

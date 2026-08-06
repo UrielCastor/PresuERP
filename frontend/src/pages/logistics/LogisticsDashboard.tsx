@@ -32,10 +32,9 @@ import { useAuth } from '../../contexts/AuthContext';
 
 export const LogisticsDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { user, hasPermission } = useAuth();
+  const { user, hasPermission, hasCapability } = useAuth();
 
-  const isCashier =
-    user?.role?.toLowerCase() === 'cajero' || user?.role?.toLowerCase() === 'cashier';
+  const isWarehouseRestricted = !hasCapability('logistics.request.approve') && user?.role !== 'Administrator';
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -93,8 +92,8 @@ export const LogisticsDashboard: React.FC = () => {
     let orders = [...allOrders];
     let transfers = [...allTransfers];
 
-    // Cajero Role Filter: restricts to user's own orders or assigned warehouse
-    if (isCashier) {
+    // Warehouse Restricted Filter: restricts users without approval capability to their own orders or assigned warehouse
+    if (isWarehouseRestricted) {
       const userWarehouseId = user?.defaultWarehouseId;
       orders = orders.filter(
         (o) =>
@@ -130,7 +129,7 @@ export const LogisticsDashboard: React.FC = () => {
     }
 
     return { orders, transfers };
-  }, [allOrders, allTransfers, isCashier, user, selectedWarehouse, selectedDate, selectedStatus]);
+  }, [allOrders, allTransfers, isWarehouseRestricted, user, selectedWarehouse, selectedDate, selectedStatus]);
 
   // Compute KPIs
   const pendingOrdersCount = filteredData.orders.filter((o) => o.status === 'PENDING').length;

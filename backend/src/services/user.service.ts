@@ -31,21 +31,27 @@ export class UserService {
   }
 
   async create(data: any, operator: { id: string; role: string; businessId: string }, ip?: string, userAgent?: string) {
-    // Only Administrator can assign roles
-    if (operator.role !== 'Administrator') {
-      throw new ForbiddenError('Solo el administrador puede asignar roles');
+    const canCreateUser = operator.role === 'Administrator' || operator.role === 'SuperAdmin';
+    if (!canCreateUser) {
+      const opRole = await prisma.role.findFirst({
+        where: { name: operator.role, businessId: operator.businessId },
+        select: { id: true },
+      });
+      const hasCap = opRole ? await prisma.roleCapability.findFirst({
+        where: { roleId: opRole.id, capabilityId: { in: ['users.create', 'users.update', 'roles.manage'] } },
+      }) : null;
+      if (!hasCap) {
+        throw new ForbiddenError('Solo usuarios con la capacidad requerida pueden gestionar usuarios');
+      }
     }
 
-    // Validate role is not Empleado/Employee
+    // Validate the target role exists and belongs to this business
     if (data.roleId) {
       const targetRole = await prisma.role.findFirst({
         where: { id: data.roleId, businessId: operator.businessId }
       });
       if (!targetRole) {
         throw new NotFoundError('Rol no encontrado');
-      }
-      if (targetRole.name.toLowerCase() === 'empleado' || targetRole.name.toLowerCase() === 'employee') {
-        throw new ForbiddenError('El rol Empleado ha sido desactivado y no puede ser asignado');
       }
     }
 
@@ -111,10 +117,20 @@ export class UserService {
       throw new NotFoundError('Usuario no encontrado');
     }
 
-    // Role assignment check: only Administrator can change roles
+    // Role assignment check: requires users.update or roles.manage capability
     if (data.roleId && data.roleId !== existing.roleId) {
-      if (operator.role !== 'Administrator') {
-        throw new ForbiddenError('Solo el administrador puede asignar roles');
+      const isAdmin = operator.role === 'Administrator' || operator.role === 'SuperAdmin';
+      if (!isAdmin) {
+        const opRole = await prisma.role.findFirst({
+          where: { name: operator.role, businessId: operator.businessId },
+          select: { id: true },
+        });
+        const hasCap = opRole ? await prisma.roleCapability.findFirst({
+          where: { roleId: opRole.id, capabilityId: { in: ['users.update', 'roles.manage'] } },
+        }) : null;
+        if (!hasCap) {
+          throw new ForbiddenError('No tiene permisos para asignar roles a usuarios');
+        }
       }
 
       const targetRole = await prisma.role.findFirst({
@@ -122,9 +138,6 @@ export class UserService {
       });
       if (!targetRole) {
         throw new NotFoundError('Rol no encontrado');
-      }
-      if (targetRole.name.toLowerCase() === 'empleado' || targetRole.name.toLowerCase() === 'employee') {
-        throw new ForbiddenError('El rol Empleado ha sido desactivado y no puede ser asignado');
       }
     }
 
