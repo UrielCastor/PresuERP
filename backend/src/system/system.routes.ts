@@ -7,6 +7,7 @@ import { BillingController } from './billing.controller';
 import { AuditController } from './audit.controller';
 import { StaffController } from './staff.controller';
 import { PlanController } from './plan.controller';
+import { CouponController } from './coupon.controller';
 import systemPaymentRoutes from './system.payment.routes';
 
 const router = Router();
@@ -25,6 +26,7 @@ const staffController = new StaffController();
 const subscriptionController = new SubscriptionController();
 const auditController = new AuditController();
 const planController = new PlanController();
+const couponController = new CouponController();
 
 // Dashboard
 router.get('/dashboard', systemController.getDashboardMetrics);
@@ -45,6 +47,8 @@ router.patch('/businesses/:id/plan', planController.changeBusinessPlan); // Requ
 router.get('/plans', planController.getAll);
 router.post('/plans', planController.create);
 router.put('/plans/:id', planController.update);
+router.post('/plans/:id/duplicate', planController.duplicate);
+router.delete('/plans/:id', planController.deletePlan);
 router.patch('/plans/:id/status', planController.changeStatus);
 
 // Plan Prices
@@ -52,6 +56,12 @@ router.post('/plans/:planId/prices', planController.createPrice);
 router.put('/plans/prices/:priceId', planController.updatePrice);
 router.patch('/plans/prices/:priceId/status', planController.changePriceStatus);
 router.delete('/plans/prices/:priceId', planController.deletePrice);
+
+// Coupons (SaaS)
+router.get('/coupons', couponController.getAll);
+router.post('/coupons', couponController.create);
+router.put('/coupons/:id', couponController.update);
+router.delete('/coupons/:id', couponController.delete);
 
 // Staff Management
 router.post('/staff/:id/promote', staffController.promoteToStaff);

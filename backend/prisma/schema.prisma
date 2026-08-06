@@ -261,7 +261,7 @@ model BusinessSettings {
   showCents              Boolean  @default(true)
   secondaryCurrencyCode  String?
   language               String   @default("es")
-  logoUrl                String?
+  logoUrl                String?  @db.Text
   // Inventory Settings
   allowNegativeStock     Boolean  @default(false)
   warnMinimumStock       Boolean  @default(true)
@@ -1940,6 +1940,201 @@ model RoleCapabilityHistory {
   action       String   // "ADDED" | "REMOVED"
   reason       String?  @db.Text
   createdAt    DateTime @default(now())
+  destinationWarehouse Warehouse             @relation("TransferRequestDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  requestedByUser      User                  @relation("TransferRequestRequestedByUser", fields: [requestedByUserId], references: [id], onDelete: Restrict)
+  approvedByUser       User?                 @relation("TransferRequestApprovedByUser", fields: [approvedByUserId], references: [id], onDelete: Restrict)
+  items                TransferRequestItem[]
+  stockTransfers       StockTransfer[]
+  stockReservations    StockReservation[]
+
+  @@unique([businessId, requestNumber])
+  @@index([businessId])
+  @@index([originWarehouseId])
+  @@index([destinationWarehouseId])
+  @@index([requestedByUserId])
+  @@index([approvedByUserId])
+  @@index([status])
+  @@index([requestNumber])
+  @@map("transfer_requests")
+}
+
+model TransferRequestItem {
+  id                String              @id @default(uuid())
+  transferRequestId String
+  productId         String
+  requestedQty      Decimal             @db.Decimal(12, 4)
+  approvedQty       Decimal             @default(0.0000) @db.Decimal(12, 4)
+  sentQty           Decimal             @default(0.0000) @db.Decimal(12, 4)
+  receivedQty       Decimal             @default(0.0000) @db.Decimal(12, 4)
+  notes             String?             @db.Text
+
+  transferRequest    TransferRequest     @relation(fields: [transferRequestId], references: [id], onDelete: Cascade)
+  product            Product             @relation(fields: [productId], references: [id], onDelete: Restrict)
+  stockTransferItems StockTransferItem[]
+
+  @@index([transferRequestId])
+  @@index([productId])
+  @@map("transfer_request_items")
+}
+
+model StockTransfer {
+  id                     String         @id @default(uuid())
+  businessId             String
+  transferRequestId      String?
+  transferNumber         String
+  originWarehouseId      String
+  destinationWarehouseId String
+  preparedByUserId       String?
+  dispatchedByUserId     String?
+  receivedByUserId       String?
+  status                 TransferStatus @default(PENDING)
+  departureDate          DateTime?
+  arrivalDate            DateTime?
+  notes                  String?        @db.Text
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  business             Business               @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  transferRequest      TransferRequest?       @relation(fields: [transferRequestId], references: [id], onDelete: SetNull)
+  originWarehouse      Warehouse              @relation("StockTransferOriginWarehouse", fields: [originWarehouseId], references: [id], onDelete: Restrict)
+  destinationWarehouse Warehouse              @relation("StockTransferDestinationWarehouse", fields: [destinationWarehouseId], references: [id], onDelete: Restrict)
+  preparedByUser       User?                  @relation("StockTransferPreparedByUser", fields: [preparedByUserId], references: [id], onDelete: Restrict)
+  dispatchedByUser     User?                  @relation("StockTransferDispatchedByUser", fields: [dispatchedByUserId], references: [id], onDelete: Restrict)
+  receivedByUser       User?                  @relation("StockTransferReceivedByUser", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+  items                StockTransferItem[]
+  receipts             StockTransferReceipt[]
+
+  @@unique([businessId, transferNumber])
+  @@index([businessId])
+  @@index([transferRequestId])
+  @@index([originWarehouseId])
+  @@index([destinationWarehouseId])
+  @@index([status])
+  @@index([transferNumber])
+  @@map("stock_transfers")
+}
+
+model StockTransferItem {
+  id                    String               @id @default(uuid())
+  stockTransferId       String
+  transferRequestItemId String?
+  productId             String
+  quantity              Decimal              @db.Decimal(12, 4)
+
+  stockTransfer       StockTransfer        @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  transferRequestItem TransferRequestItem? @relation(fields: [transferRequestItemId], references: [id], onDelete: SetNull)
+  product             Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([stockTransferId])
+  @@index([transferRequestItemId])
+  @@index([productId])
+  @@map("stock_transfer_items")
+}
+
+model StockTransferReceipt {
+  id               String   @id @default(uuid())
+  stockTransferId  String
+  receiptNumber    String?
+  receivedByUserId String
+  receivedAt       DateTime @default(now())
+  notes            String?  @db.Text
+
+  stockTransfer  StockTransfer              @relation(fields: [stockTransferId], references: [id], onDelete: Cascade)
+  receivedByUser User                       @relation("StockTransferReceiptReceivedByUser", fields: [receivedByUserId], references: [id], onDelete: Restrict)
+  items          StockTransferReceiptItem[]
+
+  @@index([stockTransferId])
+  @@index([receiptNumber])
+  @@index([receivedByUserId])
+  @@map("stock_transfer_receipts")
+}
+
+model StockTransferReceiptItem {
+  id            String               @id @default(uuid())
+  receiptId     String
+  productId     String
+  expectedQty   Decimal              @db.Decimal(12, 4)
+  receivedQty   Decimal              @db.Decimal(12, 4)
+  differenceQty Decimal              @db.Decimal(12, 4)
+  notes         String?              @db.Text
+
+  receipt       StockTransferReceipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+  product       Product              @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([receiptId])
+  @@index([productId])
+  @@map("stock_transfer_receipt_items")
+}
+
+model StockReservation {
+  id                String                 @id @default(uuid())
+  businessId        String
+  warehouseId       String
+  productId         String
+  transferRequestId String?
+  quantity          Decimal                @db.Decimal(12, 4)
+  status            StockReservationStatus @default(ACTIVE)
+  createdAt         DateTime               @default(now())
+  updatedAt         DateTime               @updatedAt
+
+  business        Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  warehouse       Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  product         Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  transferRequest TransferRequest? @relation(fields: [transferRequestId], references: [id], onDelete: SetNull)
+
+  @@index([businessId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([status])
+  @@index([transferRequestId])
+  @@map("stock_reservations")
+}
+
+// ==========================================
+// 20. DYNAMIC CAPABILITIES & ROLE SYSTEM
+// ==========================================
+
+model Capability {
+  id                  String   @id // e.g., "logistics.request.create"
+  name                String   // e.g., "Crear pedidos internos"
+  description         String   // e.g., "Permite solicitar mercadería entre depósitos"
+  module              String   // e.g., "Logística"
+  type                String   @default("OPERATIVE") // "VIEW" | "OPERATIVE" | "CRITICAL"
+  technicalPermission String   // e.g., "transfer_requests:create"
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  roleCapabilities RoleCapability[]
+
+  @@index([module])
+  @@index([type])
+  @@map("capabilities")
+}
+
+model RoleCapability {
+  id           String     @id @default(uuid())
+  roleId       String
+  capabilityId String
+  createdAt    DateTime   @default(now())
+
+  role       Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  capability Capability @relation(fields: [capabilityId], references: [id], onDelete: Cascade)
+
+  @@unique([roleId, capabilityId])
+  @@index([roleId])
+  @@index([capabilityId])
+  @@map("role_capabilities")
+}
+
+model RoleCapabilityHistory {
+  id           String   @id @default(uuid())
+  businessId   String
+  roleId       String
+  userId       String
+  capabilityId String
+  action       String   // "ADDED" | "REMOVED"
+  reason       String?  @db.Text
+  createdAt    DateTime @default(now())
 
   business Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
   role     Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
@@ -1949,4 +2144,20 @@ model RoleCapabilityHistory {
   @@index([roleId])
   @@index([userId])
   @@map("role_capability_history")
+}
+
+model SaasCoupon {
+  id              String    @id @default(uuid())
+  code            String    @unique
+  discountPercent Float
+  startDate       DateTime  @default(now())
+  endDate         DateTime?
+  applicablePlans String?   @db.Text
+  maxUses         Int       @default(100)
+  usedCount       Int       @default(0)
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@map("saas_coupons")
 }

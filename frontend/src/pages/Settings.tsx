@@ -35,6 +35,7 @@ import { useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { FiscalSettings } from './FiscalSettings';
 import { FiscalService, FiscalConfigData } from '../services/fiscal.service';
+import { LogoUploadModal } from '../components/ui/LogoUploadModal';
 
 export const Settings: React.FC = () => {
   const { user, hasPermission } = useAuth();
@@ -46,6 +47,7 @@ export const Settings: React.FC = () => {
   const [saving, setSaving] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState<boolean>(false);
 
   const [settings, setSettings] = useState<BusinessWithSettings | null>(null);
 
@@ -739,9 +741,20 @@ export const Settings: React.FC = () => {
                 </p>
               </div>
             </div>
-            <Button variant="outline" className="shrink-0 text-xs"><Palette className="h-3.5 w-3.5 mr-1.5"/>Editar Logo</Button>
+            <Button variant="outline" onClick={() => setIsLogoModalOpen(true)} className="shrink-0 text-xs"><Palette className="h-3.5 w-3.5 mr-1.5"/>Editar Logo</Button>
           </div>
         </div>
+
+        {/* Modal Editar Logo */}
+        <LogoUploadModal
+          isOpen={isLogoModalOpen}
+          currentLogoUrl={prefData.logoUrl}
+          onClose={() => setIsLogoModalOpen(false)}
+          onSuccess={(newUrl) => {
+            setPrefData((prev) => ({ ...prev, logoUrl: newUrl }));
+            setSuccessMessage('Logo de empresa actualizado correctamente.');
+          }}
+        />
 
         {/* KPI Stats Bar */}
         {settings && (

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Outlet, Link, useLocation } from 'react-router-dom';
-import { Server, Building, Users, Layers, CreditCard, Activity, Settings, ArrowLeft } from 'lucide-react';
+import { Server, Building, Users, Layers, CreditCard, Activity, Settings, ArrowLeft, Tag, BarChart3 } from 'lucide-react';
 
 const systemMenu = [
   { name: 'Dashboard SaaS', path: '/system/dashboard', icon: Server },
@@ -8,6 +8,8 @@ const systemMenu = [
   { name: 'Usuarios', path: '/system/users', icon: Users },
   { name: 'Suscripciones', path: '/system/subscriptions', icon: CreditCard },
   { name: 'Planes', path: '/system/plans', icon: Layers },
+  { name: 'Consumo & Uso', path: '/system/usage', icon: BarChart3 },
+  { name: 'Cupones', path: '/system/coupons', icon: Tag },
   { name: 'Auditoría', path: '/system/audit', icon: Activity },
   { name: 'Configuración', path: '/system/settings', icon: Settings },
 ];

@@ -60,6 +60,8 @@ export interface Plan {
   maxProducts: number;
   features?: string;
   active?: boolean;
+  isDefault?: boolean;
+  businessesCount?: number;
 }
 
 export class SystemService {
@@ -111,14 +113,24 @@ export class SystemService {
     return response.data.data;
   }
 
-  static async createPlan(plan: Partial<Plan>) {
+  static async createPlan(plan: Partial<Plan> & { monthlyPrice?: number; yearlyPrice?: number }) {
     const response = await api.post('/system/plans', plan);
     return response.data.data;
   }
 
-  static async updatePlan(id: string, plan: Partial<Plan>) {
+  static async updatePlan(id: string, plan: Partial<Plan> & { monthlyPrice?: number; yearlyPrice?: number }) {
     const response = await api.put(`/system/plans/${id}`, plan);
     return response.data.data;
+  }
+
+  static async duplicatePlan(id: string) {
+    const response = await api.post(`/system/plans/${id}/duplicate`);
+    return response.data.data;
+  }
+
+  static async deletePlan(id: string) {
+    const response = await api.delete(`/system/plans/${id}`);
+    return response.data;
   }
 
   static async changePlanStatus(id: string, active: boolean) {
@@ -146,5 +158,27 @@ export class SystemService {
   static async deletePlanPrice(priceId: string) {
     const response = await api.delete(`/system/plans/prices/${priceId}`);
     return response.data.data;
+  }
+
+  // --- Coupon Operations ---
+
+  static async getCoupons() {
+    const response = await api.get('/system/coupons');
+    return response.data.data;
+  }
+
+  static async createCoupon(couponData: any) {
+    const response = await api.post('/system/coupons', couponData);
+    return response.data.data;
+  }
+
+  static async updateCoupon(id: string, couponData: any) {
+    const response = await api.put(`/system/coupons/${id}`, couponData);
+    return response.data.data;
+  }
+
+  static async deleteCoupon(id: string) {
+    const response = await api.delete(`/system/coupons/${id}`);
+    return response.data;
   }
 }

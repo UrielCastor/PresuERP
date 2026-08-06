@@ -48,6 +48,7 @@ import {
 import { menuConfig } from '../config/menu';
 import { Button } from '../components/ui/Button';
 import { HelpButton } from '../components/ui/HelpButton';
+import { PlanLimitModal } from '../components/ui/PlanLimitModal';
 
 export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user, logout, hasPermission, hasCapability } = useAuth();
@@ -462,6 +463,9 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
           {children}
         </main>
       </div>
+
+      {/* Global Plan Limit Warning Modal */}
+      <PlanLimitModal />
     </div>
   );
 };

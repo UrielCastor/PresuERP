@@ -9,13 +9,55 @@ export class PlanController {
         include: { prices: true },
         orderBy: { code: 'asc' }
       });
-      res.status(200).json({ success: true, data: plans });
+
+      // Calculate subscribed business count for each plan
+      const enrichedPlans = await Promise.all(
+        plans.map(async (plan) => {
+          const subCount = await prisma.subscription.count({
+            where: { planId: plan.id }
+          });
+          const bizCount = await prisma.business.count({
+            where: { subscriptionPlan: plan.name }
+          });
+          const businessesCount = Math.max(subCount, bizCount);
+
+          return {
+            ...plan,
+            businessesCount
+          };
+        })
+      );
+
+      res.status(200).json({ success: true, data: enrichedPlans });
     } catch (error) { next(error); }
   };
 
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { name, code, maxUsers, maxProducts, features, active, isDefault } = req.body;
+      const { name, code, maxUsers, maxProducts, features, active, isDefault, monthlyPrice, yearlyPrice } = req.body;
+
+      // Validation 1: Name / Code uniqueness
+      if (!name || !name.trim()) {
+        return res.status(400).json({ success: false, message: 'El nombre del plan es obligatorio.' });
+      }
+      if (!code || !code.trim()) {
+        return res.status(400).json({ success: false, message: 'El código del plan es obligatorio.' });
+      }
+
+      const existing = await prisma.plan.findFirst({
+        where: { OR: [{ name: name.trim() }, { code: code.trim() }] }
+      });
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Ya existe un plan registrado con ese nombre o código.' });
+      }
+
+      // Validation 2: Non-negative limits and prices
+      const usersVal = Number(maxUsers) || 0;
+      const productsVal = Number(maxProducts) || 0;
+      if (usersVal < 0 || productsVal < 0) {
+        return res.status(400).json({ success: false, message: 'Los límites no pueden ser valores negativos.' });
+      }
+
       const plan = await prisma.$transaction(async (tx) => {
         if (isDefault) {
           await tx.plan.updateMany({
@@ -23,18 +65,63 @@ export class PlanController {
             data: { isDefault: false }
           });
         }
-        return tx.plan.create({
-          data: { name, code, maxUsers, maxProducts, features, active, isDefault: !!isDefault },
+        const createdPlan = await tx.plan.create({
+          data: {
+            name: name.trim(),
+            code: code.trim().toUpperCase(),
+            maxUsers: usersVal,
+            maxProducts: productsVal,
+            features: typeof features === 'object' ? JSON.stringify(features) : features,
+            active: active !== undefined ? !!active : true,
+            isDefault: !!isDefault
+          }
+        });
+
+        // Upsert Monthly Price
+        if (monthlyPrice !== undefined && monthlyPrice !== null && Number(monthlyPrice) >= 0) {
+          await tx.planPrice.create({
+            data: {
+              planId: createdPlan.id,
+              billingCycle: 'MONTHLY',
+              price: Number(monthlyPrice),
+              active: true
+            }
+          });
+        }
+
+        // Upsert Yearly Price
+        if (yearlyPrice !== undefined && yearlyPrice !== null && Number(yearlyPrice) >= 0) {
+          await tx.planPrice.create({
+            data: {
+              planId: createdPlan.id,
+              billingCycle: 'YEARLY',
+              price: Number(yearlyPrice),
+              active: true
+            }
+          });
+        }
+
+        return tx.plan.findUnique({
+          where: { id: createdPlan.id },
           include: { prices: true }
         });
       });
+
       res.status(201).json({ success: true, data: plan });
     } catch (error) { next(error); }
   };
 
   update = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const { name, code, maxUsers, maxProducts, features, active, isDefault } = req.body;
+      const { name, code, maxUsers, maxProducts, features, active, isDefault, monthlyPrice, yearlyPrice } = req.body;
+      const planId = req.params.id;
+
+      const usersVal = Number(maxUsers) || 0;
+      const productsVal = Number(maxProducts) || 0;
+      if (usersVal < 0 || productsVal < 0) {
+        return res.status(400).json({ success: false, message: 'Los límites no pueden ser valores negativos.' });
+      }
+
       const plan = await prisma.$transaction(async (tx) => {
         if (isDefault) {
           await tx.plan.updateMany({
@@ -42,13 +129,141 @@ export class PlanController {
             data: { isDefault: false }
           });
         }
-        return tx.plan.update({
-          where: { id: req.params.id },
-          data: { name, code, maxUsers, maxProducts, features, active, isDefault: isDefault !== undefined ? !!isDefault : undefined },
+
+        const updated = await tx.plan.update({
+          where: { id: planId },
+          data: {
+            name: name ? name.trim() : undefined,
+            code: code ? code.trim().toUpperCase() : undefined,
+            maxUsers: usersVal,
+            maxProducts: productsVal,
+            features: typeof features === 'object' ? JSON.stringify(features) : features,
+            active: active !== undefined ? !!active : undefined,
+            isDefault: isDefault !== undefined ? !!isDefault : undefined
+          }
+        });
+
+        // Upsert Monthly Price
+        if (monthlyPrice !== undefined && monthlyPrice !== null && Number(monthlyPrice) >= 0) {
+          const existingMonthly = await tx.planPrice.findFirst({
+            where: { planId, billingCycle: 'MONTHLY' }
+          });
+          if (existingMonthly) {
+            await tx.planPrice.update({
+              where: { id: existingMonthly.id },
+              data: { price: Number(monthlyPrice), active: true }
+            });
+          } else {
+            await tx.planPrice.create({
+              data: { planId, billingCycle: 'MONTHLY', price: Number(monthlyPrice), active: true }
+            });
+          }
+        }
+
+        // Upsert Yearly Price
+        if (yearlyPrice !== undefined && yearlyPrice !== null && Number(yearlyPrice) >= 0) {
+          const existingYearly = await tx.planPrice.findFirst({
+            where: { planId, billingCycle: 'YEARLY' }
+          });
+          if (existingYearly) {
+            await tx.planPrice.update({
+              where: { id: existingYearly.id },
+              data: { price: Number(yearlyPrice), active: true }
+            });
+          } else {
+            await tx.planPrice.create({
+              data: { planId, billingCycle: 'YEARLY', price: Number(yearlyPrice), active: true }
+            });
+          }
+        }
+
+        return tx.plan.findUnique({
+          where: { id: planId },
           include: { prices: true }
         });
       });
+
       res.status(200).json({ success: true, data: plan });
+    } catch (error) { next(error); }
+  };
+
+  duplicate = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const originalPlan = await prisma.plan.findUnique({
+        where: { id: req.params.id },
+        include: { prices: true }
+      });
+
+      if (!originalPlan) {
+        return res.status(404).json({ success: false, message: 'Plan original no encontrado.' });
+      }
+
+      let newName = `Copia de ${originalPlan.name}`;
+      let counter = 1;
+      while (await prisma.plan.findFirst({ where: { name: newName } })) {
+        newName = `Copia de ${originalPlan.name} (${counter})`;
+        counter++;
+      }
+
+      const newCode = `COPY_${originalPlan.code}_${Date.now().toString().slice(-4)}`;
+
+      const duplicated = await prisma.$transaction(async (tx) => {
+        const newPlan = await tx.plan.create({
+          data: {
+            name: newName,
+            code: newCode,
+            maxUsers: originalPlan.maxUsers,
+            maxProducts: originalPlan.maxProducts,
+            features: originalPlan.features,
+            active: false,
+            isDefault: false
+          }
+        });
+
+        // Copy prices
+        for (const priceObj of originalPlan.prices) {
+          await tx.planPrice.create({
+            data: {
+              planId: newPlan.id,
+              billingCycle: priceObj.billingCycle,
+              price: priceObj.price,
+              active: priceObj.active
+            }
+          });
+        }
+
+        return tx.plan.findUnique({
+          where: { id: newPlan.id },
+          include: { prices: true }
+        });
+      });
+
+      res.status(201).json({ success: true, data: duplicated });
+    } catch (error) { next(error); }
+  };
+
+  deletePlan = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const planId = req.params.id;
+      const targetPlan = await prisma.plan.findUnique({ where: { id: planId } });
+
+      if (!targetPlan) {
+        return res.status(404).json({ success: false, message: 'Plan no encontrado.' });
+      }
+
+      const subCount = await prisma.subscription.count({ where: { planId } });
+      const bizCount = await prisma.business.count({ where: { subscriptionPlan: targetPlan.name } });
+      const totalCount = Math.max(subCount, bizCount);
+
+      if (totalCount > 0) {
+        return res.status(400).json({
+          success: false,
+          message: `Este plan está siendo utilizado por ${totalCount} empresa${totalCount > 1 ? 's' : ''}. Debe migrarlas antes de eliminarlo.`
+        });
+      }
+
+      await prisma.plan.delete({ where: { id: planId } });
+      res.status(200).json({ success: true, message: 'Plan eliminado correctamente.' });
     } catch (error) { next(error); }
   };
 

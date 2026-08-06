@@ -119,6 +119,9 @@ import { SystemPlans } from '../system/pages/SystemPlans';
 import { SystemSubscriptions } from '../system/pages/SystemSubscriptions';
 import { SystemSettings } from '../system/pages/SystemSettings';
 import { SystemAudit } from '../system/pages/SystemAudit';
+import { SystemUsage } from '../system/pages/SystemUsage';
+import { SystemCoupons } from '../system/pages/SystemCoupons';
+import { PublicPlanComparison } from '../system/pages/PublicPlanComparison';
 
 export const AppRoutes: React.FC = () => {
   return (
@@ -132,7 +135,7 @@ export const AppRoutes: React.FC = () => {
           </PublicRoute>
         }
       />
-
+      <Route path="/plans/compare" element={<PublicPlanComparison />} />
 
       {/* SaaS System Area */}
       <Route path="/system" element={<SystemRoute />}>
@@ -142,6 +145,8 @@ export const AppRoutes: React.FC = () => {
             <Route path="users" element={<SystemUsers />} />
             <Route path="plans" element={<SystemPlans />} />
             <Route path="subscriptions" element={<SystemSubscriptions />} />
+            <Route path="usage" element={<SystemUsage />} />
+            <Route path="coupons" element={<SystemCoupons />} />
             <Route path="audit" element={<SystemAudit />} />
             <Route path="settings" element={<SystemSettings />} />
             <Route path="" element={<Navigate to="/system/dashboard" replace />} />

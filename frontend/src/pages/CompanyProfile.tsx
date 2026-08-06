@@ -2,11 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardContent } from '../components/ui/Card';
 import { BusinessService, BusinessData, UsageMetrics } from '../services/business.service';
-import { Building2, Save, MapPin, Mail, Phone, Users, Package, Users2, Truck, Warehouse, Banknote, ShoppingCart, ShoppingBag } from 'lucide-react';
+import { SettingsService } from '../services/settings.service';
+import { LogoUploadModal } from '../components/ui/LogoUploadModal';
+import { Building2, Save, MapPin, Mail, Phone, Users, Package, Users2, Truck, Warehouse, Banknote, ShoppingCart, ShoppingBag, Palette, Image as ImageIcon } from 'lucide-react';
 
 export const CompanyProfile: React.FC = () => {
   const [business, setBusiness] = useState<BusinessData | null>(null);
   const [metrics, setMetrics] = useState<UsageMetrics | null>(null);
+  const [logoUrl, setLogoUrl] = useState<string | null>(null);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -17,12 +21,16 @@ export const CompanyProfile: React.FC = () => {
   const fetchCurrentBusiness = async () => {
     try {
       setLoading(true);
-      const [data, usage] = await Promise.all([
+      const [data, usage, fullSettings] = await Promise.all([
         BusinessService.getCurrent(),
-        BusinessService.getUsageMetrics('current')
+        BusinessService.getUsageMetrics('current'),
+        SettingsService.getSettings().catch(() => null)
       ]);
       setBusiness(data);
       setMetrics(usage);
+      if (fullSettings?.settings?.logoUrl) {
+        setLogoUrl(fullSettings.settings.logoUrl);
+      }
     } catch (error) {
       console.error('Error fetching current business:', error);
     } finally {
@@ -53,13 +61,29 @@ export const CompanyProfile: React.FC = () => {
       
       {/* Header Empresa */}
       <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 flex items-start gap-6 shadow-sm">
-        <div className="w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-2xl flex items-center justify-center flex-shrink-0 border border-indigo-100 dark:border-indigo-800">
-           <Building2 className="w-10 h-10" />
+        <div className="relative group w-20 h-20 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 rounded-2xl flex items-center justify-center flex-shrink-0 border border-indigo-100 dark:border-indigo-800 overflow-hidden shadow-xs cursor-pointer" onClick={() => setIsLogoModalOpen(true)}>
+           {logoUrl ? (
+             <img src={logoUrl} alt="Logo Empresa" className="w-full h-full object-contain p-1" />
+           ) : (
+             <Building2 className="w-10 h-10" />
+           )}
+           <div className="absolute inset-0 bg-slate-900/60 text-white font-extrabold text-[10px] opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+             Editar Logo
+           </div>
         </div>
         <div className="flex-1">
            <div className="flex items-center justify-between">
               <div>
-                 <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{business.name}</h1>
+                 <div className="flex items-center gap-3">
+                   <h1 className="text-2xl font-bold text-slate-900 dark:text-white">{business.name}</h1>
+                   <button
+                     type="button"
+                     onClick={() => setIsLogoModalOpen(true)}
+                     className="px-3 py-1 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950 dark:hover:bg-indigo-900 text-indigo-600 dark:text-indigo-300 font-extrabold text-xs rounded-lg flex items-center gap-1.5 transition-colors"
+                   >
+                     <Palette className="h-3.5 w-3.5" /> Editar Logo
+                   </button>
+                 </div>
                  <p className="text-slate-500">CUIT: {business.taxId}</p>
               </div>
               <div className="text-right flex flex-col items-end gap-2">
@@ -194,7 +218,13 @@ export const CompanyProfile: React.FC = () => {
           </div>
         </CardContent>
       </Card>
-      
+      {/* Modal para Editar Logo */}
+       <LogoUploadModal
+         isOpen={isLogoModalOpen}
+         currentLogoUrl={logoUrl}
+         onClose={() => setIsLogoModalOpen(false)}
+         onSuccess={(newUrl) => setLogoUrl(newUrl)}
+       />
     </div>
   );
 };

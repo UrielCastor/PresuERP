@@ -91,6 +91,12 @@ api.interceptors.response.use(
       }
     }
 
+    if (error.response?.data?.code === 'PLAN_LIMIT_REACHED') {
+      window.dispatchEvent(
+        new CustomEvent('planLimitReached', { detail: error.response.data })
+      );
+    }
+
     return Promise.reject(error);
   }
 );

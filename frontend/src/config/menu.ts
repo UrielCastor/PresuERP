@@ -16,9 +16,17 @@ export const menuConfig: MenuItem[] = [
   },
   {
     name: 'Panel Staff SaaS',
-    href: '/system',
     iconName: 'ShieldCheck',
     permission: 'system:access',
+    children: [
+      { name: 'Empresas', href: '/system/businesses', iconName: 'Building2', permission: 'system:access' },
+      { name: 'Planes', href: '/system/plans', iconName: 'Zap', permission: 'system:access' },
+      { name: 'Suscripciones', href: '/system/subscriptions', iconName: 'CreditCard', permission: 'system:access' },
+      { name: 'Consumo', href: '/system/usage', iconName: 'Activity', permission: 'system:access' },
+      { name: 'Facturación', href: '/system/billing', iconName: 'DollarSign', permission: 'system:access' },
+      { name: 'Cupones', href: '/system/coupons', iconName: 'Tag', permission: 'system:access' },
+      { name: 'Auditoría SaaS', href: '/system/audit', iconName: 'ShieldCheck', permission: 'system:access' },
+    ],
   },
   {
     name: 'Usuarios',
