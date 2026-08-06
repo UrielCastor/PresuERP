@@ -66,9 +66,13 @@ export const CreateTransferRequest: React.FC = () => {
         const active = data.filter((w) => w.status === 'ACTIVE');
         setWarehouses(active);
 
-        // Pre-select destination to user's warehouse or default main warehouse
+        // Pre-select origin to user's warehouse (or first warehouse) and destination to main central warehouse
         if (active.length > 0) {
-          const defaultDest = active.find((w) => w.isMain) || active[0];
+          const userWarehouse = active.find((w) => w.id === user?.defaultWarehouseId);
+          const defaultOrigin = userWarehouse || active.find((w) => !w.isMain) || active[0];
+          const defaultDest = active.find((w) => w.isMain && w.id !== defaultOrigin.id) || active.find((w) => w.id !== defaultOrigin.id) || active[0];
+
+          setOriginWarehouseId(defaultOrigin.id);
           setDestinationWarehouseId(defaultDest.id);
         }
       } catch (err: any) {
@@ -459,7 +463,7 @@ export const CreateTransferRequest: React.FC = () => {
               <span className="px-2.5 py-1 bg-blue-100 dark:bg-blue-950/50 text-blue-800 dark:text-blue-300 font-bold rounded-lg">
                 {originWarehouseObj?.name}
               </span>
-              <span className="text-slate-400">$\rightarrow$</span>
+              <ArrowRight className="h-4 w-4 text-slate-400" />
               <span className="font-bold text-slate-400">Destino:</span>
               <span className="px-2.5 py-1 bg-emerald-100 dark:bg-emerald-950/50 text-emerald-800 dark:text-emerald-300 font-bold rounded-lg">
                 {destinationWarehouseObj?.name}
@@ -498,7 +502,7 @@ export const CreateTransferRequest: React.FC = () => {
 
             {/* Live Search Results */}
             {searchResults.length > 0 && (
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden max-h-60 overflow-y-auto">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 border border-slate-200 dark:border-slate-800 rounded-xl overflow-hidden max-h-60 overflow-y-auto shadow-sm">
                 {searchResults.map((p) => {
                   const avail = selectedProductAvailabilities[p.id] ?? 0;
                   const isAdded = cart.some((i) => i.productId === p.id);
@@ -510,7 +514,7 @@ export const CreateTransferRequest: React.FC = () => {
                       <div>
                         <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">{p.name}</div>
                         <div className="text-slate-400">
-                          SKU: {p.sku} | Código: {p.barcode || 'N/A'}
+                          SKU: {p.sku} | Código: {p.barcode || 'N/A'} | Unidad: {p.unitOfMeasure || 'UNI'}
                         </div>
                       </div>
 
@@ -541,6 +545,12 @@ export const CreateTransferRequest: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {productQuery.trim().length > 0 && !isSearching && searchResults.length === 0 && (
+              <div className="p-4 bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-xl text-xs text-slate-500 dark:text-slate-400 text-center font-medium">
+                No se encontraron productos coincidentes con "{productQuery}".
               </div>
             )}
           </div>

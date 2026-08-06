@@ -10,6 +10,7 @@ interface JWTPayload {
   businessId: string | null;
   permissions: string[];
   isStaff: boolean;
+  defaultWarehouseId?: string;
 }
 
 export const requireAuth = (req: Request, res: Response, next: NextFunction) => {
@@ -29,6 +30,7 @@ export const requireAuth = (req: Request, res: Response, next: NextFunction) => 
       businessId: decoded.businessId as string,
       permissions: decoded.permissions,
       isStaff: decoded.isStaff,
+      defaultWarehouseId: decoded.defaultWarehouseId,
     };
 
 

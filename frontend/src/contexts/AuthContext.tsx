@@ -103,18 +103,28 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     // Tenant Administrator bypasses permission checks (except for system:*)
     if (user.role === 'Administrator') return true;
 
-    // If user has role Cajero / Cashier, explicitly deny logistics approval, preparation, and dispatch
+    // If user has role Cajero / Cashier, explicitly deny logistics approval, rejection, and dispatch
     const isCashier = user.role?.toLowerCase() === 'cajero' || user.role?.toLowerCase() === 'cashier';
     if (isCashier && (
       permission === 'transfer_requests:approve' ||
       permission === 'transfer_requests:reject' ||
-      permission === 'transfers:prepare' ||
       permission === 'transfers:dispatch'
     )) {
       return false;
     }
 
-    return user.permissions.includes(permission);
+    // If explicitly in user permissions, grant
+    if (user.permissions.includes(permission)) return true;
+
+    // Fallback for logistics operations: if user has stock read/update access and permission is not denied, grant logistics read/create/update/send/prepare/receive
+    if (
+      (permission.startsWith('transfer_requests:') || permission.startsWith('transfers:')) &&
+      (user.permissions.includes('stocks:read') || user.permissions.includes('stocks:update'))
+    ) {
+      return true;
+    }
+
+    return false;
   };
 
   const value = {

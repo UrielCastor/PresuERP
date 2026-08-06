@@ -5,7 +5,11 @@ import { NotFoundError, BadRequestError } from '../utils/appError';
 export class TransferRequestService {
   private repo = new TransferRequestRepository();
 
-  async list(businessId: string, filters: TransferRequestFilterInput = {}) {
+  async list(businessId: string, filters: TransferRequestFilterInput = {}, userRole?: string, userDefaultWarehouseId?: string) {
+    const isCashier = userRole?.toLowerCase() === 'cajero' || userRole?.toLowerCase() === 'cashier';
+    if (isCashier && userDefaultWarehouseId) {
+      filters.userWarehouseId = userDefaultWarehouseId;
+    }
     return this.repo.list(businessId, filters);
   }
 
@@ -17,7 +21,13 @@ export class TransferRequestService {
     return request;
   }
 
-  async create(businessId: string, requestedByUserId: string, input: CreateTransferRequestInput) {
+  async create(
+    businessId: string,
+    requestedByUserId: string,
+    input: CreateTransferRequestInput,
+    userRole?: string,
+    userDefaultWarehouseId?: string
+  ) {
     // 1. Validate basic input fields
     if (!input.originWarehouseId || !input.destinationWarehouseId) {
       throw new BadRequestError('Debe especificar el depósito de origen y de destino');
@@ -25,6 +35,12 @@ export class TransferRequestService {
 
     if (input.originWarehouseId === input.destinationWarehouseId) {
       throw new BadRequestError('El depósito de origen y de destino no pueden ser el mismo');
+    }
+
+    // Restrict originWarehouseId to user's assigned default warehouse if role is Cajero
+    const isCashier = userRole?.toLowerCase() === 'cajero' || userRole?.toLowerCase() === 'cashier';
+    if (isCashier && userDefaultWarehouseId && input.originWarehouseId !== userDefaultWarehouseId) {
+      throw new BadRequestError('El rol Cajero solo puede crear pedidos solicitando stock para su propio depósito asignado');
     }
 
     // 2. Validate warehouses exist in business
@@ -264,12 +280,53 @@ export class TransferRequestService {
       throw new BadRequestError('El pedido ya fue procesado y no se encuentra en estado Pendiente (PENDING)');
     }
 
-    // 3. Motivo de rechazo es obligatorio
+    // 3. Validate notes
     if (!input || !input.notes || input.notes.trim() === '') {
       throw new BadRequestError('Debe registrar un motivo o nota de rechazo');
     }
 
     // 4. Execute atomic rejection transaction
     return this.repo.reject(id, businessId, rejectedByUserId, input.notes.trim());
+  }
+
+  async cancel(id: string, businessId: string, userId: string) {
+    const request = await this.repo.findById(id, businessId);
+    if (!request) {
+      throw new NotFoundError('Pedido interno no encontrado');
+    }
+
+    if (request.status === 'CANCELLED' || request.status === 'COMPLETED' || request.status === 'REJECTED') {
+      throw new BadRequestError(`No se puede cancelar un pedido en estado ${request.status}`);
+    }
+
+    const totalSent = request.items.reduce((sum: number, item: any) => sum + Number(item.sentQty || 0), 0);
+    if (totalSent > 0) {
+      throw new BadRequestError('No se puede cancelar un pedido que ya posee mercadería despachada en traspasos activos');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      await tx.stockReservation.updateMany({
+        where: {
+          transferRequestId: id,
+          businessId,
+          status: 'ACTIVE',
+        },
+        data: { status: 'RELEASED' },
+      });
+
+      return tx.transferRequest.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+        include: {
+          originWarehouse: { select: { id: true, name: true, code: true } },
+          destinationWarehouse: { select: { id: true, name: true, code: true } },
+          items: {
+            include: {
+              product: { select: { id: true, name: true, sku: true, barcode: true } },
+            },
+          },
+        },
+      });
+    });
   }
 }

@@ -233,7 +233,7 @@ export const LogisticsHistory: React.FC = () => {
               <tr className="bg-slate-50 dark:bg-slate-800/50 border-b border-slate-200 dark:border-slate-800 text-xs font-semibold uppercase text-slate-500">
                 <th className="p-4">Traspaso</th>
                 <th className="p-4">Pedido Orig</th>
-                <th className="p-4">Origen $\rightarrow$ Destino</th>
+                <th className="p-4">Origen → Destino</th>
                 <th className="p-4">Estado</th>
                 <th className="p-4">Fecha Salida</th>
                 <th className="p-4">Fecha Llegada</th>
@@ -263,7 +263,7 @@ export const LogisticsHistory: React.FC = () => {
                       {t.transferRequest?.requestNumber || 'N/A'}
                     </td>
                     <td className="p-4 text-slate-700 dark:text-slate-300">
-                      {t.originWarehouse?.name} $\rightarrow$ {t.destinationWarehouse?.name}
+                      {t.originWarehouse?.name} → {t.destinationWarehouse?.name}
                     </td>
                     <td className="p-4">{getStatusBadge(t.status)}</td>
                     <td className="p-4 text-xs text-slate-400">

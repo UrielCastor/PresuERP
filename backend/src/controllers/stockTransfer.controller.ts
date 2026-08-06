@@ -50,7 +50,10 @@ export class StockTransferController {
       if (endDate) filters.endDate = new Date(String(endDate));
       if (search || q) filters.search = String(search || q);
 
-      const items = await service.list(businessId, filters);
+      const userRole = req.user!.role;
+      const userDefaultWarehouseId = req.user!.defaultWarehouseId;
+
+      const items = await service.list(businessId, filters, userRole, userDefaultWarehouseId);
 
       return res.status(200).json({
         success: true,
@@ -139,6 +142,23 @@ export class StockTransferController {
       return res.status(200).json({
         success: true,
         data: receivedTransfer,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async cancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      const id = req.params.id;
+
+      const cancelledTransfer = await service.cancel(id, businessId, userId);
+
+      return res.status(200).json({
+        success: true,
+        data: cancelledTransfer,
       });
     } catch (error) {
       return next(error);

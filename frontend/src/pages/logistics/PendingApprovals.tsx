@@ -733,7 +733,7 @@ export const PendingApprovals: React.FC = () => {
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
                   Origen: <span className="font-semibold">{evalOrder.originWarehouse?.name}</span>{' '}
-                  $\rightarrow$ Destino:{' '}
+                  → Destino:{' '}
                   <span className="font-semibold">{evalOrder.destinationWarehouse?.name}</span>
                 </p>
               </div>
@@ -885,7 +885,7 @@ export const PendingApprovals: React.FC = () => {
                   Rechazo de Pedido #{rejectOrder.requestNumber}
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">
-                  Origen: {rejectOrder.originWarehouse?.name} $\rightarrow$ Destino:{' '}
+                  Origen: {rejectOrder.originWarehouse?.name} → Destino:{' '}
                   {rejectOrder.destinationWarehouse?.name}
                 </p>
               </div>

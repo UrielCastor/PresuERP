@@ -532,7 +532,7 @@ export const LogisticsTransfers: React.FC = () => {
             </div>
 
             <div className="p-3 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300 rounded-xl text-xs">
-              Verifique físicamente en el depósito los productos y cantidades a embalar. Al hacer clic en <strong>"Mercadería preparada"</strong>, el traspaso cambiará de estado <strong>PENDING $\rightarrow$ PREPARING</strong>.
+              Verifique físicamente en el depósito los productos y cantidades a embalar. Al hacer clic en <strong>"Mercadería preparada"</strong>, el traspaso cambiará de estado <strong>PENDING → PREPARING</strong>.
             </div>
 
             <div className="space-y-2">
@@ -608,7 +608,7 @@ export const LogisticsTransfers: React.FC = () => {
             <div className="p-3.5 bg-purple-50 dark:bg-purple-950/30 border border-purple-200 dark:border-purple-800 text-purple-900 dark:text-purple-300 rounded-xl text-xs flex items-start gap-2.5">
               <AlertCircle className="h-5 w-5 text-purple-600 flex-shrink-0 mt-0.5" />
               <div>
-                <strong>Atención de Despacho:</strong> Al confirmar, el stock físico del depósito origen será <strong>descontado inmediatamente</strong>, consumiendo la reserva y registrando el egreso en el Kardex. El estado cambiará de <strong>PREPARING $\rightarrow$ IN_TRANSIT</strong>.
+                <strong>Atención de Despacho:</strong> Al confirmar, el stock físico del depósito origen será <strong>descontado inmediatamente</strong>, consumiendo la reserva y registrando el egreso en el Kardex. El estado cambiará de <strong>PREPARING → IN_TRANSIT</strong>.
               </div>
             </div>
 

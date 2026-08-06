@@ -5,6 +5,7 @@ export interface TransferRequestFilterInput {
   status?: TransferRequestStatus;
   originWarehouseId?: string;
   destinationWarehouseId?: string;
+  userWarehouseId?: string;
   startDate?: Date;
   endDate?: Date;
   search?: string;
@@ -32,8 +33,7 @@ export interface UpdateTransferRequestInput {
 
 export class TransferRequestRepository {
   /**
-   * Generates the next sequential request number for a business.
-   * Format: PED-000001, PED-000002, etc.
+   * Generates next request number (e.g. PED-000001) for business.
    */
   private async generateNextRequestNumber(tx: any, businessId: string): Promise<string> {
     const lastRequest = await tx.transferRequest.findFirst({
@@ -42,14 +42,12 @@ export class TransferRequestRepository {
       select: { requestNumber: true },
     });
 
-    let nextSeq = 1;
-    if (lastRequest && lastRequest.requestNumber) {
-      const parts = lastRequest.requestNumber.split('-');
-      if (parts.length === 2 && !isNaN(parseInt(parts[1], 10))) {
-        nextSeq = parseInt(parts[1], 10) + 1;
-      }
+    if (!lastRequest || !lastRequest.requestNumber) {
+      return 'PED-000001';
     }
 
+    const currentSeq = parseInt(lastRequest.requestNumber.replace('PED-', ''), 10) || 0;
+    const nextSeq = currentSeq + 1;
     const paddedSeq = String(nextSeq).padStart(6, '0');
     return `PED-${paddedSeq}`;
   }
@@ -65,6 +63,17 @@ export class TransferRequestRepository {
     }
     if (filters.destinationWarehouseId) {
       where.destinationWarehouseId = filters.destinationWarehouseId;
+    }
+    if (filters.userWarehouseId) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { originWarehouseId: filters.userWarehouseId },
+            { destinationWarehouseId: filters.userWarehouseId },
+          ],
+        },
+      ];
     }
     if (filters.startDate || filters.endDate) {
       where.createdAt = {};
@@ -97,6 +106,14 @@ export class TransferRequestRepository {
                 unitOfMeasure: true,
               },
             },
+          },
+        },
+        stockTransfers: {
+          select: {
+            id: true,
+            transferNumber: true,
+            status: true,
+            createdAt: true,
           },
         },
         _count: { select: { items: true, stockTransfers: true } },

@@ -237,7 +237,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/orders"
         element={
-          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read']}>
+          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read', 'stocks:read']}>
             <LogisticsOrders />
           </ProtectedRoute>
         }
@@ -245,7 +245,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/orders/create"
         element={
-          <ProtectedRoute permissions={['transfer_requests:create', 'transfer_requests:write', 'logistics:write']}>
+          <ProtectedRoute permissions={['transfer_requests:create', 'transfer_requests:write', 'logistics:write', 'stocks:read']}>
             <CreateTransferRequest />
           </ProtectedRoute>
         }
@@ -261,7 +261,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/availability"
         element={
-          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read']}>
+          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read', 'stocks:read']}>
             <LogisticsAvailability />
           </ProtectedRoute>
         }
@@ -269,7 +269,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/transfers"
         element={
-          <ProtectedRoute permissions={['transfers:read', 'warehouseTransfers:read', 'logistics:read']}>
+          <ProtectedRoute permissions={['transfers:read', 'warehouseTransfers:read', 'logistics:read', 'stocks:read']}>
             <LogisticsTransfers />
           </ProtectedRoute>
         }
@@ -277,7 +277,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/receipts"
         element={
-          <ProtectedRoute permissions={['transfers:receive', 'transfers:read', 'logistics:read']}>
+          <ProtectedRoute permissions={['transfers:receive', 'transfers:read', 'logistics:read', 'stocks:read']}>
             <LogisticsReceipts />
           </ProtectedRoute>
         }
@@ -285,7 +285,7 @@ export const AppRoutes: React.FC = () => {
       <Route
         path="/logistics/history"
         element={
-          <ProtectedRoute permissions={['transfer_requests:read', 'transfers:read', 'logistics:read']}>
+          <ProtectedRoute permissions={['transfer_requests:read', 'transfers:read', 'logistics:read', 'stocks:read']}>
             <LogisticsHistory />
           </ProtectedRoute>
         }

@@ -6,6 +6,7 @@ export interface StockTransferFilterInput {
   status?: TransferStatus;
   originWarehouseId?: string;
   destinationWarehouseId?: string;
+  userWarehouseId?: string;
   startDate?: Date;
   endDate?: Date;
   search?: string;
@@ -187,6 +188,17 @@ export class StockTransferRepository {
     }
     if (filters.destinationWarehouseId) {
       where.destinationWarehouseId = filters.destinationWarehouseId;
+    }
+    if (filters.userWarehouseId) {
+      where.AND = [
+        ...(where.AND || []),
+        {
+          OR: [
+            { originWarehouseId: filters.userWarehouseId },
+            { destinationWarehouseId: filters.userWarehouseId },
+          ],
+        },
+      ];
     }
     if (filters.startDate || filters.endDate) {
       where.createdAt = {};

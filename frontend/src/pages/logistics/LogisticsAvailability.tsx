@@ -108,7 +108,7 @@ export const LogisticsAvailability: React.FC = () => {
                   <div className="font-bold text-slate-900 dark:text-slate-100 text-sm">{p.name}</div>
                   <div className="text-slate-400">SKU: {p.sku} | Código: {p.barcode || 'N/A'} | Unidad: {p.unitOfMeasure || 'UNI'}</div>
                 </div>
-                <span className="text-primary-600 font-bold">Ver disponibilidades $\rightarrow$</span>
+                <span className="text-primary-600 font-bold">Ver disponibilidades →</span>
               </button>
             ))}
           </div>

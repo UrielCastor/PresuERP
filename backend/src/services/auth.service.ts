@@ -77,6 +77,18 @@ const whitelistPermissions = [
   { name: 'customerPoints:reports', description: 'Access loyalty reports and KPIs', module: 'points' },
   // Audit
   { name: 'AUDIT_VIEW', description: 'View ERP audit logs', module: 'audit' },
+  // Logistics & Transfers
+  { name: 'transfer_requests:read', description: 'Read transfer requests', module: 'logistics' },
+  { name: 'transfer_requests:create', description: 'Create transfer requests', module: 'logistics' },
+  { name: 'transfer_requests:update', description: 'Update draft transfer requests', module: 'logistics' },
+  { name: 'transfer_requests:send', description: 'Send draft transfer requests for approval', module: 'logistics' },
+  { name: 'transfer_requests:approve', description: 'Approve transfer requests', module: 'logistics' },
+  { name: 'transfer_requests:reject', description: 'Reject transfer requests', module: 'logistics' },
+  { name: 'transfers:read', description: 'Read stock transfers', module: 'logistics' },
+  { name: 'transfers:create', description: 'Create stock transfers', module: 'logistics' },
+  { name: 'transfers:prepare', description: 'Prepare stock transfers', module: 'logistics' },
+  { name: 'transfers:dispatch', description: 'Dispatch stock transfers', module: 'logistics' },
+  { name: 'transfers:receive', description: 'Receive stock transfers', module: 'logistics' },
 ];
 
 export class AuthService {
@@ -202,6 +214,8 @@ export class AuthService {
         'cash:view', 'cash:open', 'cash:close', 'cash:movement', 'cash:audit',
         'reports:read',
         'settings:pos:read', 'settings:pos:write',
+        'transfer_requests:read', 'transfer_requests:create', 'transfer_requests:update', 'transfer_requests:send', 'transfer_requests:approve', 'transfer_requests:reject',
+        'transfers:read', 'transfers:create', 'transfers:prepare', 'transfers:dispatch', 'transfers:receive',
       ];
       const supervisorPerms = permissionsMap.filter((p) => supervisorPermCodes.includes(p.name));
       for (const p of supervisorPerms) {
@@ -221,6 +235,8 @@ export class AuthService {
         'sales:read', 'sales:write',
         'customers:read', 'customers:write',
         'cash:view', 'cash:open', 'cash:close', 'cash:movement',
+        'transfer_requests:read', 'transfer_requests:create', 'transfer_requests:update', 'transfer_requests:send',
+        'transfers:read', 'transfers:prepare', 'transfers:receive',
       ];
       const cashierPerms = permissionsMap.filter((p) => cashierPermCodes.includes(p.name));
       for (const p of cashierPerms) {

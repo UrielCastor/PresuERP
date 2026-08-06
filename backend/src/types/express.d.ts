@@ -8,6 +8,7 @@ declare global {
         businessId: string;
         permissions: string[];
         isStaff: boolean;
+        defaultWarehouseId?: string;
       };
     }
   }

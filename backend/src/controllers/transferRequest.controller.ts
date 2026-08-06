@@ -22,7 +22,10 @@ export class TransferRequestController {
       if (endDate) filters.endDate = new Date(String(endDate));
       if (search || q) filters.search = String(search || q);
 
-      const items = await service.list(businessId, filters);
+      const userRole = req.user!.role;
+      const userDefaultWarehouseId = req.user!.defaultWarehouseId;
+
+      const items = await service.list(businessId, filters, userRole, userDefaultWarehouseId);
 
       return res.status(200).json({
         success: true,
@@ -61,8 +64,10 @@ export class TransferRequestController {
     try {
       const businessId = req.user!.businessId;
       const userId = req.user!.id;
+      const userRole = req.user!.role;
+      const userDefaultWarehouseId = req.user!.defaultWarehouseId;
 
-      const newRequest = await service.create(businessId, userId, req.body);
+      const newRequest = await service.create(businessId, userId, req.body, userRole, userDefaultWarehouseId);
 
       return res.status(201).json({
         success: true,
@@ -134,10 +139,6 @@ export class TransferRequestController {
     }
   }
 
-  /**
-   * POST /api/v1/logistics/transfer-requests/:id/reject
-   * Reject transfer request with rejection reason.
-   */
   static async reject(req: Request, res: Response, next: NextFunction) {
     try {
       const businessId = req.user!.businessId;
@@ -149,6 +150,23 @@ export class TransferRequestController {
       return res.status(200).json({
         success: true,
         data: rejectedRequest,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async cancel(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      const id = req.params.id;
+
+      const cancelledRequest = await service.cancel(id, businessId, userId);
+
+      return res.status(200).json({
+        success: true,
+        data: cancelledRequest,
       });
     } catch (error) {
       return next(error);

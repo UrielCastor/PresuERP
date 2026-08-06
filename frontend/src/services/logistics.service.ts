@@ -34,6 +34,7 @@ export interface TransferRequestDto {
   requestedByUser?: { id: string; name: string; email: string };
   approvedByUser?: { id: string; name: string; email: string };
   items: TransferRequestItemDto[];
+  stockTransfers?: Array<{ id: string; transferNumber: string; status: string; createdAt?: string }>;
   _count?: { items: number; stockTransfers: number };
 }
 

@@ -489,7 +489,7 @@ export const LogisticsOrders: React.FC = () => {
                         {/* Acciones para Borrador (DRAFT) */}
                         {o.status === 'DRAFT' && (
                           <>
-                            {hasPermission('transfer_requests:update') && (
+                            {(hasPermission('transfer_requests:update') || hasPermission('transfer_requests:create')) && (
                               <button
                                 onClick={() => handleOpenEditModal(o)}
                                 className="p-1.5 text-blue-600 hover:text-blue-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded-lg"
@@ -498,7 +498,7 @@ export const LogisticsOrders: React.FC = () => {
                                 <Edit3 className="h-4 w-4" />
                               </button>
                             )}
-                            {hasPermission('transfer_requests:update') && (
+                            {(hasPermission('transfer_requests:send') || hasPermission('transfer_requests:update') || hasPermission('transfer_requests:create')) && (
                               <button
                                 onClick={() => handleSendOrder(o.id)}
                                 className="px-2.5 py-1 bg-amber-500 hover:bg-amber-600 text-white font-semibold text-xs rounded-lg flex items-center gap-1 shadow-sm"
@@ -546,6 +546,24 @@ export const LogisticsOrders: React.FC = () => {
                               <Truck className="h-3 w-3" /> Crear Traspaso
                             </button>
                           )}
+
+                        {/* Ver Traspaso Asociado si fue generado */}
+                        {(o.status === 'APPROVED' || o.status === 'PARTIAL') && o.stockTransfers && o.stockTransfers.length > 0 && (
+                          <button
+                            onClick={() => navigate('/logistics/transfers')}
+                            className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-semibold text-xs rounded-lg flex items-center gap-1 shadow-sm"
+                            title="Ver Traspasos Asociados"
+                          >
+                            <Eye className="h-3 w-3" /> Ver Traspaso ({o.stockTransfers.length})
+                          </button>
+                        )}
+
+                        {/* Indicador de Esperando Recepción si no hay saldo disponible y no hay botón de crear */}
+                        {(o.status === 'APPROVED' || o.status === 'PARTIAL') && !hasAvailableBalance(o) && (!o.stockTransfers || o.stockTransfers.length === 0) && (
+                          <span className="px-2.5 py-1 bg-teal-50 text-teal-700 dark:bg-teal-950/40 dark:text-teal-300 font-semibold text-xs rounded-lg border border-teal-200 dark:border-teal-800">
+                            Esperando Recepción
+                          </span>
+                        )}
                       </div>
                     </td>
                   </tr>

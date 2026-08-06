@@ -20,45 +20,39 @@ const canReadLogistics = requireAnyPermission([
 const canCreateLogistics = requireAnyPermission([
   'transfer_requests:create',
   'transferRequests:create',
+  'transfer_requests:send',
   'transfer_requests:write',
   'transferRequests:write',
   'logistics:write',
   'stocks:update',
+  'stocks:read',
 ]);
 
 const canUpdateLogistics = requireAnyPermission([
   'transfer_requests:update',
   'transferRequests:update',
+  'transfer_requests:send',
+  'transfer_requests:create',
   'transfer_requests:write',
   'transferRequests:write',
   'logistics:write',
   'stocks:update',
+  'stocks:read',
 ]);
 
 const canApproveLogistics = requireAnyPermission([
   'transfer_requests:approve',
   'transferRequests:approve',
-  'transfer_requests:write',
-  'transferRequests:write',
-  'logistics:write',
-  'stocks:update',
 ]);
 
 const canRejectLogistics = requireAnyPermission([
   'transfer_requests:reject',
   'transferRequests:reject',
-  'transfer_requests:write',
-  'transferRequests:write',
-  'logistics:write',
-  'stocks:update',
 ]);
 
 const canCreateTransfer = requireAnyPermission([
   'transfers:create',
   'transfer_requests:approve',
-  'warehouseTransfers:create',
-  'logistics:write',
-  'stocks:update',
 ]);
 
 const canPrepareTransfer = requireAnyPermission([
@@ -70,9 +64,6 @@ const canPrepareTransfer = requireAnyPermission([
 
 const canDispatchTransfer = requireAnyPermission([
   'transfers:dispatch',
-  'warehouseTransfers:update',
-  'logistics:write',
-  'stocks:update',
 ]);
 
 const canReceiveTransfer = requireAnyPermission([
@@ -97,6 +88,7 @@ router.put('/transfer-requests/:id', canUpdateLogistics, TransferRequestControll
 router.post('/transfer-requests/:id/send', canUpdateLogistics, TransferRequestController.sendForApproval);
 router.post('/transfer-requests/:id/approve', canApproveLogistics, TransferRequestController.approve);
 router.post('/transfer-requests/:id/reject', canRejectLogistics, TransferRequestController.reject);
+router.post('/transfer-requests/:id/cancel', canUpdateLogistics, TransferRequestController.cancel);
 
 // Create StockTransfer from approved TransferRequest
 router.post('/transfer-requests/:id/create-transfer', canCreateTransfer, StockTransferController.createFromRequest);
@@ -108,5 +100,6 @@ router.post('/stock-transfers', canCreateTransfer, StockTransferController.creat
 router.post('/stock-transfers/:id/prepare', canPrepareTransfer, StockTransferController.prepare);
 router.post('/stock-transfers/:id/dispatch', canDispatchTransfer, StockTransferController.dispatch);
 router.post('/stock-transfers/:id/receive', canReceiveTransfer, StockTransferController.receive);
+router.post('/stock-transfers/:id/cancel', canPrepareTransfer, StockTransferController.cancel);
 
 export default router;
