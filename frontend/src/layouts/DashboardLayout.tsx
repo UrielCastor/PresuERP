@@ -28,6 +28,7 @@ import {
   History,
   Building2,
   Tag,
+  CheckCircle2,
 } from 'lucide-react';
 import { menuConfig } from '../config/menu';
 import { Button } from '../components/ui/Button';
@@ -79,6 +80,7 @@ export const DashboardLayout: React.FC<{ children: React.ReactNode }> = ({ child
       case 'ShieldCheck': return <ShieldCheck className="h-5 w-5" />;
       case 'History': return <History className="h-5 w-5" />;
       case 'Tag': return <Tag className="h-5 w-5" />;
+      case 'CheckCircle2': return <CheckCircle2 className="h-5 w-5" />;
       default: return null;
     }
   };

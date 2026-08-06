@@ -73,6 +73,54 @@ export const menuConfig: MenuItem[] = [
     ],
   },
   {
+    name: 'Traspasos',
+    iconName: 'Truck',
+    children: [
+      {
+        name: 'Dashboard',
+        href: '/logistics',
+        iconName: 'LayoutDashboard',
+        permission: 'transfer_requests:read',
+      },
+      {
+        name: 'Pedidos',
+        href: '/logistics/orders',
+        iconName: 'ClipboardList',
+        permission: 'transfer_requests:read',
+      },
+      {
+        name: 'Aprobación de Pedidos',
+        href: '/logistics/orders/pending',
+        iconName: 'CheckCircle2',
+        permission: 'transfer_requests:approve',
+      },
+      {
+        name: 'Disponibilidad',
+        href: '/logistics/availability',
+        iconName: 'Warehouse',
+        permission: 'transfer_requests:read',
+      },
+      {
+        name: 'Traspasos',
+        href: '/logistics/transfers',
+        iconName: 'Truck',
+        permission: 'transfers:read',
+      },
+      {
+        name: 'Recepciones',
+        href: '/logistics/receipts',
+        iconName: 'Boxes',
+        permission: 'transfers:receive',
+      },
+      {
+        name: 'Historial',
+        href: '/logistics/history',
+        iconName: 'History',
+        permission: 'transfer_requests:read',
+      },
+    ],
+  },
+  {
     name: 'Ventas (POS)',
     href: '/sales',
     iconName: 'ShoppingCart',

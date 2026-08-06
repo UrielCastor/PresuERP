@@ -24,6 +24,15 @@ import { CompanyProfile } from '../pages/CompanyProfile';
 import { Audit } from '../pages/Audit';
 import { NotFound } from '../pages/NotFound';
 
+import { LogisticsDashboard } from '../pages/logistics/LogisticsDashboard';
+import { LogisticsOrders } from '../pages/logistics/LogisticsOrders';
+import { CreateTransferRequest } from '../pages/logistics/CreateTransferRequest';
+import { PendingApprovals } from '../pages/logistics/PendingApprovals';
+import { LogisticsAvailability } from '../pages/logistics/LogisticsAvailability';
+import { LogisticsTransfers } from '../pages/logistics/LogisticsTransfers';
+import { LogisticsReceipts } from '../pages/logistics/LogisticsReceipts';
+import { LogisticsHistory } from '../pages/logistics/LogisticsHistory';
+
 interface ProtectedRouteProps {
   children: React.ReactNode;
   permission?: string;
@@ -213,6 +222,71 @@ export const AppRoutes: React.FC = () => {
         element={
           <ProtectedRoute permission="stocks:read">
             <Stocks />
+          </ProtectedRoute>
+        }
+      />
+      {/* Logistics routes */}
+      <Route
+        path="/logistics"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:read', 'transfers:read', 'logistics:read', 'stocks:read']}>
+            <LogisticsDashboard />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/orders"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read']}>
+            <LogisticsOrders />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/orders/create"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:create', 'transfer_requests:write', 'logistics:write']}>
+            <CreateTransferRequest />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/orders/pending"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:approve', 'transfer_requests:reject', 'transfer_requests:write', 'logistics:write']}>
+            <PendingApprovals />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/availability"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:read', 'transferRequests:read', 'logistics:read']}>
+            <LogisticsAvailability />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/transfers"
+        element={
+          <ProtectedRoute permissions={['transfers:read', 'warehouseTransfers:read', 'logistics:read']}>
+            <LogisticsTransfers />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/receipts"
+        element={
+          <ProtectedRoute permissions={['transfers:receive', 'transfers:read', 'logistics:read']}>
+            <LogisticsReceipts />
+          </ProtectedRoute>
+        }
+      />
+      <Route
+        path="/logistics/history"
+        element={
+          <ProtectedRoute permissions={['transfer_requests:read', 'transfers:read', 'logistics:read']}>
+            <LogisticsHistory />
           </ProtectedRoute>
         }
       />      <Route
