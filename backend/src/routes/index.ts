@@ -27,6 +27,7 @@ import productPriceTierRoutes from './productPriceTier.routes';
 import promotionRoutes from './promotion.routes';
 import productPriceUpdateRoutes from './productPriceUpdate.routes';
 import pointsRoutes from './points.routes';
+import logisticsRoutes from './logistics.routes';
 import { requireAuth } from '../middlewares/auth.middleware';
 import { requireActiveSubscription } from '../middlewares/subscription.middleware';
 
@@ -87,6 +88,7 @@ router.use('/product-price-tiers', productPriceTierRoutes);
 router.use('/promotions', promotionRoutes);
 router.use('/product-price-updates', productPriceUpdateRoutes);
 router.use('/points', requireAuth, requireActiveSubscription, pointsRoutes);
+router.use('/logistics', requireAuth, requireActiveSubscription, logisticsRoutes);
 
 router.use('/reports', requireAuth, requireActiveSubscription, reportRoutes);
 
