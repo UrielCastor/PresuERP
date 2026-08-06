@@ -3,8 +3,11 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
-import { Plus, Edit2, Trash2, Search, X, Loader2, Package, Tag, Filter, AlertTriangle, Calculator, Boxes, Warehouse, ClipboardList, TrendingUp, Building2, MoreVertical, Copy, Eye } from 'lucide-react';
+import * as XLSX from 'xlsx';
+import { Plus, Edit2, Trash2, Search, X, Loader2, Package, Tag, Filter, AlertTriangle, Calculator, Boxes, Warehouse, ClipboardList, TrendingUp, Building2, MoreVertical, Copy, Eye, Download, Upload, History } from 'lucide-react';
 import { BulkPriceUpdateView } from '../components/products/BulkPriceUpdateView';
+import { ProductImportWizardModal } from '../components/products/ProductImportWizardModal';
+import { ProductImportHistoryModal } from '../components/products/ProductImportHistoryModal';
 import { useAuth } from '../contexts/AuthContext';
 import { productApi, Product } from '../services/product.service';
 import { categoryApi } from '../services/category.service';
@@ -13,6 +16,7 @@ import { stockApi } from '../services/stock.service';
 import { stockMovementApi } from '../services/stockMovement.service';
 import { warehouseApi } from '../services/warehouse.service';
 import { purchaseApi } from '../services/purchase.service';
+import api from '../services/api';
 import { Button } from '../components/ui/Button';
 import { DataGrid, Column } from '../components/ui/DataGrid';
 import { SearchInput } from '../components/ui/SearchInput';
@@ -64,10 +68,33 @@ export const Products: React.FC = () => {
   const [manualSalePrice, setManualSalePrice] = useState(false);
   const [selectedSupplierIds, setSelectedSupplierIds] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
+  const [isImportHistoryOpen, setIsImportHistoryOpen] = useState(false);
+  const [selectedWarehouse, setSelectedWarehouse] = useState<string>('ALL');
 
   const canCreate = hasCapability('products.create') || hasPermission('products:create');
   const canUpdate = hasCapability('products.update') || hasPermission('products:update');
   const canDelete = hasCapability('products.delete') || hasPermission('products:delete');
+  const canImport = hasCapability('products.import') || hasPermission('products:create') || canCreate;
+
+  const handleExportProducts = async () => {
+    try {
+      const items = await productApi.exportProducts(selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined);
+
+      if (!items || items.length === 0) {
+        alert('No hay productos registrados en esta empresa para exportar.');
+        return;
+      }
+
+      const ws = XLSX.utils.json_to_sheet(items);
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, 'Catálogo');
+      XLSX.writeFile(wb, `catalogo_productos_${new Date().toISOString().split('T')[0]}.xlsx`);
+    } catch (err: any) {
+      console.error('Error al exportar productos:', err);
+      alert(err.response?.data?.message || 'Error al procesar la exportación del catálogo.');
+    }
+  };
 
   // Enterprise Granular Action Capabilities
   const canEditCost = hasCapability('products.edit_cost') || hasCapability('products.cost.update') || canUpdate;
@@ -131,6 +158,11 @@ export const Products: React.FC = () => {
   const { data: suppliers = [] } = useQuery({
     queryKey: ['suppliers'],
     queryFn: supplierApi.list,
+  });
+
+  const { data: warehouses = [] } = useQuery({
+    queryKey: ['warehouses'],
+    queryFn: warehouseApi.list,
   });
 
   // Mutations
@@ -352,6 +384,39 @@ export const Products: React.FC = () => {
           >
             Listas de Precios
           </Button>
+
+          {canImport && (
+            <>
+              <Button
+                variant="outline"
+                onClick={() => setIsImportWizardOpen(true)}
+                leftIcon={<Upload className="h-4 w-4 text-indigo-500" />}
+                className="text-xs font-semibold rounded-xl bg-indigo-50/50 hover:bg-indigo-100 border-indigo-200 dark:bg-indigo-950/40 dark:border-indigo-800 text-indigo-700 dark:text-indigo-300"
+              >
+                📥 Importar Productos
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={handleExportProducts}
+                leftIcon={<Download className="h-4 w-4 text-slate-500" />}
+                className="text-xs font-semibold rounded-xl"
+              >
+                📤 Exportar Productos
+              </Button>
+
+              <Button
+                variant="outline"
+                onClick={() => setIsImportHistoryOpen(true)}
+                leftIcon={<History className="h-4 w-4 text-slate-500" />}
+                className="text-xs font-semibold rounded-xl"
+                title="Historial de importaciones masivas"
+              >
+                📜 Historial
+              </Button>
+            </>
+          )}
+
           {canCreate && (
             <Button
               onClick={handleOpenCreateModal}
@@ -1073,6 +1138,22 @@ export const Products: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* Modales de Importación e Historial Masivo */}
+      <ProductImportWizardModal
+        isOpen={isImportWizardOpen}
+        warehouses={warehouses.map((w: any) => ({ id: w.id, name: w.name }))}
+        onClose={() => setIsImportWizardOpen(false)}
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['products'] });
+          queryClient.invalidateQueries({ queryKey: ['dashboard'] });
+        }}
+      />
+
+      <ProductImportHistoryModal
+        isOpen={isImportHistoryOpen}
+        onClose={() => setIsImportHistoryOpen(false)}
+      />
     </div>
   );
 };

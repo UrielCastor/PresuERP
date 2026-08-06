@@ -79,4 +79,10 @@ export const productApi = {
     const response = await api.delete<{ success: boolean; data: any }>(`/products/${id}`);
     return response.data.data;
   },
+  exportProducts: async (warehouseId?: string) => {
+    const response = await api.get<{ success: boolean; data: any[] }>('/products/export', {
+      params: warehouseId && warehouseId !== 'ALL' ? { warehouseId } : undefined
+    });
+    return response.data.data;
+  },
 };
