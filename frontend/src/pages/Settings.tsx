@@ -2192,98 +2192,115 @@ export const Settings: React.FC = () => {
                <div className="space-y-6 mt-6">
                  <Card>
                    <CardHeader>
-                     <CardTitle>Programa de Fidelización de Clientes</CardTitle>
+                     <CardTitle>Programa de Puntos para Clientes</CardTitle>
+                     <p className="text-xs text-slate-500 mt-1">
+                       Premia a tus clientes habituales regalándoles puntos con sus compras para que los usen como descuento la próxima vez que te compren.
+                     </p>
                    </CardHeader>
                    <CardContent className="space-y-6 pt-4">
                      <div className="flex flex-col gap-4">
-                       <label className="flex items-center gap-2 cursor-pointer">
-                         <input
-                           type="checkbox"
-                           checked={loyaltyData.enabled}
-                           onChange={e => setLoyaltyData({...loyaltyData, enabled: e.target.checked})}
-                           className="w-4 h-4 rounded text-indigo-650"
-                         />
-                         <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Habilitar programa de fidelización</span>
-                       </label>
+                       <div className="flex flex-col gap-1.5">
+                         <label className="flex items-center gap-2 cursor-pointer">
+                           <input
+                             type="checkbox"
+                             checked={loyaltyData.enabled}
+                             onChange={e => setLoyaltyData({...loyaltyData, enabled: e.target.checked})}
+                             className="w-4 h-4 rounded text-indigo-650"
+                           />
+                           <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Activar el programa de puntos</span>
+                         </label>
+                         <span className="text-xs text-slate-500 ml-6 block">
+                           Si activás esta opción, tus clientes empezarás a juntar puntos en sus compras y podrán usarlos para pagar menos.
+                         </span>
+                       </div>
                      </div>
                      
                      {loyaltyData.enabled && (
                        <div className="space-y-6 pt-4 border-t border-slate-100 dark:border-slate-800">
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Valor del Punto ($)</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Cuánto vale cada punto en dinero? ($)</label>
                              <input
                                type="number"
                                className="input-class"
                                value={loyaltyData.pointValue}
                                onChange={e => setLoyaltyData({...loyaltyData, pointValue: Number(e.target.value)})}
                              />
-                             <span className="text-xs text-slate-500 mt-1 block">Equivalencia en dinero por cada punto canjeado (ej: 1 punto = $10)</span>
+                             <span className="text-xs text-slate-500 mt-1 block">
+                               Cada punto acumulado se convertirá en este monto de descuento al momento de cobrar. <br/>
+                               <strong className="text-slate-400">Ejemplo: Si ponés $10, cuando un cliente use 100 puntos se le descontarán $1.000 de su compra.</strong>
+                             </span>
                            </div>
                            
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Monto Mínimo de Compra para Acumular ($)</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Compra mínima para regalar puntos ($)</label>
                              <input
                                type="number"
                                className="input-class"
                                value={loyaltyData.minimumSaleAmount}
                                onChange={e => setLoyaltyData({...loyaltyData, minimumSaleAmount: Number(e.target.value)})}
                              />
-                             <span className="text-xs text-slate-500 mt-1 block">Venta mínima requerida para sumar puntos</span>
+                             <span className="text-xs text-slate-500 mt-1 block">
+                               Las compras por un monto menor a este valor no entregarán puntos. <br/>
+                               <strong className="text-slate-400">Ejemplo: Si ponés $1.000, una compra de $800 no dará puntos, pero una de $1.200 sí.</strong>
+                             </span>
                            </div>
                          </div>
 
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Regla de Acumulación (Monto de tramo, $)</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Cada cuánto dinero gastado regalás puntos? ($)</label>
                              <input
                                type="number"
                                className="input-class"
                                value={loyaltyData.earnEveryAmount}
                                onChange={e => setLoyaltyData({...loyaltyData, earnEveryAmount: Number(e.target.value)})}
                              />
-                             <span className="text-xs text-slate-500 mt-1 block">Cada cuánto dinero abonado se otorgan puntos (ej: Cada $1000)</span>
+                             <span className="text-xs text-slate-500 mt-1 block">
+                               Monto de compra necesario para regalar un bloque de puntos al cliente. <br/>
+                               <strong className="text-slate-400">Ejemplo: Si ponés cada $2.000 y regalás 10 puntos, una compra de $6.000 le regalará 30 puntos al cliente.</strong>
+                             </span>
                            </div>
 
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Puntos por tramo</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Cuántos puntos recibe el cliente en cada bloque?</label>
                              <input
                                type="number"
                                className="input-class"
                                value={loyaltyData.earnPoints}
                                onChange={e => setLoyaltyData({...loyaltyData, earnPoints: Number(e.target.value)})}
                              />
-                             <span className="text-xs text-slate-500 mt-1 block">Cuántos puntos se otorgan por cada tramo (ej: genera 10 puntos)</span>
+                             <span className="text-xs text-slate-500 mt-1 block">Cantidad de puntos que gana el cliente cada vez que alcanza el monto de compra configurado.</span>
                            </div>
                          </div>
 
                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 font-sans">
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Cálculo de puntos sobre</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Sobre qué monto de la venta se calculan los puntos?</label>
                              <select
                                className="w-full text-xs font-semibold py-2 px-3 border rounded-lg focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:text-white"
                                value={loyaltyData.pointsCalculationMode}
                                onChange={e => setLoyaltyData({...loyaltyData, pointsCalculationMode: e.target.value as any})}
                              >
-                               <option value="GROSS">Monto Bruto (Sin descuentos)</option>
-                               <option value="AFTER_DISCOUNTS">Monto con Descuento</option>
-                               <option value="EFFECTIVELY_PAID">Monto Efectivamente Pagado (Neto de puntos/canjes)</option>
+                               <option value="GROSS">Monto total de la venta (Sin restar descuentos)</option>
+                               <option value="AFTER_DISCOUNTS">Monto final después de aplicar descuentos</option>
+                               <option value="EFFECTIVELY_PAID">Dinero real pagado (Sin contar la parte abonada con puntos)</option>
                              </select>
-                             <span className="text-xs text-slate-500 mt-1 block">Base de cálculo del monto de la venta para otorgar puntos</span>
+                             <span className="text-xs text-slate-500 mt-1 block">Elige si querés dar puntos sobre el total del ticket o solo sobre el dinero real que abona el cliente.</span>
                            </div>
 
                            <div>
-                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Modo de Redondeo</label>
+                             <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Cómo redondear los puntos si la cuenta da con decimales?</label>
                              <select
                                className="w-full text-xs font-semibold py-2 px-3 border rounded-lg focus:ring-1 focus:ring-indigo-500 bg-white dark:bg-slate-800 dark:text-white"
                                value={loyaltyData.roundingMode}
                                onChange={e => setLoyaltyData({...loyaltyData, roundingMode: e.target.value as any})}
                              >
-                               <option value="FLOOR">Hacia abajo (Piso)</option>
-                               <option value="ROUND">Matemático tradicional (Próximo)</option>
-                               <option value="CEIL">Hacia arriba (Techo)</option>
+                               <option value="FLOOR">Redondear hacia abajo (ej: 15,8 puntos quedan en 15)</option>
+                               <option value="ROUND">Redondeo común (ej: 15,8 queda en 16 y 15,2 queda en 15)</option>
+                               <option value="CEIL">Redondear hacia arriba (ej: 15,2 puntos quedan en 16)</option>
                              </select>
-                             <span className="text-xs text-slate-500 mt-1 block">Cómo redondear los puntos calculados</span>
+                             <span className="text-xs text-slate-500 mt-1 block">Define qué hacer cuando el cálculo de puntos no da un número entero.</span>
                            </div>
                          </div>
 
@@ -2296,9 +2313,9 @@ export const Settings: React.FC = () => {
                                  onChange={e => setLoyaltyData({...loyaltyData, allowRedemption: e.target.checked})}
                                  className="w-4 h-4 rounded text-indigo-650"
                                />
-                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir canje / uso de puntos</span>
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir que los clientes usen sus puntos como descuento</span>
                              </label>
-                             <span className="text-xs text-slate-500 mt-1 block">Habilita a los cajeros en el POS a cobrar ventas usando puntos</span>
+                             <span className="text-xs text-slate-500 mt-1 block ml-6">Permite que el cajero aplique los puntos del cliente como descuento en el momento de cobrar.</span>
                            </div>
 
                            <div>
@@ -2309,23 +2326,26 @@ export const Settings: React.FC = () => {
                                  onChange={e => setLoyaltyData({...loyaltyData, accumulateOnPointsPaid: e.target.checked})}
                                  className="w-4 h-4 rounded text-indigo-650"
                                />
-                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Compras usando puntos generan puntos</span>
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">¿Las compras donde se usan puntos vuelven a regalar puntos?</span>
                              </label>
-                             <span className="text-xs text-slate-500 mt-1 block">Define si la porción pagada con puntos también genera nuevos puntos</span>
+                             <span className="text-xs text-slate-500 mt-1 block ml-6">Si está activado, el cliente ganará nuevos puntos aunque en esa misma compra haya usado puntos para pagar menos.</span>
                            </div>
                          </div>
 
                          {loyaltyData.allowRedemption && (
                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-4 border-t border-slate-100 dark:border-slate-800">
                              <div>
-                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Porcentaje máximo de descuento (%)</label>
+                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Límite máximo de descuento usando puntos (%)</label>
                                <input
                                  type="number"
                                  className="input-class"
                                  value={loyaltyData.maxRedemptionPercentage}
                                  onChange={e => setLoyaltyData({...loyaltyData, maxRedemptionPercentage: Number(e.target.value)})}
                                />
-                               <span className="text-xs text-slate-500 mt-1 block">Porcentaje máximo de la venta que se puede abonar con puntos (ej: 50%)</span>
+                               <span className="text-xs text-slate-500 mt-1 block">
+                                 Indica qué porcentaje del total de la compra se puede pagar usando puntos como máximo. <br/>
+                                 <strong className="text-slate-400">Ejemplo: Si fijás un máximo de 50%, en una compra de $10.000 el cliente podrá descontar hasta $5.000 con sus puntos.</strong>
+                                </span>
                              </div>
 
                              <div>
@@ -2336,9 +2356,9 @@ export const Settings: React.FC = () => {
                                    onChange={e => setLoyaltyData({...loyaltyData, allowPartialRedemption: e.target.checked})}
                                    className="w-4 h-4 rounded text-indigo-650"
                                  />
-                                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir canje parcial de saldo</span>
+                                 <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Permitir usar solo una parte de los puntos disponibles</span>
                                </label>
-                               <span className="text-xs text-slate-500 mt-1 block">Permite canjear menos puntos del máximo permitido para la venta</span>
+                               <span className="text-xs text-slate-500 mt-1 block ml-6">El cliente podrá usar solo algunos de sus puntos en lugar de gastar obligatoriamente todos los que tiene.</span>
                              </div>
                            </div>
                          )}
@@ -2352,21 +2372,21 @@ export const Settings: React.FC = () => {
                                  onChange={e => setLoyaltyData({...loyaltyData, expirePoints: e.target.checked})}
                                  className="w-4 h-4 rounded text-indigo-650"
                                />
-                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">Expirar puntos ganados</span>
+                               <span className="text-sm font-semibold text-slate-700 dark:text-slate-200">¿Los puntos tienen fecha de vencimiento?</span>
                              </label>
-                             <span className="text-xs text-slate-500 mt-1 block">Los puntos acumulados caducarán tras un período determinado</span>
+                             <span className="text-xs text-slate-500 mt-1 block ml-6">Si activás esta opción, los puntos que el cliente no use vencerán automáticamente después del tiempo que elijas.</span>
                            </div>
 
                            {loyaltyData.expirePoints && (
                              <div>
-                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">Meses de validez</label>
+                               <label className="text-[10px] font-bold text-slate-400 uppercase font-mono">¿Cuántos meses duran los puntos antes de vencer?</label>
                                <input
                                  type="number"
                                  className="input-class"
                                  value={loyaltyData.expirationMonths}
                                  onChange={e => setLoyaltyData({...loyaltyData, expirationMonths: Number(e.target.value)})}
                                />
-                               <span className="text-xs text-slate-500 mt-1 block">Cantidad de meses antes del vencimiento del lote (ej: 12)</span>
+                               <span className="text-xs text-slate-500 mt-1 block">Cantidad de meses que los puntos permanecen disponibles antes de caducar.</span>
                              </div>
                            )}
                          </div>
