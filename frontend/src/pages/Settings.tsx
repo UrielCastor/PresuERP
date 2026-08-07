@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardHeader, CardTitle, CardContent } from '../components/ui/Card';
 import { Input } from '../components/forms/Input';
@@ -270,21 +271,29 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
       setIsTierModalOpen(false);
       setEditingTierId(null);
+      swalSuccess('Regla Guardada', 'Regla de precio por cantidad guardada exitosamente.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al guardar la regla de precio por cantidad');
+      handleApiError(err, 'Error al Guardar Regla');
     } finally {
       setSavingTier(false);
     }
   };
 
   const handleDeleteTier = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta regla de precio por cantidad?')) return;
+    const confirmed = await swalConfirm(
+      '¿Eliminar Regla?',
+      '¿Estás seguro de eliminar esta regla de precio por cantidad?',
+      'Sí, eliminar',
+      'Cancelar'
+    );
+    if (!confirmed) return;
     try {
       await productPriceTierService.delete(id);
       await fetchPriceTiers();
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+      swalSuccess('Regla Eliminada', 'La regla fue eliminada correctamente.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al eliminar la regla');
+      handleApiError(err, 'Error al Eliminar Regla');
     }
   };
 
@@ -294,7 +303,7 @@ export const Settings: React.FC = () => {
       await fetchPriceTiers();
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
     } catch (err: any) {
-      alert('Error al cambiar el estado de la regla');
+      handleApiError(err, 'Error de Estado');
     }
   };
 
@@ -309,20 +318,28 @@ export const Settings: React.FC = () => {
       await fetchAdjustmentRules();
       setIsRuleModalOpen(false);
       setEditingRuleId(null);
+      swalSuccess('Regla Guardada', 'Regla de ajuste de pago guardada exitosamente.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al guardar la regla');
+      handleApiError(err, 'Error al Guardar Regla');
     } finally {
       setSavingRule(false);
     }
   };
 
   const handleDeleteRule = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta regla de ajuste?')) return;
+    const confirmed = await swalConfirm(
+      '¿Eliminar Regla de Ajuste?',
+      '¿Estás seguro de eliminar esta regla de ajuste?',
+      'Sí, eliminar',
+      'Cancelar'
+    );
+    if (!confirmed) return;
     try {
       await paymentAdjustmentRuleService.delete(id);
       await fetchAdjustmentRules();
+      swalSuccess('Regla Eliminada', 'La regla de ajuste fue eliminada.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al eliminar la regla');
+      handleApiError(err, 'Error al Eliminar Regla');
     }
   };
 
@@ -331,7 +348,7 @@ export const Settings: React.FC = () => {
       await paymentAdjustmentRuleService.update(rule.id, { active: !rule.active });
       await fetchAdjustmentRules();
     } catch (err: any) {
-      alert('Error al cambiar el estado de la regla');
+      handleApiError(err, 'Error de Estado');
     }
   };
 
@@ -399,21 +416,29 @@ export const Settings: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
       setIsPromoModalOpen(false);
       setEditingPromoId(null);
+      swalSuccess('Promoción Guardada', 'Promoción guardada exitosamente.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al guardar la promoción');
+      handleApiError(err, 'Error al Guardar Promoción');
     } finally {
       setSavingPromo(false);
     }
   };
 
   const handleDeletePromo = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar esta promoción?')) return;
+    const confirmed = await swalConfirm(
+      '¿Eliminar Promoción?',
+      '¿Estás seguro de eliminar esta promoción?',
+      'Sí, eliminar',
+      'Cancelar'
+    );
+    if (!confirmed) return;
     try {
       await promotionService.delete(id);
       await fetchPromotions();
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+      swalSuccess('Promoción Eliminada', 'Promoción eliminada correctamente.');
     } catch (err: any) {
-      alert(err.response?.data?.message || err.message || 'Error al eliminar la promoción');
+      handleApiError(err, 'Error al Eliminar Promoción');
     }
   };
 
@@ -423,7 +448,7 @@ export const Settings: React.FC = () => {
       await fetchPromotions();
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
     } catch (err: any) {
-      alert('Error al cambiar el estado de la promoción');
+      handleApiError(err, 'Error de Estado');
     }
   };
 
@@ -509,12 +534,12 @@ export const Settings: React.FC = () => {
   const handleCheckoutLicense = async (planId: string) => {
      const cycle = selectedCycles[planId];
      if (!cycle) {
-        alert('Seleccione un ciclo de facturación para este plan.');
+        swalWarning('Ciclo Requerido', 'Seleccione un ciclo de facturación para este plan.');
         return;
      }
 
      if (!subscription) {
-        alert('No se detectó un registro de suscripción asignado. Contacte soporte.');
+        swalWarning('Suscripción No Encontrada', 'No se detectó un registro de suscripción asignado. Contacte soporte.');
         return;
      }
 
@@ -528,12 +553,12 @@ export const Settings: React.FC = () => {
 
         if (data.success && data.data?.initPoint) {
            window.open(data.data.initPoint, '_blank');
-           alert('Se abrió la ventana de Mercado Pago. Realice el pago para activar los beneficios.');
+           swalSuccess('Pasarela de Pago Abierta', 'Se abrió la ventana de Mercado Pago. Realice el pago para activar los beneficios.');
         } else {
-           alert('Ocurrió un inconveniente al generar la preferencia de Mercado Pago.');
+           swalWarning('Inconveniente de Pago', 'Ocurrió un inconveniente al generar la preferencia de Mercado Pago.');
         }
      } catch (e: any) {
-        alert(e.response?.data?.message || 'Ocurrió un error al procesar la renovación.');
+        handleApiError(e, 'Error de Renovación');
      } finally {
         setPayingPlanPrice(null);
      }
@@ -1926,7 +1951,7 @@ export const Settings: React.FC = () => {
                                 size="sm"
                                 onClick={() => {
                                   navigator.clipboard.writeText('https://presuerp.duckdns.org/api/v1/business/integrations/mercado-pago/webhook');
-                                  alert('URL de Webhook copiada al portapapeles');
+                                  swalSuccess('Copiado', 'URL de Webhook copiada al portapapeles.');
                                 }}
                               >
                                 Copiar

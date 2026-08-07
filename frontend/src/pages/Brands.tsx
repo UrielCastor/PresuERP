@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -75,9 +76,10 @@ export const Brands: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['brands'] });
       setDeleteId(null);
+      swalSuccess('Marca Eliminada', 'La marca se ha eliminado correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'No se pudo eliminar la marca');
+      handleApiError(err, 'Error al Eliminar Marca');
       setDeleteId(null);
     },
   });

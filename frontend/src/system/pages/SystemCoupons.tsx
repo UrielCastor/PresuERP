@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalConfirm } from '../../utils/swal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { DataGrid } from '../../components/ui/DataGrid';
@@ -82,7 +83,13 @@ export const SystemCoupons: React.FC = () => {
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm('¿Confirma que desea eliminar este cupón promocional?')) return;
+    const confirmed = await swalConfirm(
+      '¿Eliminar Cupón?',
+      '¿Confirma que desea eliminar este cupón promocional?',
+      'Sí, eliminar',
+      'Cancelar'
+    );
+    if (!confirmed) return;
     try {
       await SystemService.deleteCoupon(id);
       setNotification({ type: 'success', message: 'Cupón eliminado correctamente.' });

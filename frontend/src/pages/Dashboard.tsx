@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { swalWarning } from '../utils/swal';
 import { useQuery } from '@tanstack/react-query';
 import { warehouseApi } from '../services/warehouse.service';
 import { Badge } from '../components/ui/Badge';
@@ -182,7 +183,7 @@ export const Dashboard: React.FC = () => {
               if (data.cash?.active) {
                 navigate('/pos');
               } else {
-                alert('No tienes una caja abierta. Debes abrir una sesión de caja antes de registrar ventas.');
+                swalWarning('Caja Requerida', 'No tienes una caja abierta. Debes abrir una sesión de caja antes de registrar ventas.');
                 navigate('/cash');
               }
             }}

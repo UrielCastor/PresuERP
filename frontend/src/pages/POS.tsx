@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalWarning, handleApiError } from '../utils/swal';
 import { getInitialWarehouseId } from '../utils/warehouse';
 import {
   Search,
@@ -517,7 +518,7 @@ const isKgProduct = (p: any) => {
       setOpeningBalanceInput('0');
       setOpeningNotesInput('');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al abrir caja'),
+    onError: (err: any) => handleApiError(err, 'Error al Abrir Caja'),
   });
 
   const { data: integrationsRes } = useQuery({
@@ -1017,7 +1018,7 @@ const isKgProduct = (p: any) => {
             setMpStatusState('FAILED');
           }
         } catch (err: any) {
-          alert(err.response?.data?.message || 'Error al generar QR de Mercado Pago');
+          handleApiError(err, 'Error Mercado Pago');
           setMpStatusState('FAILED');
         }
         return;
@@ -1040,7 +1041,7 @@ const isKgProduct = (p: any) => {
           .catch(err => console.error('Error fetching new points balance for toast:', err));
       }
 
-      alert(`¡Venta registrada exitosamente! Comprobante: ${data.documentNumber}`);
+      swalSuccess('Venta Registrada', `¡Venta registrada exitosamente!\nComprobante: ${data.documentNumber}`);
       clearCart();
       setSelectedCustomer(null);
       setIsCheckoutOpen(false);
@@ -1051,7 +1052,7 @@ const isKgProduct = (p: any) => {
       queryClient.invalidateQueries({ queryKey: ['cash'] });
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'Error al procesar la venta');
+      handleApiError(err, 'Error al Procesar Venta');
     },
   });
 
@@ -1059,7 +1060,7 @@ const isKgProduct = (p: any) => {
     if (cart.length === 0 || !selectedWarehouseId) return;
 
     if (!activeSession) {
-      alert('Debes tener una sesión de caja abierta para registrar una venta.');
+      swalWarning('Caja Requerida', 'Debes tener una sesión de caja abierta para registrar una venta.');
       return;
     }
 
@@ -1067,21 +1068,20 @@ const isKgProduct = (p: any) => {
 
     if (paymentMethod === 'CREDIT_ACCOUNT') {
       if (!selectedCustomer) {
-        alert('Debes seleccionar un cliente para realizar una venta a Cuenta Corriente.');
+        swalWarning('Cliente Requerido', 'Debes seleccionar un cliente para realizar una venta a Cuenta Corriente.');
         return;
       }
       if (!selectedCustomer.allowCreditAccount) {
-        alert(`El cliente "${selectedCustomer.name}" no tiene habilitada la Cuenta Corriente.`);
+        swalWarning('Cuenta Corriente Deshabilitada', `El cliente "${selectedCustomer.name}" no tiene habilitada la Cuenta Corriente.`);
         return;
       }
       const currentDebt = Number(selectedCustomer.currentDebt || 0);
       const creditLimit = Number(selectedCustomer.creditLimit || 0);
       if (currentDebt + finalTotalAmount > creditLimit) {
         const available = Math.max(0, creditLimit - currentDebt);
-        alert(
-          `El total de la venta ($${finalTotalAmount.toLocaleString(
-            'es-AR'
-          )}) supera el crédito disponible ($${available.toLocaleString('es-AR')}).`
+        swalWarning(
+          'Límite de Crédito Excedido',
+          `El total de la venta ($${finalTotalAmount.toLocaleString('es-AR')}) supera el crédito disponible ($${available.toLocaleString('es-AR')}).`
         );
         return;
       }

@@ -16,6 +16,7 @@ import {
   Tag,
 } from 'lucide-react';
 import { Customer, getCustomers, deleteCustomer } from '../../services/customer.service';
+import { swalSuccess, swalConfirm, handleApiError } from '../../utils/swal';
 import { CustomerFormModal } from './CustomerFormModal';
 import { CustomerDetailModal } from './CustomerDetailModal';
 import { Input, Select } from '../../components/ui';
@@ -89,12 +90,19 @@ export const Customers: React.FC = () => {
   };
 
   const handleDelete = async (customer: Customer) => {
-    if (window.confirm(`¿Seguro que deseas desactivar al cliente "${customer.name}"?`)) {
+    const confirmed = await swalConfirm(
+      '¿Desactivar Cliente?',
+      `¿Seguro que deseas desactivar al cliente "${customer.name}"?`,
+      'Sí, desactivar cliente',
+      'Cancelar'
+    );
+    if (confirmed) {
       try {
         await deleteCustomer(customer.id);
+        swalSuccess('Cliente Desactivado', `El cliente "${customer.name}" ha sido desactivado.`);
         loadCustomers(meta.page);
       } catch (err: any) {
-        alert(err.response?.data?.message || 'Error al desactivar el cliente');
+        handleApiError(err, 'Error al Desactivar Cliente');
       }
     }
   };

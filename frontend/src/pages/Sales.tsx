@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalConfirm, handleApiError } from '../utils/swal';
 import { useNavigate } from 'react-router-dom';
 import {
   Search,
@@ -197,9 +198,9 @@ export const Sales: React.FC = () => {
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['sales'] });
       if (selectedSale) setSelectedSale(res.data);
-      alert('Venta anulada exitosamente.');
+      swalSuccess('Venta Anulada', 'La transacción fue anulada. Se ha restituido el stock y reajustado los fondos.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al anular la venta'),
+    onError: (err: any) => handleApiError(err, 'Error al Anular Venta'),
   });
 
   const kpiSales = (kpiSalesData?.data || []) as Sale[];
@@ -226,7 +227,7 @@ export const Sales: React.FC = () => {
       setSelectedSale(full);
       setIsDetailOpen(true);
     } catch (error) {
-      alert('Error al obtener el detalle de la venta');
+      handleApiError(error, 'Error al Obtener Detalle');
     }
   };
 
@@ -957,13 +958,15 @@ export const Sales: React.FC = () => {
                                 {canCancel && sale.status === 'COMPLETED' && (
                                   <button
                                     type="button"
-                                    onClick={() => {
+                                    onClick={async () => {
                                       setOpenActionMenuId(null);
-                                      if (
-                                        window.confirm(
-                                          `¿Anular venta ${sale.documentNumber}? Reingresará stock y fondos.`
-                                        )
-                                      ) {
+                                      const confirmed = await swalConfirm(
+                                        '¿Anular Venta?',
+                                        `¿Anular venta ${sale.documentNumber}? Se reingresará el stock y los fondos correspondientes.`,
+                                        'Sí, anular venta',
+                                        'Cancelar'
+                                      );
+                                      if (confirmed) {
                                         cancelMutation.mutate(sale.id);
                                       }
                                     }}
@@ -1158,12 +1161,14 @@ export const Sales: React.FC = () => {
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => {
-                      if (
-                        window.confirm(
-                          `¿Anular venta ${selectedSale.documentNumber}? Se reingresará el stock y los fondos.`
-                        )
-                      ) {
+                    onClick={async () => {
+                      const confirmed = await swalConfirm(
+                        `¿Anular venta ${selectedSale.documentNumber}?`,
+                        'Se reingresará el stock y se ajustarán los fondos correspondientes.',
+                        'Sí, anular transacción',
+                        'Cancelar'
+                      );
+                      if (confirmed) {
                         cancelMutation.mutate(selectedSale.id);
                       }
                     }}

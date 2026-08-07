@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
+import { swalConfirm } from '../../utils/swal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { DataGrid } from '../../components/ui/DataGrid';
@@ -301,7 +302,13 @@ export const SystemPlans: React.FC = () => {
       return;
     }
 
-    if (!confirm(`¿Confirma que desea eliminar definitivamente el plan "${plan.name}"?`)) return;
+    const confirmed = await swalConfirm(
+      '¿Eliminar Plan SaaS?',
+      `¿Confirma que desea eliminar definitivamente el plan "${plan.name}"? Esta acción no se puede deshacer.`,
+      'Sí, eliminar plan',
+      'Cancelar'
+    );
+    if (!confirmed) return;
 
     try {
       setIsSubmitting(true);

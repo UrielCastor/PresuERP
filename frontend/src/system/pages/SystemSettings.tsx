@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalSuccess, handleApiError } from '../../utils/swal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import api from '@/services/api';
@@ -27,9 +28,9 @@ export const SystemSettings: React.FC = () => {
     try {
       setLoading(true);
       await api.post('/system/payments/config', { ...config, provider: 'MERCADO_PAGO' });
-      alert('Configuración guardada exitosamente.');
+      swalSuccess('Configuración Guardada', 'Configuración de pasarela guardada exitosamente.');
     } catch (e) {
-      alert('Error al guardar configuración');
+      handleApiError(e, 'Error al Guardar Configuración');
     } finally {
       setLoading(false);
     }

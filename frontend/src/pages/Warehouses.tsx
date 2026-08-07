@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -120,9 +121,10 @@ export const Warehouses: React.FC = () => {
       setDeleteTarget(null);
       setDeleteReason('');
       setDeleteResult(data);
+      swalSuccess('Depósito Eliminado', 'El depósito ha sido eliminado correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'No se pudo eliminar el depósito');
+      handleApiError(err, 'Error al Eliminar');
       setDeleteTarget(null);
       setDeleteReason('');
     },

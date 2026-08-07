@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { Card } from '../components/ui/Card';
 import { Tabs } from '../components/ui/Tabs';
@@ -427,8 +428,9 @@ export const FiscalSettings: React.FC = () => {
     try {
       const updated = await FiscalService.updateConfig(config);
       setConfig(prev => ({ ...prev, ...updated }));
+      swalSuccess('Configuración Fiscal Guardada', 'Se han actualizado los parámetros fiscales de la empresa.');
     } catch (e: any) {
-      alert(`Error al guardar: ${e.message}`);
+      handleApiError(e, 'Error al Guardar Configuración');
     } finally {
       setSaving(false);
     }
@@ -437,15 +439,22 @@ export const FiscalSettings: React.FC = () => {
   const handleToggleEnabled = async () => {
     const newEnabled = !config.enabled;
     if (newEnabled && !config.certificateName) {
-      if (!confirm('Activar facturación sin certificado ARCA registrado. Las facturas quedarán en estado PENDING hasta cargar el certificado. ¿Continuar?')) return;
+      const confirmed = await swalConfirm(
+        'Activar Sin Certificado',
+        'Activar facturación sin certificado ARCA registrado provocará que las facturas queden en estado PENDING hasta cargar el certificado. ¿Continuar?',
+        'Sí, continuar',
+        'Cancelar'
+      );
+      if (!confirmed) return;
     }
     const newConfig = { ...config, enabled: newEnabled };
     setConfig(newConfig);
     try {
       await FiscalService.updateConfig({ enabled: newEnabled });
+      swalSuccess('Estado Fiscal Actualizado', `La facturación electrónica fue ${newEnabled ? 'habilitada' : 'deshabilitada'}.`);
     } catch (e: any) {
       setConfig(config);
-      alert(`Error: ${e.message}`);
+      handleApiError(e, 'Error al Cambiar Estado Fiscal');
     }
   };
 
@@ -471,7 +480,10 @@ export const FiscalSettings: React.FC = () => {
   };
 
   const handleUploadCertificate = async () => {
-    if (!pendingCertContent) { alert('Seleccione un archivo de certificado (.crt o .pem).'); return; }
+    if (!pendingCertContent) {
+      swalWarning('Archivo Requerido', 'Seleccione un archivo de certificado (.crt o .pem).');
+      return;
+    }
     try {
       setUploadingCert(true);
       const result = await FiscalService.uploadCertificate({
@@ -480,20 +492,22 @@ export const FiscalSettings: React.FC = () => {
         privateKeyContent: pendingKeyContent || undefined,
       });
       const daysMsg = result.daysUntilExpiration != null ? ` — vence en ${result.daysUntilExpiration} días` : '';
-      alert(`✅ Certificado "${result.certificateName}" registrado correctamente.${daysMsg}`);
+      swalSuccess('Certificado Registrado', `Certificado "${result.certificateName}" registrado correctamente.${daysMsg}`);
       setPendingCertContent(''); setPendingKeyContent(''); setPendingCertName('');
       loadFiscalData();
-      // Limpiar diagnóstico previo para que vuelvan a probar
       setDiagnostic(null);
     } catch (err: any) {
-      alert(`❌ Error: ${err.response?.data?.message || err.message}`);
+      handleApiError(err, 'Error al Subir Certificado');
     } finally {
       setUploadingCert(false);
     }
   };
 
   const handleCreatePos = async () => {
-    if (!newPosNumber || newPosNumber < 1) { alert('Ingrese un número de punto de venta válido.'); return; }
+    if (!newPosNumber || newPosNumber < 1) {
+      swalWarning('Punto de Venta Inválido', 'Ingrese un número de punto de venta válido.');
+      return;
+    }
     try {
       await FiscalService.createPointOfSale({
         number: Number(newPosNumber),
@@ -501,23 +515,41 @@ export const FiscalSettings: React.FC = () => {
         active: true,
       });
       setIsPosModalOpen(false); setNewPosDescription('');
+      swalSuccess('Punto de Venta Creado', 'El punto de venta fue registrado exitosamente.');
       loadFiscalData();
-    } catch (e: any) { alert(`Error al crear punto de venta: ${e.message}`); }
+    } catch (e: any) {
+      handleApiError(e, 'Error al Crear Punto de Venta');
+    }
   };
 
   const handleDeletePos = async (id: string) => {
-    if (!confirm('¿Desea eliminar este punto de venta fiscal?')) return;
-    try { await FiscalService.deletePointOfSale(id); loadFiscalData(); }
-    catch (e: any) { alert(`Error al eliminar: ${e.message}`); }
+    const confirmed = await swalConfirm(
+      '¿Eliminar Punto de Venta?',
+      '¿Desea eliminar este punto de venta fiscal?',
+      'Sí, eliminar',
+      'Cancelar'
+    );
+    if (!confirmed) return;
+    try {
+      await FiscalService.deletePointOfSale(id);
+      swalSuccess('Punto de Venta Eliminado', 'El punto de venta fue eliminado.');
+      loadFiscalData();
+    } catch (e: any) {
+      handleApiError(e, 'Error al Eliminar Punto de Venta');
+    }
   };
 
   const handleRequestCaeManual = async (invId: string) => {
     try {
       setSaving(true);
       await FiscalService.requestCaeForPendingInvoice(invId);
+      swalSuccess('CAE Solicitado', 'La solicitud de CAE se envió a AFIP/ARCA correctamente.');
       loadFiscalData();
-    } catch (e: any) { alert(`Error al solicitar CAE: ${e.message}`); }
-    finally { setSaving(false); }
+    } catch (e: any) {
+      handleApiError(e, 'Error al Solicitar CAE');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleEmitCreditNote = async () => {
@@ -526,9 +558,11 @@ export const FiscalSettings: React.FC = () => {
       setSaving(true);
       await FiscalService.createCreditNote(selectedInvoice.id, creditNoteReason);
       setIsCreditNoteModalOpen(false);
+      swalSuccess('Nota de Crédito Emitida', 'La nota de crédito fue generada correctamente ante ARCA.');
       loadFiscalData();
-    } catch (e: any) { alert(`Error al emitir Nota de Crédito: ${e.message}`); }
-    finally { setSaving(false); }
+    } catch (e: any) {
+      handleApiError(e, 'Error al Emitir Nota de Crédito');
+    } finally { setSaving(false); }
   };
 
   const getVoucherBadge = (type: string) => {

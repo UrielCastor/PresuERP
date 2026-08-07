@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalSuccess, swalConfirm, handleApiError } from '../../utils/swal';
 import { useSearchParams } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -53,15 +54,29 @@ export const SystemBusinesses: React.FC = () => {
   };
 
   const suspendBusiness = async (id: string, name: string) => {
-    if (confirm(`¿Está seguro de suspender a ${name}? Sus usuarios quedarán sin acceso.`)) {
+    const confirmed = await swalConfirm(
+      '¿Suspender Empresa?',
+      `¿Está seguro de suspender a ${name}? Sus usuarios quedarán sin acceso.`,
+      'Sí, suspender',
+      'Cancelar'
+    );
+    if (confirmed) {
       await BusinessService.suspend(id);
+      swalSuccess('Empresa Suspendida', `La empresa ${name} ha sido suspendida.`);
       fetchData();
     }
   };
 
   const activateBusiness = async (id: string, name: string) => {
-    if (confirm(`¿Activar la empresa ${name}?`)) {
+    const confirmed = await swalConfirm(
+      '¿Activar Empresa?',
+      `¿Activar la empresa ${name}?`,
+      'Sí, activar',
+      'Cancelar'
+    );
+    if (confirmed) {
       await BusinessService.activate(id);
+      swalSuccess('Empresa Activada', `La empresa ${name} ha sido activada.`);
       fetchData();
     }
   };
@@ -89,23 +104,29 @@ export const SystemBusinesses: React.FC = () => {
       setDeleting(true);
       await BusinessService.delete(businessToDelete.id);
       setIsDeleteModalOpen(false);
+      swalSuccess('Empresa Eliminada', 'Se realizó el soft delete de la empresa.');
       fetchData();
     } catch (e) {
-      console.error(e);
-      alert('Error al realizar soft delete de la empresa.');
+      handleApiError(e, 'Error al Eliminar');
     } finally {
       setDeleting(false);
     }
   };
 
   const restoreBusiness = async (id: string, name: string) => {
-    if (confirm(`¿Está seguro de RESTAURAR la empresa ${name}? Esto reactivará el acceso para todos sus usuarios.`)) {
+    const confirmed = await swalConfirm(
+      '¿Restaurar Empresa?',
+      `¿Está seguro de RESTAURAR la empresa ${name}? Esto reactivará el acceso para todos sus usuarios.`,
+      'Sí, restaurar',
+      'Cancelar'
+    );
+    if (confirmed) {
       try {
         await BusinessService.restore(id);
+        swalSuccess('Empresa Restaurada', `La empresa ${name} fue restaurada exitosamente.`);
         fetchData();
       } catch (e) {
-        console.error(e);
-        alert('Error al restaurar la empresa.');
+        handleApiError(e, 'Error al Restaurar');
       }
     }
   };
@@ -117,10 +138,10 @@ export const SystemBusinesses: React.FC = () => {
         if (!planName) return;
         await SystemService.changeBusinessPlan(selectedBusiness.id, planName);
         setIsPlanModalOpen(false);
+        swalSuccess('Plan Cambiado', `El plan de la empresa fue actualizado a "${planName}".`);
         fetchData();
     } catch (e) {
-        console.error(e);
-        alert('Error actualizando plan');
+        handleApiError(e, 'Error al Cambiar Plan');
     }
   };
 

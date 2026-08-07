@@ -3,6 +3,7 @@ import { PageHeader } from '../components/ui/PageHeader';
 import { Card, CardContent } from '../components/ui/Card';
 import { BusinessService, BusinessData, UsageMetrics } from '../services/business.service';
 import { SettingsService } from '../services/settings.service';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { LogoUploadModal } from '../components/ui/LogoUploadModal';
 import { Building2, Save, MapPin, Mail, Phone, Users, Package, Users2, Truck, Warehouse, Banknote, ShoppingCart, ShoppingBag, Palette, Image as ImageIcon } from 'lucide-react';
 
@@ -44,9 +45,10 @@ export const CompanyProfile: React.FC = () => {
     try {
       setSaving(true);
       await BusinessService.updateCurrent(business);
-      alert('Información guardada exitosamente.');
+      swalSuccess('Perfil Guardado', 'Información comercial guardada exitosamente.');
     } catch (error) {
       console.error('Error saving business info:', error);
+      handleApiError(error, 'Error al Guardar');
     } finally {
       setSaving(false);
     }

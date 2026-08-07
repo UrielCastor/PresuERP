@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { swalInfo } from '../utils/swal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { ReportToolbar } from '../components/ui/ReportToolbar';
 import { ReportService } from '../services/report.service';
@@ -107,7 +108,7 @@ export const Audit: React.FC = () => {
   };
 
   const handleExport = () => {
-    alert("Exportando registros de auditoría...");
+    swalInfo('Exportando Registros', 'Generando archivo de auditoría del sistema.');
   };
 
   const renderBadgeForHumanEvent = (humanEvent: any) => {

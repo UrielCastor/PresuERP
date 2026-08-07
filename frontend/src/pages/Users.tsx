@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -141,10 +142,10 @@ export const Users: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
       setIsModalOpen(false);
       setEditingUser(null);
-      showTemporarySuccess('Usuario actualizado exitosamente');
+      swalSuccess('Usuario Actualizado', 'Usuario actualizado exitosamente.');
     },
     onError: (err: any) => {
-      setSubmitError(err.response?.data?.message || 'Error al actualizar el usuario');
+      handleApiError(err, 'Error al actualizar el usuario');
     },
   });
 
@@ -153,10 +154,10 @@ export const Users: React.FC = () => {
       UserService.update(id, { isActive }),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      showTemporarySuccess('Estado del usuario actualizado');
+      swalSuccess('Estado Actualizado', 'Estado del usuario actualizado correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'Error al actualizar estado del usuario');
+      handleApiError(err, 'Error de Usuario');
     },
   });
 
@@ -164,10 +165,10 @@ export const Users: React.FC = () => {
     mutationFn: (id: string) => UserService.delete(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['users'] });
-      showTemporarySuccess('Usuario eliminado exitosamente');
+      swalSuccess('Usuario Eliminado', 'El usuario ha sido eliminado exitosamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'Error al eliminar el usuario');
+      handleApiError(err, 'Error al Eliminar');
     },
   });
 
@@ -200,7 +201,7 @@ export const Users: React.FC = () => {
 
   const handleOpenCreate = () => {
     if (!hasPermission('users:write')) {
-      alert('No tienes permisos para crear usuarios.');
+      swalWarning('Sin Permisos', 'No tienes permisos para crear usuarios.');
       return;
     }
     setEditingUser(null);
@@ -222,7 +223,7 @@ export const Users: React.FC = () => {
 
   const handleOpenEdit = (user: User) => {
     if (!hasPermission('users:write')) {
-      alert('No tienes permisos para modificar usuarios.');
+      swalWarning('Sin Permisos', 'No tienes permisos para modificar usuarios.');
       return;
     }
     setEditingUser(user);
@@ -248,23 +249,29 @@ export const Users: React.FC = () => {
     setIsModalOpen(true);
   };
 
-  const handleDelete = (id: string, name: string) => {
+  const handleDelete = async (id: string, name: string) => {
     if (!hasPermission('users:delete')) {
-      alert('No tienes permisos para eliminar usuarios.');
+      swalWarning('Sin Permisos', 'No tienes permisos para eliminar usuarios.');
       return;
     }
     if (id === currentUser?.id) {
-      alert('No puedes eliminar tu propio usuario.');
+      swalWarning('Acción No Permitida', 'No puedes eliminar tu propio usuario.');
       return;
     }
-    if (window.confirm(`¿Está seguro que desea eliminar este usuario? (${name})`)) {
+    const confirmed = await swalConfirm(
+      '¿Eliminar Usuario?',
+      `¿Está seguro que desea eliminar al usuario ${name}? Esta acción revocará sus accesos de inmediato.`,
+      'Sí, eliminar usuario',
+      'Cancelar'
+    );
+    if (confirmed) {
       deleteUserMutation.mutate(id);
     }
   };
 
   const handleToggleActive = (user: User) => {
     if (!hasPermission('users:write')) {
-      alert('No tienes permisos para modificar usuarios.');
+      swalWarning('Sin Permisos', 'No tienes permisos para modificar usuarios.');
       return;
     }
     toggleStatusMutation.mutate({ id: user.id, isActive: !user.isActive });

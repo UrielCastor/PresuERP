@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalSuccess, swalConfirm, swalPrompt, swalInfo, handleApiError } from '../../utils/swal';
 import { useNavigate } from 'react-router-dom';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
@@ -113,42 +114,51 @@ export const SystemUsers: React.FC = () => {
 
   const toggleStatus = async (id: string, currentActive: boolean, isDeleted?: boolean) => {
     const actionLabel = isDeleted ? 'RESTAURAR' : (currentActive ? 'SUSPENDER' : 'ACTIVAR');
-    if (confirm(`¿Está seguro de que desea ${actionLabel} a este usuario?`)) {
+    const confirmed = await swalConfirm(
+      `¿${actionLabel} Usuario?`,
+      `¿Está seguro de que desea ${actionLabel} a este usuario del sistema SaaS?`,
+      `Sí, ${actionLabel.toLowerCase()}`,
+      'Cancelar'
+    );
+    if (confirmed) {
       try {
         await SystemService.updateUserStatus(id, !currentActive);
         
-        // Refresh details if open
         if (isDetailsOpen && selectedUserId === id) {
           const data = await SystemService.getUserDetails(id);
           setDetailsData(data);
         }
         
-        // Refresh list with current filters
         await fetchUsers();
+        swalSuccess('Estado Actualizado', `Usuario ${actionLabel.toLowerCase()}do correctamente.`);
       } catch (error: any) {
-        alert(error.response?.data?.message || 'Error al actualizar el estado del usuario');
+        handleApiError(error, 'Error de Estado');
       }
     }
   };
 
   const resetPasswordFuture = () => {
-    alert('Esta acción estará disponible en la próxima versión integrando un servidor SMTP para el envío de correos.');
+    swalInfo('Próximamente', 'Esta acción estará disponible en la próxima versión integrando un servidor SMTP para el envío de correos.');
   };
 
   const handleDeleteUser = async (id: string, name: string) => {
-    const confirmDelete = confirm(`¿Está seguro de que desea eliminar definitivamente al usuario "${name}"? Esta acción no se puede deshacer.`);
+    const confirmDelete = await swalConfirm(
+      '¿Eliminar Usuario?',
+      `¿Está seguro de que desea eliminar definitivamente al usuario "${name}"? Esta acción no se puede deshacer.`,
+      'Sí, eliminar usuario',
+      'Cancelar'
+    );
     if (confirmDelete) {
-      const reasonVal = prompt('Ingrese el motivo de la eliminación (opcional):');
-      if (reasonVal === null) return; // User clicked 'Cancel' on prompt
+      const reasonVal = await swalPrompt('Motivo de Eliminación', 'Ingrese el motivo de la eliminación (opcional):');
+      if (reasonVal === null) return;
 
       try {
         await SystemService.deleteUser(id, reasonVal.trim() || undefined);
-        alert('Usuario eliminado exitosamente.');
+        swalSuccess('Usuario Eliminado', 'El usuario del sistema fue eliminado exitosamente.');
         setIsDetailsOpen(false);
         fetchUsers();
       } catch (error: any) {
-        const errorMsg = error.response?.data?.message || 'Error al eliminar el usuario';
-        alert(errorMsg);
+        handleApiError(error, 'Error al Eliminar Usuario');
       }
     }
   };

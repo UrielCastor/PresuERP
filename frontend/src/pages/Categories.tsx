@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -92,9 +93,10 @@ export const Categories: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['categories'] });
       setDeleteTarget(null);
       setDeleteReason('');
+      swalSuccess('Categoría Eliminada', 'La categoría ha sido eliminada correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'No se pudo eliminar la categoría');
+      handleApiError(err, 'Error al Eliminar');
       setDeleteTarget(null);
       setDeleteReason('');
     },

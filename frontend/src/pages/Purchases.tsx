@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalWarning, swalInfo, swalConfirm, handleApiError } from '../utils/swal';
 import { useForm, useFieldArray } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -235,7 +236,7 @@ export const Purchases: React.FC = () => {
   const selectProduct = (prod: any) => {
     const isAdded = watchedItems.some(i => i.productId === prod.id);
     if (isAdded) {
-      alert('Este producto ya fue agregado a la compra.');
+      swalWarning('Producto Ya Agregado', 'Este producto ya se encuentra en el detalle de la compra.');
       return;
     }
     const cost = Number(prod.purchasePrice) || 0;
@@ -280,7 +281,7 @@ export const Purchases: React.FC = () => {
       if (targetProduct) {
         selectProduct(targetProduct);
       } else {
-        alert('Producto no encontrado para el proveedor seleccionado');
+        swalWarning('Producto No Encontrado', 'Producto no encontrado para el proveedor seleccionado');
       }
     } else if (e.key === 'Escape') {
       setIsOpen(false);
@@ -306,12 +307,12 @@ export const Purchases: React.FC = () => {
 
   const createMutation = useMutation({
     mutationFn: purchaseApi.create,
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchases'] }); handleCloseForm(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchases'] }); handleCloseForm(); swalSuccess('Compra Registrada', 'La orden de compra ha sido creada con éxito.'); },
     onError: (err: any) => setApiError(err.response?.data?.message || 'Error al crear la orden de compra'),
   });
   const updateMutation = useMutation({
     mutationFn: ({ id, data }: { id: string; data: any }) => purchaseApi.update(id, data),
-    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchases'] }); handleCloseForm(); },
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ['purchases'] }); handleCloseForm(); swalSuccess('Compra Actualizada', 'Los cambios en la orden de compra han sido guardados.'); },
     onError: (err: any) => setApiError(err.response?.data?.message || 'Error al actualizar la compra'),
   });
   const submitForApprovalMutation = useMutation({
@@ -319,36 +320,36 @@ export const Purchases: React.FC = () => {
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchaseDetail', selectedPurchaseId] });
-      alert('Compra enviada a aprobación con éxito.');
+      swalSuccess('Enviada a Aprobación', 'La orden de compra ha sido enviada a aprobación.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al enviar a aprobación'),
+    onError: (err: any) => handleApiError(err, 'Error al Enviar a Aprobación'),
   });
   const rejectMutation = useMutation({
     mutationFn: purchaseApi.reject,
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchaseDetail', selectedPurchaseId] });
-      alert('Compra devuelta a borrador.');
+      swalInfo('Devuelta a Borrador', 'La compra ha sido devuelta a estado Borrador.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al rechazar compra'),
+    onError: (err: any) => handleApiError(err, 'Error al Rechazar Compra'),
   });
   const approveMutation = useMutation({
     mutationFn: purchaseApi.approve,
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchaseDetail', selectedPurchaseId] });
-      alert('Compra aprobada con éxito. Pendiente de recibir mercadería.');
+      swalSuccess('Compra Aprobada', 'La compra fue aprobada. Mercadería pendiente de recepción.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al aprobar'),
+    onError: (err: any) => handleApiError(err, 'Error al Aprobar Compra'),
   });
   const receiveMutation = useMutation({
     mutationFn: purchaseApi.receive,
     onSuccess: (res: any) => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchaseDetail', selectedPurchaseId] });
-      alert('Mercadería recibida con éxito. Stock ingresado al almacén.');
+      swalSuccess('Mercadería Recibida', 'Stock ingresado correctamente al depósito.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al recibir mercadería'),
+    onError: (err: any) => handleApiError(err, 'Error al Recibir Mercadería'),
   });
   const cancelMutation = useMutation({
     mutationFn: purchaseApi.cancel,
@@ -356,9 +357,9 @@ export const Purchases: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['purchases'] });
       queryClient.invalidateQueries({ queryKey: ['purchaseDetail', selectedPurchaseId] });
       setCancelTarget(null);
-      alert('Compra cancelada con éxito.');
+      swalSuccess('Compra Cancelada', 'La orden de compra ha sido cancelada.');
     },
-    onError: (err: any) => { alert(err.response?.data?.message || 'Error al cancelar'); setCancelTarget(null); },
+    onError: (err: any) => { handleApiError(err, 'Error al Cancelar'); setCancelTarget(null); },
   });
 
   const handleOpenCreateForm = () => {
@@ -378,7 +379,7 @@ export const Purchases: React.FC = () => {
     try {
       const full = await purchaseApi.getOne(purchase.id);
       if (full.status !== 'DRAFT') {
-        alert('La compra ya no admite modificaciones.');
+        swalWarning('Sin Modificaciones', 'La orden de compra ya no admite modificaciones.');
         return;
       }
       setEditingPurchase(full);
@@ -402,7 +403,7 @@ export const Purchases: React.FC = () => {
       });
       setIsFormOpen(true);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Error al cargar los detalles de la compra.');
+      handleApiError(err, 'Error al Cargar Detalle');
     } finally {
       setIsLoadingDetail(false);
     }
@@ -465,13 +466,13 @@ export const Purchases: React.FC = () => {
   };
 
   const handleAddItem = () => {
-    if (!selectedProductToAdd) { alert('Selecciona un producto'); return; }
+    if (!selectedProductToAdd) { swalWarning('Producto Requerido', 'Selecciona un producto'); return; }
     const numQty = Number(qtyToAdd) || 1;
     const numCost = Number(costToAdd) || 0;
     const numDisc = Number(discToAdd) || 0;
-    if (numQty <= 0) { alert('Cantidad debe ser > 0'); return; }
+    if (numQty <= 0) { swalWarning('Cantidad Inválida', 'La cantidad debe ser mayor a 0'); return; }
     if (fields.findIndex(f => f.productId === selectedProductToAdd) > -1) {
-      alert('Este producto ya fue agregado. Modifica su cantidad en la lista.'); return;
+      swalWarning('Producto Ya Agregado', 'Este producto ya fue agregado. Modifica su cantidad en la lista.'); return;
     }
     append({ productId: selectedProductToAdd, quantity: numQty, unitCost: numCost, discount: numDisc });
     setSelectedProductToAdd('');
@@ -782,8 +783,14 @@ export const Purchases: React.FC = () => {
                               {canUpdate && <button onClick={() => handleOpenEditForm(p)} title="Editar" className="p-1 px-2 text-yellow-600 bg-yellow-50 dark:bg-yellow-950/30 rounded"><Edit2 className="h-4 w-4" /></button>}
                               {canUpdate && (
                                 <button
-                                  onClick={() => {
-                                    if (window.confirm(`¿Enviar a aprobación la compra ${p.purchaseNumber}?`)) {
+                                  onClick={async () => {
+                                    const confirmed = await swalConfirm(
+                                      '¿Enviar a Aprobación?',
+                                      `¿Enviar a aprobación la compra ${p.purchaseNumber}?`,
+                                      'Sí, enviar',
+                                      'Cancelar'
+                                    );
+                                    if (confirmed) {
                                       submitForApprovalMutation.mutate(p.id);
                                     }
                                   }}
@@ -798,8 +805,14 @@ export const Purchases: React.FC = () => {
 
                           {p.status === 'PENDIENTE_APROBACION' && canApprove && (
                             <button
-                              onClick={() => {
-                                if (window.confirm(`¿Aprobar orden de compra ${p.purchaseNumber}?`)) {
+                              onClick={async () => {
+                                const confirmed = await swalConfirm(
+                                  '¿Aprobar Orden?',
+                                  `¿Aprobar orden de compra ${p.purchaseNumber}?`,
+                                  'Sí, aprobar',
+                                  'Cancelar'
+                                );
+                                if (confirmed) {
                                   approveMutation.mutate(p.id);
                                 }
                               }}
@@ -812,8 +825,14 @@ export const Purchases: React.FC = () => {
 
                           {p.status === 'APPROVED' && canUpdate && (
                             <button
-                              onClick={() => {
-                                if (window.confirm(`¿Confirmar recepción e ingreso de mercadería para la compra ${p.purchaseNumber}?`)) {
+                              onClick={async () => {
+                                const confirmed = await swalConfirm(
+                                  '¿Recibir Mercadería?',
+                                  `¿Confirmar recepción e ingreso de mercadería para la compra ${p.purchaseNumber}?`,
+                                  'Sí, recibir',
+                                  'Cancelar'
+                                );
+                                if (confirmed) {
                                   receiveMutation.mutate(p.id);
                                 }
                               }}
@@ -874,17 +893,19 @@ export const Purchases: React.FC = () => {
                   <label className={labelCls}>Proveedor *</label>
                   <select
                     value={watchedSupplierId}
-                    onChange={(e) => {
+                    onChange={async (e) => {
                       const newSupplierId = e.target.value;
                       if (watchedItems.length > 0) {
-                        const confirmChange = window.confirm(
-                          "El cambio de proveedor eliminará los productos incompatibles de la compra. ¿Desea continuar?"
+                        const confirmChange = await swalConfirm(
+                          '¿Cambiar Proveedor?',
+                          'El cambio de proveedor eliminará los productos incompatibles de la compra. ¿Desea continuar?',
+                          'Sí, cambiar proveedor',
+                          'Cancelar'
                         );
                         if (confirmChange) {
                           setValue('supplierId', newSupplierId);
                           setValue('items', []);
                         } else {
-                          // No hacemos nada para retener el valor en el input
                           setValue('supplierId', watchedSupplierId);
                         }
                       } else {
@@ -1713,8 +1734,14 @@ export const Purchases: React.FC = () => {
                         )}
                         {canUpdate && (
                           <Button
-                            onClick={() => {
-                              if (window.confirm(`¿Enviar a aprobación la compra ${detailPurchase.purchaseNumber}?`)) {
+                            onClick={async () => {
+                              const confirmed = await swalConfirm(
+                                '¿Enviar a Aprobación?',
+                                `¿Enviar a aprobación la compra ${detailPurchase.purchaseNumber}?`,
+                                'Sí, enviar',
+                                'Cancelar'
+                              );
+                              if (confirmed) {
                                 submitForApprovalMutation.mutate(detailPurchase.id);
                                 handleCloseDetail();
                               }
@@ -1744,8 +1771,14 @@ export const Purchases: React.FC = () => {
                       <>
                         {canApprove && (
                           <Button
-                            onClick={() => {
-                              if (window.confirm(`¿Aprobar la compra ${detailPurchase.purchaseNumber}?`)) {
+                            onClick={async () => {
+                              const confirmed = await swalConfirm(
+                                '¿Aprobar Compra?',
+                                `¿Aprobar la compra ${detailPurchase.purchaseNumber}?`,
+                                'Sí, aprobar',
+                                'Cancelar'
+                              );
+                              if (confirmed) {
                                 approveMutation.mutate(detailPurchase.id);
                                 handleCloseDetail();
                               }
@@ -1757,8 +1790,14 @@ export const Purchases: React.FC = () => {
                         )}
                         {canApprove && (
                           <Button
-                            onClick={() => {
-                              if (window.confirm(`¿Rechazar y devolver a Borrador la compra ${detailPurchase.purchaseNumber}?`)) {
+                            onClick={async () => {
+                              const confirmed = await swalConfirm(
+                                '¿Rechazar Compra?',
+                                `¿Rechazar y devolver a Borrador la compra ${detailPurchase.purchaseNumber}?`,
+                                'Sí, rechazar',
+                                'Cancelar'
+                              );
+                              if (confirmed) {
                                 rejectMutation.mutate(detailPurchase.id);
                                 handleCloseDetail();
                               }
@@ -1789,8 +1828,14 @@ export const Purchases: React.FC = () => {
                       <>
                         {canApprove && (
                           <Button
-                            onClick={() => {
-                              if (window.confirm(`¿Confirmar recepción de mercadería para la compra ${detailPurchase.purchaseNumber}?`)) {
+                            onClick={async () => {
+                              const confirmed = await swalConfirm(
+                                '¿Confirmar Recepción?',
+                                `¿Confirmar recepción de mercadería para la compra ${detailPurchase.purchaseNumber}?`,
+                                'Sí, recibir mercadería',
+                                'Cancelar'
+                              );
+                              if (confirmed) {
                                 receiveMutation.mutate(detailPurchase.id);
                                 handleCloseDetail();
                               }

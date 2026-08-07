@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalSuccess, swalConfirm, swalWarning, handleApiError } from '../../utils/swal';
 import { PageHeader } from '../../components/ui/PageHeader';
 import { Card, CardContent } from '../../components/ui/Card';
 import { Modal } from '../../components/ui/Modal';
@@ -57,24 +58,38 @@ export const SystemSubscriptions: React.FC = () => {
   };
 
   const cancelSubscription = async (id: string, businessName: string) => {
-     if (confirm(`¿Está seguro de CANCELAR la suscripción de ${businessName}?`)) {
+     const confirmed = await swalConfirm(
+       '¿Cancelar Suscripción?',
+       `¿Está seguro de CANCELAR la suscripción de ${businessName}?`,
+       'Sí, cancelar suscripción',
+       'Volver'
+     );
+     if (confirmed) {
         try {
            await api.patch(`/system/subscriptions/${id}/cancel`);
+           swalSuccess('Suscripción Cancelada', `La suscripción de ${businessName} fue cancelada.`);
            fetchSubscriptions();
         } catch (e) {
-           alert('Error al cancelar la suscripción');
+           handleApiError(e, 'Error al Cancelar');
         }
      }
   };
 
   const renewSubscription = async (id: string, businessName: string) => {
-     if (confirm(`¿Renovar manualmente la suscripción de ${businessName}? Se sumará 1 ciclo al cierre.`)) {
+     const confirmed = await swalConfirm(
+       '¿Renovar Suscripción?',
+       `¿Renovar manualmente la suscripción de ${businessName}? Se sumará 1 ciclo al cierre.`,
+       'Sí, renovar',
+       'Cancelar'
+     );
+     if (confirmed) {
         try {
            await api.patch(`/system/subscriptions/${id}/renew`);
+           swalSuccess('Suscripción Renovada', `La suscripción de ${businessName} fue renovada exitosamente.`);
            fetchSubscriptions();
            if (selectedSub) setIsDetailModalOpen(false);
         } catch (e) {
-           alert('Error al renovar la suscripción');
+           handleApiError(e, 'Error al Renovar');
         }
      }
   };
@@ -90,13 +105,14 @@ export const SystemSubscriptions: React.FC = () => {
 
        if (data.data && data.data.checkoutUrl) {
           window.open(data.data.checkoutUrl, '_blank');
+          swalSuccess('Link Generado', 'Ventana de pago Mercado Pago abierta.');
           fetchSubscriptions();
           setIsDetailModalOpen(false);
        } else {
-          alert('No se pudo generar la preferencia de pago.');
+          swalWarning('Preferencia Fallida', 'No se pudo generar la preferencia de pago.');
        }
      } catch (e) {
-       alert('Error generando link de pago. Verifique las configuraciones del sistema.');
+       handleApiError(e, 'Error de Pago');
      }
   };
 

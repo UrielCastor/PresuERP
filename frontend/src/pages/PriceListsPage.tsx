@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, swalWarning, handleApiError } from '../utils/swal';
 import {
   Tag,
   Plus,
@@ -112,8 +113,9 @@ export const PriceListsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['priceLists'] });
       setIsListModalOpen(false);
       resetListForm();
+      swalSuccess('Lista Creada', 'La lista de precios fue creada exitosamente.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al crear la lista de precios'),
+    onError: (err: any) => handleApiError(err, 'Error al Crear Lista'),
   });
 
   const updateListMutation = useMutation({
@@ -124,8 +126,9 @@ export const PriceListsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['priceListDetail'] });
       setIsListModalOpen(false);
       resetListForm();
+      swalSuccess('Lista Actualizada', 'La lista de precios fue actualizada exitosamente.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al actualizar la lista de precios'),
+    onError: (err: any) => handleApiError(err, 'Error al Actualizar Lista'),
   });
 
   const deleteListMutation = useMutation({
@@ -134,8 +137,9 @@ export const PriceListsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['priceListsAll'] });
       queryClient.invalidateQueries({ queryKey: ['priceLists'] });
       setDeleteConfirmList(null);
+      swalSuccess('Lista Eliminada', 'La lista de precios fue eliminada.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al eliminar la lista de precios'),
+    onError: (err: any) => handleApiError(err, 'Error al Eliminar Lista'),
   });
 
   const addItemMutation = useMutation({
@@ -147,8 +151,9 @@ export const PriceListsPage: React.FC = () => {
       setNewItemProductId('');
       setNewItemPrice('');
       setNewItemMinQty('1');
+      swalSuccess('Precio Agregado', 'Precio especial registrado en la lista.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al agregar el precio especial'),
+    onError: (err: any) => handleApiError(err, 'Error al Agregar Precio'),
   });
 
   const updateItemMutation = useMutation({
@@ -158,8 +163,9 @@ export const PriceListsPage: React.FC = () => {
       queryClient.invalidateQueries({ queryKey: ['priceListDetail', selectedListForItems?.id] });
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
       setEditingItemId(null);
+      swalSuccess('Precio Actualizado', 'El precio especial fue modificado.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al actualizar el precio'),
+    onError: (err: any) => handleApiError(err, 'Error al Actualizar Precio'),
   });
 
   const deleteItemMutation = useMutation({
@@ -168,8 +174,9 @@ export const PriceListsPage: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['priceListDetail', selectedListForItems?.id] });
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
+      swalSuccess('Precio Eliminado', 'Se eliminó la regla especial de la lista.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al eliminar el precio especial'),
+    onError: (err: any) => handleApiError(err, 'Error al Eliminar Precio'),
   });
 
   // Form Handlers
@@ -215,7 +222,10 @@ export const PriceListsPage: React.FC = () => {
 
   const handleSaveList = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!listForm.name.trim()) return alert('El nombre de la lista es obligatorio.');
+    if (!listForm.name.trim()) {
+      swalWarning('Campo Requerido', 'El nombre de la lista es obligatorio.');
+      return;
+    }
 
     if (editingList) {
       updateListMutation.mutate({ id: editingList.id, body: listForm });
@@ -227,9 +237,15 @@ export const PriceListsPage: React.FC = () => {
   const handleAddItem = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedListForItems) return;
-    if (!newItemProductId) return alert('Debes seleccionar un producto.');
+    if (!newItemProductId) {
+      swalWarning('Producto Requerido', 'Debes seleccionar un producto.');
+      return;
+    }
     const priceNum = Number(newItemPrice);
-    if (isNaN(priceNum) || priceNum <= 0) return alert('El precio debe ser un número mayor a cero.');
+    if (isNaN(priceNum) || priceNum <= 0) {
+      swalWarning('Precio Inválido', 'El precio debe ser un número mayor a cero.');
+      return;
+    }
 
     addItemMutation.mutate({
       priceListId: selectedListForItems.id,
@@ -244,7 +260,10 @@ export const PriceListsPage: React.FC = () => {
   const handleSaveEditedItem = (item: PriceListItem) => {
     if (!selectedListForItems) return;
     const priceNum = Number(editingItemPrice);
-    if (isNaN(priceNum) || priceNum <= 0) return alert('El precio debe ser mayor a cero.');
+    if (isNaN(priceNum) || priceNum <= 0) {
+      swalWarning('Precio Inválido', 'El precio debe ser mayor a cero.');
+      return;
+    }
 
     updateItemMutation.mutate({
       priceListId: selectedListForItems.id,

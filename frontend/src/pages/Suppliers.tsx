@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
@@ -80,9 +81,10 @@ export const Suppliers: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['suppliers'] });
       setDeleteTarget(null);
+      swalSuccess('Proveedor Eliminado', 'El proveedor ha sido eliminado correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'No se pudo eliminar el proveedor');
+      handleApiError(err, 'Error al Eliminar');
       setDeleteTarget(null);
     },
   });

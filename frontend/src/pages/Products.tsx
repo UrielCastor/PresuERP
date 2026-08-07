@@ -17,6 +17,7 @@ import { stockMovementApi } from '../services/stockMovement.service';
 import { warehouseApi } from '../services/warehouse.service';
 import { purchaseApi } from '../services/purchase.service';
 import api from '../services/api';
+import { swalSuccess, swalInfo, handleApiError } from '../utils/swal';
 import { Button } from '../components/ui/Button';
 import { DataGrid, Column } from '../components/ui/DataGrid';
 import { SearchInput } from '../components/ui/SearchInput';
@@ -82,7 +83,7 @@ export const Products: React.FC = () => {
       const items = await productApi.exportProducts(selectedWarehouse !== 'ALL' ? selectedWarehouse : undefined);
 
       if (!items || items.length === 0) {
-        alert('No hay productos registrados en esta empresa para exportar.');
+        swalInfo('Sin Productos', 'No hay productos registrados en esta empresa para exportar.');
         return;
       }
 
@@ -90,9 +91,10 @@ export const Products: React.FC = () => {
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, 'Catálogo');
       XLSX.writeFile(wb, `catalogo_productos_${new Date().toISOString().split('T')[0]}.xlsx`);
+      swalSuccess('Exportación Lista', 'El archivo del catálogo de productos ha sido generado.');
     } catch (err: any) {
       console.error('Error al exportar productos:', err);
-      alert(err.response?.data?.message || 'Error al procesar la exportación del catálogo.');
+      handleApiError(err, 'Error de Exportación');
     }
   };
 
@@ -194,9 +196,10 @@ export const Products: React.FC = () => {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['products'] });
       setDeleteTarget(null);
+      swalSuccess('Producto Eliminado', 'El producto ha sido eliminado o desactivado correctamente.');
     },
     onError: (err: any) => {
-      alert(err.response?.data?.message || 'No se pudo eliminar el producto');
+      handleApiError(err, 'Error al Eliminar Producto');
       setDeleteTarget(null);
     },
   });

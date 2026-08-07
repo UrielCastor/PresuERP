@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess } from '../../utils/swal';
 import {
   DollarSign,
   Percent,
@@ -142,7 +143,7 @@ export const BulkPriceUpdateModal: React.FC<BulkPriceUpdateModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ['products'] });
       queryClient.invalidateQueries({ queryKey: ['productsListAll'] });
       queryClient.invalidateQueries({ queryKey: ['priceLists'] });
-      alert(`🎉 Se actualizaron correctamente ${data.productsAffected} productos`);
+      swalSuccess('Precios Actualizados', `Se actualizaron correctamente ${data.productsAffected} productos.`);
       onClose();
     },
     onError: (err: any) => {

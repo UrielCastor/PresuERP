@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { swalSuccess, swalConfirm, handleApiError } from '../utils/swal';
 import { PageHeader } from '../components/ui/PageHeader';
 import { DataGrid } from '../components/ui/DataGrid';
 import { Card, CardContent } from '../components/ui/Card';
@@ -43,31 +44,46 @@ export const Businesses: React.FC = () => {
         });
       }
       setIsModalOpen(false);
+      swalSuccess('Empresa Guardada', 'La información de la empresa ha sido registrada.');
       fetchBusinesses();
     } catch (error) {
       console.error('Error saving business:', error);
-      alert('Ocurrió un error al guardar la empresa. Verifique sus permisos de Administrador Global.');
+      handleApiError(error, 'Error de Empresa');
     }
   };
 
   const suspendBusiness = async (id: string, name: string) => {
-    if (confirm(`¿Está seguro de suspender la empresa ${name}? Esto bloqueará el acceso a todos sus usuarios.`)) {
+    const confirmed = await swalConfirm(
+      '¿Suspender Empresa?',
+      `¿Está seguro de suspender la empresa ${name}? Esto bloqueará el acceso a todos sus usuarios.`,
+      'Sí, suspender',
+      'Cancelar'
+    );
+    if (confirmed) {
       try {
         await BusinessService.suspend(id);
+        swalSuccess('Empresa Suspendida', `La empresa ${name} fue suspendida.`);
         fetchBusinesses();
       } catch (error) {
-        console.error('Error suspending business', error);
+        handleApiError(error, 'Error al Suspender');
       }
     }
   };
 
   const activateBusiness = async (id: string, name: string) => {
-    if (confirm(`¿Está seguro de reactivar la empresa ${name}?`)) {
+    const confirmed = await swalConfirm(
+      '¿Reactivar Empresa?',
+      `¿Está seguro de reactivar la empresa ${name}?`,
+      'Sí, reactivar',
+      'Cancelar'
+    );
+    if (confirmed) {
       try {
         await BusinessService.activate(id);
+        swalSuccess('Empresa Activada', `La empresa ${name} fue activada exitosamente.`);
         fetchBusinesses();
       } catch (error) {
-        console.error('Error activating business', error);
+        handleApiError(error, 'Error al Activar');
       }
     }
   };

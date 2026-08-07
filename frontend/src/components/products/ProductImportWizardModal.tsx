@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import * as XLSX from 'xlsx';
 import api from '../../services/api';
+import { swalSuccess, swalWarning, swalError, swalLoading, handleApiError } from '../../utils/swal';
 import {
   Upload,
   FileSpreadsheet,
@@ -221,17 +222,37 @@ export const ProductImportWizardModal: React.FC<Props> = ({
         warehouseId: selectedWarehouseId,
       };
 
+      swalLoading('Procesando Importación...', 'Por favor espere mientras se registran los productos y stocks.');
       const res = await api.post('/products/import', payload);
-      alert(
-        `Importación completada con éxito:\n\n• Creados: ${res.data.data.createdCount}\n• Actualizados: ${res.data.data.updatedCount}\n• Errores: ${res.data.data.errorCount}`
-      );
+      
+      const { createdCount = 0, updatedCount = 0, errorCount = 0 } = res.data?.data || {};
+
+      const summaryText = `• Creados: ${createdCount}\n• Actualizados: ${updatedCount}\n• Errores: ${errorCount}`;
+
+      if (errorCount === 0) {
+        await swalSuccess(
+          'Importación Completada con Éxito',
+          summaryText
+        );
+      } else if (createdCount > 0 || updatedCount > 0) {
+        await swalWarning(
+          'Importación Finalizada con Observaciones',
+          summaryText
+        );
+      } else {
+        await swalError(
+          'Error en la Importación',
+          summaryText
+        );
+      }
+
       onSuccess();
       onClose();
     } catch (err: any) {
       console.error(err);
-      setError(
-        err.response?.data?.message || 'Error al procesar la importación masiva de productos.'
-      );
+      const errMsg = err.response?.data?.message || 'Error al procesar la importación masiva de productos.';
+      setError(errMsg);
+      handleApiError(err, 'Error de Importación');
     } finally {
       setIsSubmitting(false);
     }

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { swalSuccess, handleApiError } from '../utils/swal';
 import { cashApi } from '../services/cash.service';
 import { warehouseApi } from '../services/warehouse.service';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -104,8 +105,9 @@ export const Cash: React.FC = () => {
       setOpenBalance('');
       setOpenNotes('');
       setIsOpenModalOpen(false);
+      swalSuccess('Caja Abierta', 'La sesión de caja fue iniciada con éxito.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al abrir caja'),
+    onError: (err: any) => handleApiError(err, 'Error al Abrir Caja'),
   });
 
   const closeMutation = useMutation({
@@ -118,8 +120,9 @@ export const Cash: React.FC = () => {
       setIsCloseModalOpen(false);
       setIsDetailModalOpen(false);
       setActiveDetailSessionId(null);
+      swalSuccess('Caja Cerrada', 'La sesión de caja ha sido cerrada y el arqueo registrado.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al cerrar caja'),
+    onError: (err: any) => handleApiError(err, 'Error al Cerrar Caja'),
   });
 
   const movementMutation = useMutation({
@@ -131,8 +134,9 @@ export const Cash: React.FC = () => {
       setMovAmount('');
       setMovConcept('');
       setIsMovementModalOpen(false);
+      swalSuccess('Movimiento Registrado', 'El movimiento de caja ha sido asentado correctamente.');
     },
-    onError: (err: any) => alert(err.response?.data?.message || 'Error al registrar movimiento'),
+    onError: (err: any) => handleApiError(err, 'Error de Movimiento'),
   });
 
   const formatCurrency = (val: number | string) =>
