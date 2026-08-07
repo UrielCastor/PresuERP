@@ -106,6 +106,7 @@ model Business {
   stockTransfers           StockTransfer[]
   stockReservations        StockReservation[]
   ProductImportHistory     ProductImportHistory[]
+  saleRefunds              SaleRefund[]
 
   @@index([taxId])
   @@index([isActive])
@@ -427,6 +428,7 @@ model User {
   receivedStockTransferReceipts StockTransferReceipt[]      @relation("StockTransferReceiptReceivedByUser")
   roleCapabilityHistories       RoleCapabilityHistory[]
   ProductImportHistory          ProductImportHistory[]
+  createdSaleRefunds            SaleRefund[]                @relation("CreatedSaleRefundsByUser")
 
   @@index([businessId, email])
   @@map("users")
@@ -669,6 +671,7 @@ model Warehouse {
   stockTransfersAsDestination   StockTransfer[]        @relation("StockTransferDestinationWarehouse")
   stockReservations             StockReservation[]
   ProductImportHistory          ProductImportHistory[]
+  saleRefunds                   SaleRefund[]
 
   @@unique([code, businessId])
   @@index([businessId])
@@ -917,6 +920,7 @@ model Product {
   stockTransferItems        StockTransferItem[]
   stockTransferReceiptItems StockTransferReceiptItem[]
   stockReservations         StockReservation[]
+  saleRefundItems           SaleRefundItem[]
 
   @@unique([sku, businessId])
   @@index([businessId, status])
@@ -1179,6 +1183,8 @@ model Sale {
   electronicInvoices ElectronicInvoice[]
   pointsHistories    CustomerPointsHistory[]
 
+  refunds            SaleRefund[]
+
   @@unique([documentTypeId, documentSeriesId, documentNumber, businessId])
   @@index([businessId, createdAt])
   @@map("sales")
@@ -1194,10 +1200,54 @@ model SaleItem {
   taxAmount      Decimal @default(0.00) @db.Decimal(12, 2)
   totalAmount    Decimal @db.Decimal(12, 2)
 
-  sale    Sale    @relation(fields: [saleId], references: [id], onDelete: Cascade)
-  product Product @relation(fields: [productId], references: [id], onDelete: Restrict)
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  product     Product          @relation(fields: [productId], references: [id], onDelete: Restrict)
+  refundItems SaleRefundItem[]
 
   @@map("sale_items")
+}
+
+model SaleRefund {
+  id            String   @id @default(uuid())
+  businessId    String
+  saleId        String
+  warehouseId   String
+  cashSessionId String?
+  createdById   String
+  refundNumber  Int
+  totalAmount   Decimal  @db.Decimal(12, 2)
+  reason        String?  @db.Text
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  business    Business         @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  sale        Sale             @relation(fields: [saleId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse        @relation(fields: [warehouseId], references: [id], onDelete: Restrict)
+  cashSession CashSession?     @relation(fields: [cashSessionId], references: [id], onDelete: SetNull)
+  createdBy   User             @relation("CreatedSaleRefundsByUser", fields: [createdById], references: [id], onDelete: Restrict)
+  items       SaleRefundItem[]
+
+  @@index([businessId, createdAt])
+  @@index([saleId])
+  @@map("sale_refunds")
+}
+
+model SaleRefundItem {
+  id          String  @id @default(uuid())
+  refundId    String
+  saleItemId  String
+  productId   String
+  quantity    Decimal @db.Decimal(12, 3)
+  unitPrice   Decimal @db.Decimal(12, 2)
+  totalAmount Decimal @db.Decimal(12, 2)
+
+  refund   SaleRefund @relation(fields: [refundId], references: [id], onDelete: Cascade)
+  saleItem SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Restrict)
+  product  Product    @relation(fields: [productId], references: [id], onDelete: Restrict)
+
+  @@index([refundId])
+  @@index([saleItemId])
+  @@map("sale_refund_items")
 }
 
 // ==========================================
@@ -1293,6 +1343,7 @@ model CashSession {
   closedBy      User?          @relation("ClosedByUser", fields: [closedById], references: [id], onDelete: Restrict)
   sales         Sale[]
   cashMovements CashMovement[]
+  saleRefunds   SaleRefund[]
 
   @@index([businessId, status])
   @@index([businessId, warehouseId, status])

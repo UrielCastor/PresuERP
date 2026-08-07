@@ -154,11 +154,12 @@ export const Reports: React.FC = () => {
   };
 
   const renderOverview = () => {
+    const grossMarginVal = executiveData?.grossMargin ?? ((salesData?.totalAmount || 0) - (executiveData?.cogsMonth || 0));
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
-           <StatCard title="Ventas del Mes" value={`$ ${Number(salesData?.totalAmount || 0).toLocaleString()}`} icon={DollarSign} />
+           <StatCard title="Ventas del Mes" value={`$ ${Number(salesData?.totalAmount || executiveData?.salesMonth || 0).toLocaleString()}`} icon={DollarSign} />
            <StatCard 
               title="Compras del Mes" 
               value={`$ ${Number(executiveData?.purchasesMonth || 0).toLocaleString()}`} 
@@ -166,9 +167,9 @@ export const Reports: React.FC = () => {
               trend={executiveData?.purchasesTrend !== 'Sin datos' && executiveData?.purchasesTrend !== undefined ? { value: `${Math.abs(executiveData.purchasesTrend)}%`, isPositive: executiveData.purchasesTrend >= 0 } : undefined} 
               description={executiveData?.purchasesTrend === 'Sin datos' ? 'Sin datos' : undefined}
            />
-           <StatCard title="Ganancia Bruta" value={`$ ${Number((salesData?.totalAmount || 0) - (executiveData?.purchasesMonth || 0)).toLocaleString()}`} icon={TrendingUp} className="border-emerald-200" />
+           <StatCard title="Costo de Ventas (COGS)" value={`$ ${Number(executiveData?.cogsMonth || 0).toLocaleString()}`} icon={TrendingDown} className="border-rose-200 text-rose-600" />
+           <StatCard title="Ganancia Bruta" value={`$ ${Number(grossMarginVal).toLocaleString()}`} icon={TrendingUp} className="border-emerald-200 text-emerald-600" description={`Margen: ${Number(executiveData?.marginPercentage || 0).toFixed(2)}%`} />
            <StatCard title="Valor Stock" value={executiveData ? `$ ${Number(executiveData.stockValue || 0).toLocaleString()}` : '$ 0'} icon={Package} />
-           <StatCard title="Caja Fuerte" value={executiveData ? `$ ${Number(executiveData.cashBalance || 0).toLocaleString()}` : '$ 0'} icon={Banknote} />
         </div>
         <ChartCard title="Evolución General" subtitle="Ventas vs Compras">
            <div className="h-72">
@@ -193,14 +194,15 @@ export const Reports: React.FC = () => {
     return (
       <div className="space-y-6 animate-in slide-in-from-bottom-2 duration-500">
         <ReportToolbar dateRange={dateRange} onDateRangeChange={handleDateRangeChange} onExport={handleExport} onClearFilters={handleClearFilters} />
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
            <StatCard title="Ingresos Totales (Ventas)" value={`$ ${Number(financialData.totalSales || 0).toLocaleString()}`} icon={TrendingUp} className="border-emerald-200" />
-           <StatCard title="Costos (Compras Grales)" value={`$ ${Number(financialData.totalPurchases || 0).toLocaleString()}`} icon={TrendingDown} className="border-rose-200" />
-           <StatCard title="Ganancia Bruta" value={`$ ${Number(financialData.grossMargin || 0).toLocaleString()}`} icon={DollarSign} className="border-indigo-200" />
-           <StatCard title="Margen (%)" value={`${financialData.totalSales > 0 ? ((financialData.grossMargin / financialData.totalSales)*100).toFixed(2) : 0}%`} icon={LineChartIcon} />
+           <StatCard title="Costo de Ventas (COGS)" value={`$ ${Number(financialData.totalCogs || 0).toLocaleString()}`} icon={TrendingDown} className="border-rose-200 text-rose-600" />
+           <StatCard title="Compras del Período" value={`$ ${Number(financialData.totalPurchases || 0).toLocaleString()}`} icon={ShoppingBag} className="border-amber-200" />
+           <StatCard title="Ganancia Bruta" value={`$ ${Number(financialData.grossMargin || 0).toLocaleString()}`} icon={DollarSign} className="border-indigo-200 text-indigo-600" />
+           <StatCard title="Margen (%)" value={`${Number(financialData.marginPercentage || 0).toFixed(2)}%`} icon={LineChartIcon} />
         </div>
 
-        <ChartCard title="Evolución Financiera" subtitle="Comparativa diaria de Ingresos (Ventas) vs Costos (Compras)">
+        <ChartCard title="Evolución Financiera" subtitle="Comparativa diaria de Ingresos (Ventas) vs Costo de Ventas (COGS) y Compras">
            <div className="h-72">
              <ResponsiveContainer width="100%" height="100%">
                <AreaChart data={financialData.dailyFinancial || []}>
@@ -208,6 +210,10 @@ export const Reports: React.FC = () => {
                    <linearGradient id="colorSales" x1="0" y1="0" x2="0" y2="1">
                      <stop offset="5%" stopColor="#10b981" stopOpacity={0.8}/>
                      <stop offset="95%" stopColor="#10b981" stopOpacity={0}/>
+                   </linearGradient>
+                   <linearGradient id="colorCogs" x1="0" y1="0" x2="0" y2="1">
+                     <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.8}/>
+                     <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
                    </linearGradient>
                    <linearGradient id="colorPurchases" x1="0" y1="0" x2="0" y2="1">
                      <stop offset="5%" stopColor="#f43f5e" stopOpacity={0.8}/>
@@ -217,8 +223,9 @@ export const Reports: React.FC = () => {
                  <CartesianGrid strokeDasharray="3 3" vertical={false} />
                  <XAxis dataKey="day" axisLine={false} tickLine={false} tickFormatter={(val) => new Date(val).toLocaleDateString(undefined, {month:'short', day:'numeric'})} />
                  <YAxis axisLine={false} tickLine={false} tickFormatter={(val) => `$${val/1000}k`} />
-                 <RechartsTooltip formatter={(value: any, name: any) => [`$ ${Number(value).toLocaleString()}`, name === 'sales' ? 'Ventas' : 'Compras']} />
+                 <RechartsTooltip formatter={(value: any, name: any) => [`$ ${Number(value).toLocaleString()}`, name === 'sales' ? 'Ventas' : name === 'cogs' ? 'Costo de Ventas' : 'Compras']} />
                  <Area type="monotone" dataKey="sales" name="sales" stroke="#10b981" fillOpacity={1} fill="url(#colorSales)" />
+                 <Area type="monotone" dataKey="cogs" name="cogs" stroke="#0ea5e9" fillOpacity={1} fill="url(#colorCogs)" />
                  <Area type="monotone" dataKey="purchases" name="purchases" stroke="#f43f5e" fillOpacity={1} fill="url(#colorPurchases)" />
                </AreaChart>
              </ResponsiveContainer>
@@ -862,12 +869,28 @@ export const Reports: React.FC = () => {
                id: 'p-profitability', label: 'Rentabilidad', content: (
                  <Card className="mt-6"><CardContent className="p-0">
                     <table className="w-full text-sm text-left">
-                      <thead className="bg-emerald-50 border-b border-emerald-100"><tr><th className="px-6 py-3 text-emerald-700">Producto</th><th className="px-6 py-3 text-emerald-700">Ventas</th><th className="px-6 py-3 text-emerald-700">Ganancia Estimada</th><th className="px-6 py-3 text-emerald-700">Margen %</th></tr></thead>
+                      <thead className="bg-emerald-50 border-b border-emerald-100">
+                        <tr>
+                          <th className="px-6 py-3 text-emerald-700">Producto</th>
+                          <th className="px-6 py-3 text-emerald-700 text-center">Unid. Vendidas</th>
+                          <th className="px-6 py-3 text-emerald-700 text-right">Facturación</th>
+                          <th className="px-6 py-3 text-emerald-700 text-right">Costo Vendido</th>
+                          <th className="px-6 py-3 text-emerald-700 text-right">Ganancia Bruta</th>
+                          <th className="px-6 py-3 text-emerald-700 text-right">Margen %</th>
+                        </tr>
+                      </thead>
                       <tbody>
                         {profitability.map((x: any, i: number) => (
-                           <tr key={i} className="border-b"><td className="px-6 py-4 font-medium">{x.producto}</td><td className="px-6 py-4">{x.ventas} u.</td><td className="px-6 py-4 font-bold text-emerald-600">$ {Number(x.ganancia).toLocaleString(undefined, {maximumFractionDigits: 2})}</td><td className="px-6 py-4">{Number(x.margen).toFixed(2)} %</td></tr>
+                           <tr key={i} className="border-b hover:bg-slate-50">
+                             <td className="px-6 py-4 font-medium">{x.producto}</td>
+                             <td className="px-6 py-4 text-center font-mono">{x.ventas} u.</td>
+                             <td className="px-6 py-4 text-right font-mono">$ {Number(x.facturacion || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                             <td className="px-6 py-4 text-right font-mono text-slate-500">$ {Number(x.costo || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                             <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600">$ {Number(x.ganancia || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                             <td className="px-6 py-4 text-right font-mono font-bold">{Number(x.margen || 0).toFixed(2)} %</td>
+                           </tr>
                         ))}
-                        {profitability.length === 0 && <tr><td colSpan={4} className="text-center py-8 opacity-60">Sin datos de rentabilidad calculables</td></tr>}
+                        {profitability.length === 0 && <tr><td colSpan={6} className="text-center py-8 opacity-60">Sin datos de rentabilidad calculables</td></tr>}
                       </tbody>
                     </table>
                  </CardContent></Card>
@@ -875,7 +898,34 @@ export const Reports: React.FC = () => {
              },
              {
                id: 'p-category', label: 'Categorías', content: (
-                  <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-4">
+                  <div className="mt-6 space-y-6">
+                     <Card><CardContent className="p-0">
+                       <table className="w-full text-sm text-left">
+                         <thead className="bg-slate-50 border-b">
+                           <tr>
+                             <th className="px-6 py-3">Categoría</th>
+                             <th className="px-6 py-3 text-center">Unidades</th>
+                             <th className="px-6 py-3 text-right">Ventas Totales</th>
+                             <th className="px-6 py-3 text-right">Costo Vendido</th>
+                             <th className="px-6 py-3 text-right">Ganancia Bruta</th>
+                             <th className="px-6 py-3 text-right">Margen %</th>
+                           </tr>
+                         </thead>
+                         <tbody>
+                           {categories.map((c: any, i: number) => (
+                              <tr key={i} className="border-b hover:bg-slate-50">
+                                <td className="px-6 py-4 font-bold">{c.name}</td>
+                                <td className="px-6 py-4 text-center font-mono">{c.qty} u.</td>
+                                <td className="px-6 py-4 text-right font-mono">$ {Number(c.total || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                <td className="px-6 py-4 text-right font-mono text-slate-500">$ {Number(c.cost || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                <td className="px-6 py-4 text-right font-mono font-bold text-emerald-600">$ {Number(c.ganancia || 0).toLocaleString(undefined, {minimumFractionDigits: 2})}</td>
+                                <td className="px-6 py-4 text-right font-mono font-bold">{Number(c.margen || 0).toFixed(2)} %</td>
+                              </tr>
+                           ))}
+                           {categories.length === 0 && <tr><td colSpan={6} className="text-center py-8 opacity-60">Sin categorías registradas en este período</td></tr>}
+                         </tbody>
+                       </table>
+                     </CardContent></Card>
                      <ChartCard title="Distribución de Ventas por Categoría">
                        <div className="h-72">
                          <ResponsiveContainer width="100%" height="100%">

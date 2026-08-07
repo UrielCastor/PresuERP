@@ -4,10 +4,11 @@ import { useForm, useWatch } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import * as XLSX from 'xlsx';
-import { Plus, Edit2, Trash2, Search, X, Loader2, Package, Tag, Filter, AlertTriangle, Calculator, Boxes, Warehouse, ClipboardList, TrendingUp, Building2, MoreVertical, Copy, Eye, Download, Upload, History } from 'lucide-react';
+import { Plus, Edit2, Trash2, Search, X, Loader2, Package, Tag, Filter, AlertTriangle, Calculator, Boxes, Warehouse, ClipboardList, TrendingUp, Building2, MoreVertical, Copy, Eye, Download, Upload, History, Barcode } from 'lucide-react';
 import { BulkPriceUpdateView } from '../components/products/BulkPriceUpdateView';
 import { ProductImportWizardModal } from '../components/products/ProductImportWizardModal';
 import { ProductImportHistoryModal } from '../components/products/ProductImportHistoryModal';
+import { ProductLabelGeneratorModal } from '../components/products/ProductLabelGeneratorModal';
 import { useAuth } from '../contexts/AuthContext';
 import { productApi, Product } from '../services/product.service';
 import { categoryApi } from '../services/category.service';
@@ -71,6 +72,7 @@ export const Products: React.FC = () => {
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isImportWizardOpen, setIsImportWizardOpen] = useState(false);
   const [isImportHistoryOpen, setIsImportHistoryOpen] = useState(false);
+  const [isLabelGeneratorOpen, setIsLabelGeneratorOpen] = useState(false);
   const [selectedWarehouse, setSelectedWarehouse] = useState<string>('ALL');
 
   const canCreate = hasCapability('products.create') || hasPermission('products:create');
@@ -386,6 +388,15 @@ export const Products: React.FC = () => {
             className="text-xs font-semibold rounded-xl"
           >
             Listas de Precios
+          </Button>
+
+          <Button
+            variant="outline"
+            onClick={() => setIsLabelGeneratorOpen(true)}
+            leftIcon={<Barcode className="h-4 w-4 text-purple-500" />}
+            className="text-xs font-semibold rounded-xl bg-purple-50/50 hover:bg-purple-100 border-purple-200 dark:bg-purple-950/40 dark:border-purple-800 text-purple-700 dark:text-purple-300"
+          >
+            🏷️ Etiquetas
           </Button>
 
           {canImport && (
@@ -1156,6 +1167,12 @@ export const Products: React.FC = () => {
       <ProductImportHistoryModal
         isOpen={isImportHistoryOpen}
         onClose={() => setIsImportHistoryOpen(false)}
+      />
+
+      {/* Modal de Generación e Impresión de Etiquetas */}
+      <ProductLabelGeneratorModal
+        isOpen={isLabelGeneratorOpen}
+        onClose={() => setIsLabelGeneratorOpen(false)}
       />
     </div>
   );

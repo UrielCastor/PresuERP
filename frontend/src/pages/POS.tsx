@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { swalSuccess, swalWarning, handleApiError } from '../utils/swal';
+import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
 import { getInitialWarehouseId } from '../utils/warehouse';
 import {
   Search,
@@ -35,7 +35,9 @@ import {
   Gift,
   Award,
   Zap,
-  HelpCircle
+  HelpCircle,
+  PauseCircle,
+  Clock
 } from 'lucide-react';
 import { productApi } from '../services/product.service';
 import { saleApi } from '../services/sale.service';
@@ -88,6 +90,15 @@ export const POS: React.FC = () => {
   const [tierNotice, setTierNotice] = useState<{ message: string; visible: boolean } | null>(null);
   const [isRoundingSessionEnabled, setIsRoundingSessionEnabled] = useState<boolean>(true);
   const [loadedWarehouseId, setLoadedWarehouseId] = useState<string>('');
+
+  // Estados para Ventas Suspendidas y Cobro en Efectivo (Vuelto)
+  const [isSuspendedModalOpen, setIsSuspendedModalOpen] = useState<boolean>(false);
+  const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
+
+  const { data: suspendedSalesList = [], refetch: refetchSuspendedSales } = useQuery({
+    queryKey: ['suspendedSales', selectedWarehouseId],
+    queryFn: () => saleApi.getSuspended(selectedWarehouseId || undefined),
+  });
 
   // Inline Quantity Editing State in Cart
   const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
@@ -1066,6 +1077,17 @@ const isKgProduct = (p: any) => {
 
     const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
 
+    if (paymentMethod === 'CASH') {
+      const received = parseFloat(cashReceivedInput) || 0;
+      if (received < finalTotalAmount - 0.01) {
+        swalWarning(
+          'Pago Insuficiente',
+          `El efectivo recibido ($ ${received.toLocaleString('es-AR', { minimumFractionDigits: 2 })}) es menor al total a cobrar ($ ${finalTotalAmount.toLocaleString('es-AR', { minimumFractionDigits: 2 })}).`
+        );
+        return;
+      }
+    }
+
     if (paymentMethod === 'CREDIT_ACCOUNT') {
       if (!selectedCustomer) {
         swalWarning('Cliente Requerido', 'Debes seleccionar un cliente para realizar una venta a Cuenta Corriente.');
@@ -1149,6 +1171,102 @@ const isKgProduct = (p: any) => {
       }],
       pointsRedeemed: appliedPointsRedeemed,
     });
+  };
+
+  const handleSuspendSale = async () => {
+    if (cart.length === 0 || !selectedWarehouseId) return;
+
+    const confirmed = await swalConfirm(
+      '¿Suspender Venta?',
+      'La venta se guardará como una operación pendiente y podrás recuperarla en cualquier momento desde el POS.',
+      'Sí, suspender',
+      'Cancelar',
+      'info'
+    );
+    if (!confirmed) return;
+
+    try {
+      const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
+      const items = cart.map((item) => ({
+        productId: item.product.id,
+        quantity: item.quantity,
+        unitPrice: item.product.salePrice,
+        discountAmount: 0,
+        taxAmount: 0,
+        totalAmount: item.quantity * item.product.salePrice,
+      }));
+
+      const saleData = {
+        warehouseId: selectedWarehouseId,
+        customerId: selectedCustomer?.id || null,
+        priceListId: selectedPriceListId || null,
+        cashSessionId: activeSession?.id || null,
+        subtotal,
+        discountType,
+        discountValue: Number(discountValue) || 0,
+        discountAmount,
+        totalAmount: finalTotalAmount,
+        status: 'PENDING',
+        notes: 'Venta Suspendida en POS',
+        items,
+      };
+
+      const res = await saleApi.create(saleData);
+      await swalSuccess(
+        'Venta Suspendida',
+        `La venta fue guardada correctamente como Venta Pendiente #${res.documentNumber || res.id}.`
+      );
+      clearCart();
+      refetchSuspendedSales();
+    } catch (err: any) {
+      handleApiError(err, 'Error al suspender venta');
+    }
+  };
+
+  const handleRecoverSuspended = async (id: string) => {
+    try {
+      const sale = await saleApi.recoverSuspended(id);
+      if (sale && sale.items) {
+        const restoredItems = sale.items.map((item: any) => ({
+          product: item.product,
+          quantity: Number(item.quantity),
+        }));
+        setCart(restoredItems);
+        if (sale.customer) {
+          setSelectedCustomer(sale.customer);
+        }
+        if (sale.discountType) setDiscountType(sale.discountType);
+        if (sale.discountValue) setDiscountValue(sale.discountValue);
+
+        setIsSuspendedModalOpen(false);
+        await swalSuccess(
+          'Venta Recuperada',
+          `Los ${restoredItems.length} productos de la Venta Pendiente #${sale.documentNumber} fueron cargados al carrito.`
+        );
+        refetchSuspendedSales();
+      }
+    } catch (err: any) {
+      handleApiError(err, 'Error al recuperar venta');
+    }
+  };
+
+  const handleDeleteSuspended = async (id: string, docNumber: number) => {
+    const confirmed = await swalConfirm(
+      '¿Eliminar venta pendiente?',
+      `La Venta Pendiente #${docNumber} se eliminará y no podrá recuperarse.`,
+      'Eliminar',
+      'Cancelar',
+      'warning'
+    );
+    if (!confirmed) return;
+
+    try {
+      await saleApi.deleteSuspended(id);
+      await swalSuccess('Venta Eliminada', 'La venta pendiente fue eliminada correctamente.');
+      refetchSuspendedSales();
+    } catch (err: any) {
+      handleApiError(err, 'Error al eliminar venta pendiente');
+    }
   };
 
   const formatCurrency = (val: number | string) =>
@@ -1309,6 +1427,24 @@ const isKgProduct = (p: any) => {
               </span>
             </Button>
           )}
+
+          {/* Botón: Ventas Suspendidas */}
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => setIsSuspendedModalOpen(true)}
+            className="flex items-center gap-1 font-bold py-0.5 px-2 text-xs border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 hover:bg-amber-100 rounded-lg"
+            title="Ver ventas suspendidas"
+          >
+            <PauseCircle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+            <span>Ventas suspendidas</span>
+            {suspendedSalesList && suspendedSalesList.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.2 text-[10px] font-black rounded-full bg-amber-600 text-white font-mono">
+                {suspendedSalesList.length}
+              </span>
+            )}
+          </Button>
 
           {/* Botón 1: Descuentos y Recargos */}
           <div className="relative discounts-popover-container">
@@ -1798,6 +1934,17 @@ const isKgProduct = (p: any) => {
                 {cart.length > 0 && (
                   <button
                     type="button"
+                    onClick={handleSuspendSale}
+                    className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-300 dark:hover:bg-amber-900 border border-amber-200 dark:border-amber-800 rounded-lg text-xs font-extrabold flex items-center gap-1 transition-colors"
+                    title="Suspender venta actual"
+                  >
+                    <PauseCircle className="w-3.5 h-3.5 text-amber-600" />
+                    <span>Suspender</span>
+                  </button>
+                )}
+                {cart.length > 0 && (
+                  <button
+                    type="button"
                     onClick={clearCart}
                     className="p-1 text-slate-400 hover:text-rose-500 transition-colors"
                     title="Vaciar carrito"
@@ -2214,6 +2361,88 @@ const isKgProduct = (p: any) => {
             </div>
           )}
 
+          {/* MÓDULO DE EFECTIVO RECIBIDO Y VUELTO */}
+          {paymentMethod === 'CASH' && (
+            <div className="p-3.5 bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-200/60 dark:border-emerald-800/40 rounded-2xl space-y-3 animate-fadeIn">
+              <div className="flex justify-between items-center">
+                <label className="text-xs font-black text-emerald-900 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
+                  <Banknote className="w-4 h-4 text-emerald-600" /> EFECTIVO RECIBIDO
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setCashReceivedInput(String(Math.max(0, roundedFinalTotal - pointsDiscountAmount)))}
+                  className="text-[11px] font-extrabold text-emerald-700 dark:text-emerald-400 hover:underline"
+                >
+                  Importe exacto
+                </button>
+              </div>
+
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 font-mono font-bold text-slate-400 text-sm">$</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  placeholder="0.00"
+                  value={cashReceivedInput}
+                  onChange={(e) => setCashReceivedInput(e.target.value)}
+                  className="w-full pl-8 pr-3 py-2 text-lg font-mono font-black border-2 border-emerald-300 dark:border-emerald-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
+                />
+              </div>
+
+              {/* Botones rápidos de billetes */}
+              <div className="grid grid-cols-4 gap-1.5">
+                {[1000, 2000, 5000, 10000, 20000, 50000, 100000].map((amt) => (
+                  <button
+                    key={amt}
+                    type="button"
+                    onClick={() => {
+                      const current = parseFloat(cashReceivedInput) || 0;
+                      setCashReceivedInput(String(current + amt));
+                    }}
+                    className="py-1 px-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-emerald-500 rounded-lg text-xs font-mono font-bold text-slate-700 dark:text-slate-200 hover:bg-emerald-50 dark:hover:bg-emerald-950 transition-colors"
+                  >
+                    +${amt >= 1000 ? `${amt / 1000}k` : amt}
+                  </button>
+                ))}
+              </div>
+
+              {/* VUELTO O FALTA COBRAR */}
+              {(() => {
+                const finalToPay = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
+                const received = parseFloat(cashReceivedInput) || 0;
+                const diff = received - finalToPay;
+
+                if (received <= 0) return null;
+
+                if (diff < -0.01) {
+                  return (
+                    <div className="p-2.5 bg-rose-100 dark:bg-rose-950/60 border border-rose-200 dark:border-rose-800 rounded-xl flex items-center justify-between text-rose-800 dark:text-rose-200">
+                      <span className="text-xs font-black uppercase">Falta Cobrar:</span>
+                      <span className="text-base font-black font-mono">
+                        $ {Math.abs(diff).toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  );
+                } else {
+                  return (
+                    <div className="p-3 bg-emerald-600 text-white rounded-xl flex items-center justify-between shadow-sm">
+                      <div>
+                        <span className="text-[10px] font-black uppercase tracking-wider block opacity-90">
+                          Vuelto a Entregar
+                        </span>
+                        <span className="text-xl font-black font-mono">
+                          $ {diff.toLocaleString('es-AR', { minimumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                      <Check className="w-7 h-7 text-emerald-200 stroke-[3]" />
+                    </div>
+                  );
+                }
+              })()}
+            </div>
+          )}
+
           <div className="p-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl space-y-1 text-xs">
             <div className="flex justify-between text-slate-600 dark:text-slate-400">
               <span>Monto Base Carrito:</span>
@@ -2274,6 +2503,92 @@ const isKgProduct = (p: any) => {
               Confirmar y Cobrar
             </Button>
           </div>
+        </div>
+      </Modal>
+
+      {/* 4.5. MODAL DE VENTAS SUSPENDIDAS */}
+      <Modal
+        isOpen={isSuspendedModalOpen}
+        onClose={() => setIsSuspendedModalOpen(false)}
+        title="Ventas Suspendidas / Pendientes"
+        size="lg"
+      >
+        <div className="space-y-4 pt-1">
+          {suspendedSalesList.length === 0 ? (
+            <EmptyState
+              title="No hay ventas suspendidas"
+              description="No existen operaciones guardadas temporalmente para este negocio."
+              icon={PauseCircle}
+            />
+          ) : (
+            <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
+              {suspendedSalesList.map((sale: any) => (
+                <div
+                  key={sale.id}
+                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-amber-400 transition-colors"
+                >
+                  <div className="space-y-1">
+                    <div className="flex items-center gap-2">
+                      <span className="font-extrabold text-slate-900 dark:text-white text-base">
+                        Venta pendiente #{sale.documentNumber || sale.id.substring(0, 8)}
+                      </span>
+                      <Badge variant="warning" size="sm">PENDIENTE</Badge>
+                    </div>
+
+                    <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
+                      <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
+                        <User className="w-3.5 h-3.5 text-slate-400" />
+                        {sale.customer?.name || 'Consumidor Final'}
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <ShoppingCart className="w-3.5 h-3.5 text-slate-400" />
+                        {sale.items?.length || 0} productos
+                      </span>
+                      <span className="flex items-center gap-1">
+                        <Clock className="w-3.5 h-3.5 text-slate-400" />
+                        {new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(sale.createdAt).toLocaleDateString('es-AR')})
+                      </span>
+                      <span className="text-slate-400">
+                        Cajero: {sale.createdBy?.name || 'Usuario'}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100 dark:border-slate-800">
+                    <div className="text-right">
+                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Total</span>
+                      <span className="text-lg font-black text-amber-600 font-mono">
+                        {formatCurrency(sale.totalAmount)}
+                      </span>
+                    </div>
+
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handleDeleteSuspended(sale.id, sale.documentNumber)}
+                        className="text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950 font-bold"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 mr-1" />
+                        Eliminar
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        size="sm"
+                        onClick={() => handleRecoverSuspended(sale.id)}
+                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
+                        Recuperar
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       </Modal>
 

@@ -90,4 +90,24 @@ export const saleApi = {
     const res = await api.post(`/sales/${id}/cancel`);
     return res.data;
   },
+
+  getSuspended: async (warehouseId?: string) => {
+    const res = await api.get('/sales/suspended', { params: { warehouseId } });
+    return res.data.data;
+  },
+
+  recoverSuspended: async (id: string) => {
+    const res = await api.post(`/sales/${id}/recover`);
+    return res.data.data;
+  },
+
+  deleteSuspended: async (id: string) => {
+    const res = await api.delete(`/sales/suspended/${id}`);
+    return res.data;
+  },
+
+  processRefund: async (id: string, payload: { reason?: string; items: { saleItemId: string; quantity: number }[] }) => {
+    const res = await api.post(`/sales/${id}/refund`, payload);
+    return res.data;
+  },
 };

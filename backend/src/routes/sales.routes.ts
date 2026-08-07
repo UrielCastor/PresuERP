@@ -28,6 +28,30 @@ router.post(
   SaleController.create
 );
 
+router.get(
+  '/suspended',
+  requirePermission('sales:read'),
+  SaleController.getSuspended
+);
+
+router.post(
+  '/:id/recover',
+  requirePermission('sales:write'),
+  SaleController.recoverSuspended
+);
+
+router.delete(
+  '/suspended/:id',
+  requirePermission('sales:write'),
+  SaleController.deleteSuspended
+);
+
+router.post(
+  '/:id/refund',
+  requirePermission('sales:write'),
+  SaleController.processRefund
+);
+
 router.post(
   '/:id/cancel',
   requirePermission('sales:cancel'),

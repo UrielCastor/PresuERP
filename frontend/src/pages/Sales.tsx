@@ -23,7 +23,8 @@ import {
   ChevronRight,
   MoreVertical,
   Building2,
-  Award
+  Award,
+  RotateCcw
 } from 'lucide-react';
 import { format, subDays, startOfWeek, startOfMonth } from 'date-fns';
 import { useAuth } from '../contexts/AuthContext';
@@ -39,6 +40,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '../components/ui/Card'
 import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
+import { SaleRefundModal } from '../components/sales/SaleRefundModal';
 
 type PeriodPreset = 'HOY' | 'AYER' | 'SEMANA' | 'MES' | 'CUSTOM';
 
@@ -72,6 +74,10 @@ export const Sales: React.FC = () => {
   const [isDetailOpen, setIsDetailOpen] = useState(false);
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
   const [openActionMenuId, setOpenActionMenuId] = useState<string | null>(null);
+
+  // Modal Devolución
+  const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const [refundModalSaleId, setRefundModalSaleId] = useState<string | null>(null);
 
   const canRead = hasCapability('sales.view') || hasPermission('sales:read');
   const canCreate = hasCapability('sales.create') || hasPermission('sales:write');
@@ -573,6 +579,20 @@ export const Sales: React.FC = () => {
                         >
                           <Printer className="w-4 h-4" />
                         </button>
+
+                        {sale.status === 'COMPLETED' && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setRefundModalSaleId(sale.id);
+                              setIsRefundModalOpen(true);
+                            }}
+                            className="p-1.5 text-slate-500 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950 rounded-lg transition-colors"
+                            title="Devolver productos"
+                          >
+                            <RotateCcw className="w-4 h-4 text-emerald-600" />
+                          </button>
+                        )}
                       </div>
                     </td>
                   </tr>
@@ -955,6 +975,20 @@ export const Sales: React.FC = () => {
                                   <Printer className="w-3.5 h-3.5 text-slate-500" /> Imprimir
                                 </button>
 
+                                {sale.status === 'COMPLETED' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setOpenActionMenuId(null);
+                                      setRefundModalSaleId(sale.id);
+                                      setIsRefundModalOpen(true);
+                                    }}
+                                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 font-medium transition-colors border-t border-slate-100 dark:border-slate-800/80 mt-1 pt-1.5"
+                                  >
+                                    <RotateCcw className="w-3.5 h-3.5" /> Devolver productos
+                                  </button>
+                                )}
+
                                 {canCancel && sale.status === 'COMPLETED' && (
                                   <button
                                     type="button"
@@ -1180,6 +1214,21 @@ export const Sales: React.FC = () => {
                 )}
               </div>
               <div className="flex gap-2">
+                {selectedSale.status === 'COMPLETED' && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setRefundModalSaleId(selectedSale.id);
+                      setIsRefundModalOpen(true);
+                      setIsDetailOpen(false);
+                    }}
+                    className="font-bold text-emerald-600 border-emerald-200 hover:bg-emerald-50"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 mr-1 text-emerald-600" /> Devolver productos
+                  </Button>
+                )}
                 <Button
                   variant="outline"
                   size="sm"
@@ -1196,6 +1245,20 @@ export const Sales: React.FC = () => {
           </div>
         </Modal>
       )}
+
+      {/* MODAL DE DEVOLUCIÓN DE PRODUCTOS */}
+      <SaleRefundModal
+        isOpen={isRefundModalOpen}
+        onClose={() => {
+          setIsRefundModalOpen(false);
+          setRefundModalSaleId(null);
+        }}
+        saleId={refundModalSaleId}
+        onRefundSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ['sales'] });
+          queryClient.invalidateQueries({ queryKey: ['posDashboard'] });
+        }}
+      />
     </div>
   );
 };

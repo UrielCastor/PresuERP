@@ -117,4 +117,61 @@ export class SaleController {
       return next(error);
     }
   }
+
+  static async getSuspended(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const warehouseId = req.query.warehouseId ? String(req.query.warehouseId) : undefined;
+      const items = await saleService.getSuspendedSales(businessId, warehouseId);
+      return res.status(200).json({
+        success: true,
+        data: items,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async recoverSuspended(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const item = await saleService.recoverSuspendedSale(req.params.id, businessId);
+      return res.status(200).json({
+        success: true,
+        data: item,
+        message: 'Venta suspendida cargada nuevamente en POS',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async deleteSuspended(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      await saleService.deleteSuspendedSale(req.params.id, businessId, userId);
+      return res.status(200).json({
+        success: true,
+        message: 'Venta suspendida eliminada correctamente',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async processRefund(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const userId = req.user!.id;
+      const refund = await saleService.processRefund(req.params.id, businessId, userId, req.body);
+      return res.status(200).json({
+        success: true,
+        data: refund,
+        message: 'Devolución procesada exitosamente con reingreso de stock y ajuste financiero',
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 }

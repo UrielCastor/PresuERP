@@ -559,27 +559,29 @@ export class SaleService {
         totalAmount: Number(sale.totalAmount)
       });
 
-      // 5. Modificar stock lógico / Kardex a través del servicio integrado interno
-      for (const item of data.items) {
-        // Enlazar descontado al Kardex real como movimiento EXIT
-        await this.stockMovementService.registerMovement(
-          {
-            businessId,
-            warehouseId: data.warehouseId,
-            productId: item.productId,
-            userId,
-            movementType: 'EXIT',
-            quantity: Math.abs(Number(item.quantity)), 
-            unitCost: item.unitPrice, // As proxy reference logic
-            referenceType: 'SALE',
-            referenceId: sale.id,
-            referenceNumber: `${docType.code}-${saleNumber}`,
-            reason: 'Venta de mercadería POS',
-          },
-          undefined,
-          undefined,
-          tx
-        );
+      // 5. Modificar stock lógico / Kardex a través del servicio integrado interno (únicamente para ventas completadas)
+      if (sale.status === 'COMPLETED') {
+        for (const item of data.items) {
+          // Enlazar descontado al Kardex real como movimiento EXIT
+          await this.stockMovementService.registerMovement(
+            {
+              businessId,
+              warehouseId: data.warehouseId,
+              productId: item.productId,
+              userId,
+              movementType: 'EXIT',
+              quantity: Math.abs(Number(item.quantity)), 
+              unitCost: item.unitPrice, // As proxy reference logic
+              referenceType: 'SALE',
+              referenceId: sale.id,
+              referenceNumber: `${docType.code}-${saleNumber}`,
+              reason: 'Venta de mercadería POS',
+            },
+            undefined,
+            undefined,
+            tx
+          );
+        }
       }
 
       // 6. Impactar pagos transaccionales (Caja o Cuenta Corriente)
@@ -771,6 +773,333 @@ export class SaleService {
       });
 
       return updated;
+    });
+  }
+
+  async getSuspendedSales(businessId: string, warehouseId?: string) {
+    const where: any = {
+      businessId,
+      status: 'PENDING',
+    };
+    if (warehouseId) {
+      where.warehouseId = warehouseId;
+    }
+    return prisma.sale.findMany({
+      where,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        customer: { select: { id: true, name: true, taxId: true } },
+        documentType: { select: { id: true, name: true, code: true } },
+        createdBy: { select: { id: true, name: true, email: true } },
+        items: {
+          include: {
+            product: {
+              select: { id: true, name: true, sku: true, barcode: true, salePrice: true, unitOfMeasure: true }
+            }
+          }
+        },
+        payments: {
+          include: {
+            paymentMethod: { select: { id: true, name: true, type: true } }
+          }
+        }
+      }
+    });
+  }
+
+  async recoverSuspendedSale(id: string, businessId: string) {
+    return prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: { id, businessId, status: 'PENDING' },
+        include: {
+          customer: true,
+          items: {
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+      if (!sale) {
+        throw new NotFoundError('Venta suspendida no encontrada o ya fue procesada.');
+      }
+      // Marcar la venta suspendida como anulada/recuperada para evitar doble recuperación
+      await tx.sale.update({
+        where: { id },
+        data: { status: 'CANCELLED', notes: 'Recuperada en POS' }
+      });
+      return sale;
+    });
+  }
+
+  async deleteSuspendedSale(id: string, businessId: string, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      const sale = await tx.sale.findFirst({
+        where: { id, businessId, status: 'PENDING' }
+      });
+      if (!sale) {
+        throw new NotFoundError('Venta suspendida no encontrada');
+      }
+      await tx.sale.delete({ where: { id } });
+
+      await tx.activityLog.create({
+        data: {
+          userId,
+          businessId,
+          entityName: 'Sale',
+          entityId: id,
+          actionType: 'DELETE_SUSPENDED_SALE',
+          previousValues: JSON.stringify({ documentNumber: sale.documentNumber }),
+          newValues: '{}'
+        }
+      });
+      return { success: true };
+    });
+  }
+
+  async processRefund(
+    id: string,
+    businessId: string,
+    userId: string,
+    payload: {
+      reason?: string;
+      items: { saleItemId: string; quantity: number }[];
+    }
+  ) {
+    if (!payload.items || payload.items.length === 0) {
+      throw new BadRequestError('Debes seleccionar al menos un ítem para devolver.');
+    }
+
+    return prisma.$transaction(async (tx) => {
+      // 1. Obtener la venta original con sus items, devoluciones previas y pagos
+      const sale = await tx.sale.findFirst({
+        where: { id, businessId },
+        include: {
+          documentType: true,
+          items: true,
+          payments: { include: { paymentMethod: true } },
+          refunds: {
+            include: {
+              items: true
+            }
+          }
+        }
+      });
+
+      if (!sale) {
+        throw new NotFoundError('Venta no encontrada');
+      }
+      if (sale.status === 'CANCELLED') {
+        throw new BadRequestError('No se pueden hacer devoluciones sobre una venta anulada');
+      }
+
+      // 2. Calcular cantidades ya devueltas previamente por cada item
+      const previouslyRefundedMap = new Map<string, number>();
+      for (const ref of sale.refunds) {
+        for (const refItem of ref.items) {
+          const current = previouslyRefundedMap.get(refItem.saleItemId) || 0;
+          previouslyRefundedMap.set(refItem.saleItemId, current + Number(refItem.quantity));
+        }
+      }
+
+      // 3. Validar y preparar los ítems a devolver
+      let refundTotal = 0;
+      const refundItemsToCreate: {
+        saleItemId: string;
+        productId: string;
+        quantity: number;
+        unitPrice: number;
+        totalAmount: number;
+      }[] = [];
+
+      for (const reqItem of payload.items) {
+        if (!reqItem.quantity || reqItem.quantity <= 0) continue;
+
+        const saleItem = sale.items.find((i) => i.id === reqItem.saleItemId);
+        if (!saleItem) {
+          throw new BadRequestError(`El ítem con ID ${reqItem.saleItemId} no pertenece a esta venta.`);
+        }
+
+        const soldQty = Number(saleItem.quantity);
+        const prevRef = previouslyRefundedMap.get(saleItem.id) || 0;
+        const maxAvailable = soldQty - prevRef;
+
+        if (reqItem.quantity > maxAvailable + 0.0001) {
+          throw new BadRequestError(
+            `No es posible devolver ${reqItem.quantity} u. del producto. Máximo disponible a devolver: ${maxAvailable} u.`
+          );
+        }
+
+        const unitPrice = Number(saleItem.unitPrice);
+        const itemTotal = reqItem.quantity * unitPrice;
+        refundTotal += itemTotal;
+
+        refundItemsToCreate.push({
+          saleItemId: saleItem.id,
+          productId: saleItem.productId,
+          quantity: reqItem.quantity,
+          unitPrice,
+          totalAmount: itemTotal,
+        });
+      }
+
+      if (refundItemsToCreate.length === 0 || refundTotal <= 0) {
+        throw new BadRequestError('La cantidad total a devolver debe ser mayor a cero.');
+      }
+
+      // 4. Secuencia numérica de devolución
+      const lastRefund = await tx.saleRefund.findFirst({
+        where: { businessId },
+        orderBy: { refundNumber: 'desc' }
+      });
+      const nextRefundNumber = (lastRefund?.refundNumber || 0) + 1;
+
+      // Buscar sesión de caja activa opcional para egreso compensatorio
+      const activeCashSession = await tx.cashSession.findFirst({
+        where: { businessId, warehouseId: sale.warehouseId, status: 'OPEN' },
+        orderBy: { openedAt: 'desc' }
+      }) || await tx.cashSession.findFirst({
+        where: { businessId, status: 'OPEN' },
+        orderBy: { openedAt: 'desc' }
+      });
+
+      // 5. Crear el registro de SaleRefund y SaleRefundItem
+      const effectiveWarehouseId = sale.warehouseId || activeCashSession?.warehouseId || '';
+      const refund = await tx.saleRefund.create({
+        data: {
+          businessId,
+          saleId: sale.id,
+          warehouseId: effectiveWarehouseId,
+          cashSessionId: activeCashSession?.id || sale.cashSessionId,
+          createdById: userId,
+          refundNumber: nextRefundNumber,
+          totalAmount: refundTotal,
+          reason: payload.reason || 'Devolución de productos',
+          items: {
+            create: refundItemsToCreate.map((ri) => ({
+              saleItemId: ri.saleItemId,
+              productId: ri.productId,
+              quantity: ri.quantity,
+              unitPrice: ri.unitPrice,
+              totalAmount: ri.totalAmount,
+            }))
+          }
+        },
+        include: {
+          items: { include: { product: true } }
+        }
+      });
+
+      // 6. Verificar si la venta quedó completamente devuelta
+      let isFullyRefunded = true;
+      for (const saleItem of sale.items) {
+        const sold = Number(saleItem.quantity);
+        const prev = previouslyRefundedMap.get(saleItem.id) || 0;
+        const currentRef = refundItemsToCreate.find((r) => r.saleItemId === saleItem.id)?.quantity || 0;
+        if (prev + currentRef < sold - 0.0001) {
+          isFullyRefunded = false;
+          break;
+        }
+      }
+
+      if (isFullyRefunded) {
+        await tx.sale.update({
+          where: { id: sale.id },
+          data: { status: 'REFUNDED' }
+        });
+      }
+
+      // 7. Reingreso de Stock en el depósito original de la venta mediante Kardex (ENTRY / SALE_REFUND)
+      for (const ri of refundItemsToCreate) {
+        await this.stockMovementService.registerMovement(
+          {
+            businessId,
+            warehouseId: effectiveWarehouseId,
+            productId: ri.productId,
+            userId,
+            movementType: 'ENTRY',
+            quantity: ri.quantity,
+            unitCost: ri.unitPrice,
+            referenceType: 'SALE_REFUND',
+            referenceId: refund.id,
+            referenceNumber: `${sale.documentType.code}-${sale.documentNumber} (Devolución #${nextRefundNumber})`,
+            reason: payload.reason || 'Devolución de mercadería POS',
+          },
+          undefined,
+          undefined,
+          tx
+        );
+      }
+
+      // 8. Ajuste de Caja / Cuenta Corriente
+      const cashPayment = sale.payments.find((p) => {
+        const details = String(p.details || '').toUpperCase();
+        return details === 'CASH' || p.paymentMethod?.type === 'CASH' || details.includes('EFECTIVO');
+      });
+
+      const creditAccountPayment = sale.payments.find((p) => {
+        const details = String(p.details || '').toUpperCase();
+        return details === 'CREDIT_ACCOUNT' || p.paymentMethod?.type === 'CREDIT_ACCOUNT' || details.includes('CUENTA CORRIENTE');
+      });
+
+      if (creditAccountPayment && sale.customerId) {
+        await tx.customer.update({
+          where: { id: sale.customerId },
+          data: { currentDebt: { decrement: refundTotal } }
+        });
+        await tx.customerAccountMovement.create({
+          data: {
+            businessId,
+            customerId: sale.customerId,
+            type: 'PAYMENT',
+            amount: refundTotal,
+            remainingAmount: 0,
+            isSettled: true,
+            description: `Reintegro por devolución de venta ${sale.documentType.code}-${sale.documentNumber}`,
+            referenceId: refund.id,
+            createdById: userId,
+          }
+        });
+      } else if (activeCashSession) {
+        const pmId = cashPayment?.paymentMethodId || sale.payments[0]?.paymentMethodId;
+        await tx.cashMovement.create({
+          data: {
+            businessId,
+            cashSessionId: activeCashSession.id,
+            createdById: userId,
+            paymentMethodId: pmId,
+            paymentMethod: cashPayment ? 'CASH' : (sale.payments[0]?.details || 'CASH'),
+            type: 'OUT',
+            amount: refundTotal,
+            referenceType: 'SALE_REFUND',
+            referenceId: refund.id,
+            reason: `Reintegro devolución venta ${sale.documentType.code}-${sale.documentNumber} (${payload.reason || 'Devolución'})`,
+          }
+        });
+      }
+
+      // 9. Reversión de puntos
+      await this.pointsService.reverseSalePoints(businessId, sale.id, userId, tx);
+
+      // 10. Auditoría
+      await tx.activityLog.create({
+        data: {
+          userId,
+          businessId,
+          entityName: 'SaleRefund',
+          entityId: refund.id,
+          actionType: 'CREATE_SALE_REFUND',
+          previousValues: JSON.stringify({ saleId: sale.id, originalTotal: sale.totalAmount }),
+          newValues: JSON.stringify({
+            refundId: refund.id,
+            refundNumber: nextRefundNumber,
+            refundTotal,
+            isFullyRefunded
+          })
+        }
+      });
+
+      return refund;
     });
   }
 }

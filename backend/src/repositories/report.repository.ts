@@ -60,7 +60,7 @@ export class ReportRepository {
 
     const salesWhere: any = {
       businessId,
-      status: { not: 'CANCELLED' },
+      status: 'COMPLETED',
       createdAt: { gte: startOfThisMonth, lte: now }
     };
     if (warehouseId) salesWhere.warehouseId = warehouseId;
@@ -72,6 +72,36 @@ export class ReportRepository {
     });
     const salesMonth = Number(thisMonthSales._sum.totalAmount || 0);
     const salesCount = Number(thisMonthSales._count.id || 0);
+
+    // Costo de Mercadería Vendida (COGS) del mes
+    let cogsMonth = 0;
+    if (warehouseId) {
+      const cogsRaw = await prisma.$queryRaw<any[]>`
+        SELECT SUM(si.quantity * p."purchasePrice") as cogs
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s."warehouseId" = ${warehouseId}
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${startOfThisMonth} AND s."createdAt" <= ${now}
+      `;
+      cogsMonth = parseFloat(cogsRaw[0]?.cogs || 0);
+    } else {
+      const cogsRaw = await prisma.$queryRaw<any[]>`
+        SELECT SUM(si.quantity * p."purchasePrice") as cogs
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${startOfThisMonth} AND s."createdAt" <= ${now}
+      `;
+      cogsMonth = parseFloat(cogsRaw[0]?.cogs || 0);
+    }
+
+    const grossMargin = salesMonth - cogsMonth;
+    const marginPercentage = salesMonth > 0 ? (grossMargin / salesMonth) * 100 : 0;
 
     const validStatuses = ['APPROVED', 'RECEIVED', 'COMPLETED', 'PAID'];
 
@@ -113,7 +143,9 @@ export class ReportRepository {
        salesCount,
        purchasesMonth,
        purchasesTrend,
-       grossMargin: salesMonth - purchasesMonth,
+       cogsMonth,
+       grossMargin,
+       marginPercentage,
        stockValue,
        cashBalance
     };
@@ -129,7 +161,7 @@ export class ReportRepository {
 
     const baseWhere: any = {
       businessId,
-      status: { not: 'CANCELLED' },
+      status: 'COMPLETED',
       createdAt: { gte: start, lte: end }
     };
 
@@ -160,7 +192,7 @@ export class ReportRepository {
         JOIN "products" p ON p.id = si."productId"
         WHERE s."businessId" = ${businessId}
           AND s."warehouseId" = ${warehouseId}
-          AND s.status != 'CANCELLED'
+          AND s.status = 'COMPLETED'
           AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
         GROUP BY p.id, p.name, p.sku
         ORDER BY amount DESC
@@ -173,7 +205,7 @@ export class ReportRepository {
         LEFT JOIN "customers" c ON c.id = s."customerId"
         WHERE s."businessId" = ${businessId}
           AND s."warehouseId" = ${warehouseId}
-          AND s.status != 'CANCELLED'
+          AND s.status = 'COMPLETED'
           AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
         GROUP BY c.id, c.name
         ORDER BY amount DESC
@@ -185,7 +217,7 @@ export class ReportRepository {
         FROM "sales"
         WHERE "businessId" = ${businessId}
           AND "warehouseId" = ${warehouseId}
-          AND status != 'CANCELLED'
+          AND status = 'COMPLETED'
           AND "createdAt" >= ${start} AND "createdAt" <= ${end}
         GROUP BY 1 ORDER BY 1
       `;
@@ -196,7 +228,7 @@ export class ReportRepository {
         JOIN "sales" s ON s.id = si."saleId"
         JOIN "products" p ON p.id = si."productId"
         WHERE s."businessId" = ${businessId}
-          AND s.status != 'CANCELLED'
+          AND s.status = 'COMPLETED'
           AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
         GROUP BY p.id, p.name, p.sku
         ORDER BY amount DESC
@@ -208,7 +240,7 @@ export class ReportRepository {
         FROM "sales" s
         LEFT JOIN "customers" c ON c.id = s."customerId"
         WHERE s."businessId" = ${businessId}
-          AND s.status != 'CANCELLED'
+          AND s.status = 'COMPLETED'
           AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
         GROUP BY c.id, c.name
         ORDER BY amount DESC
@@ -219,7 +251,7 @@ export class ReportRepository {
         SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as total
         FROM "sales"
         WHERE "businessId" = ${businessId}
-          AND status != 'CANCELLED'
+          AND status = 'COMPLETED'
           AND "createdAt" >= ${start} AND "createdAt" <= ${end}
         GROUP BY 1 ORDER BY 1
       `;
@@ -607,7 +639,7 @@ export class ReportRepository {
 
     const baseWhere: any = { businessId, createdAt: { gte: start, lte: end } };
     if (filters.productId) baseWhere.productId = filters.productId;
-    if (filters.warehouseId) baseWhere.warehouseId = filters.warehouseId;
+    if (filters.warehouseId && filters.warehouseId !== 'ALL') baseWhere.warehouseId = filters.warehouseId;
 
     const movements = await prisma.stockMovement.findMany({
       where: baseWhere,
@@ -619,16 +651,40 @@ export class ReportRepository {
       }
     });
 
+    let countIn = 0;
+    let countOut = 0;
+    let countAdjust = 0;
+    const uniqueProducts = new Set();
+
+    for (const m of movements) {
+      if (m.productId) uniqueProducts.add(m.productId);
+      const mType = (m.movementType || '').toUpperCase();
+      const qty = Number(m.quantity || 0);
+
+      if (['ENTRY', 'PURCHASE', 'TRANSFER_IN', 'RETURN_CUSTOMER', 'SALE_RETURN', 'PRODUCTION_OUTPUT'].includes(mType)) {
+        countIn++;
+      } else if (['EXIT', 'SALE', 'TRANSFER_OUT', 'RETURN_SUPPLIER', 'PURCHASE_RETURN', 'PRODUCTION_INPUT'].includes(mType)) {
+        countOut++;
+      } else if (['ADJUSTMENT', 'INVENTORY', 'INITIAL_INVENTORY'].includes(mType)) {
+        countAdjust++;
+      } else {
+        if (qty > 0) countIn++;
+        else if (qty < 0) countOut++;
+        else countAdjust++;
+      }
+    }
+
     const summary = {
       total: movements.length,
-      in: movements.filter((m: any) => ['IN', 'PURCHASE', 'SALE_RETURN', 'TRANSFER_IN'].includes(m.type)).length,
-      out: movements.filter((m: any) => ['OUT', 'SALE', 'PURCHASE_RETURN', 'TRANSFER_OUT'].includes(m.type)).length,
-      adjust: movements.filter((m: any) => ['ADJUSTMENT', 'INITIAL_INVENTORY'].includes(m.type)).length,
-      uniqueProducts: new Set(movements.map((m: any) => m.productId)).size
+      in: countIn,
+      out: countOut,
+      adjust: countAdjust,
+      uniqueProducts: uniqueProducts.size
     };
 
     return { summary, movements };
   }
+
   // ==========================================
   // ADVANCED REPORTS (FINANCIAL, CUSTOMERS, PRODUCTS, USERS)
   // ==========================================
@@ -636,7 +692,7 @@ export class ReportRepository {
     if (!businessId) throw new Error('businessId is mandatory for reporting');
     const warehouseId = filters?.warehouseId && filters.warehouseId !== 'ALL' ? filters.warehouseId : null;
 
-    const salesWhere: any = { businessId, status: { not: 'CANCELLED' }, createdAt: { gte: start, lte: end } };
+    const salesWhere: any = { businessId, status: 'COMPLETED', createdAt: { gte: start, lte: end } };
     if (warehouseId) salesWhere.warehouseId = warehouseId;
 
     const validStatuses = ['APPROVED', 'RECEIVED', 'COMPLETED', 'PAID'];
@@ -648,7 +704,35 @@ export class ReportRepository {
     
     const totalSales = Number(sales._sum.totalAmount || 0);
     const totalPurchases = Number(purchases._sum.total || 0);
-    const grossMargin = totalSales - totalPurchases;
+
+    let totalCogs = 0;
+    if (warehouseId) {
+      const cogsRaw = await prisma.$queryRaw<any[]>`
+        SELECT SUM(si.quantity * p."purchasePrice") as cogs
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s."warehouseId" = ${warehouseId}
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      `;
+      totalCogs = parseFloat(cogsRaw[0]?.cogs || 0);
+    } else {
+      const cogsRaw = await prisma.$queryRaw<any[]>`
+        SELECT SUM(si.quantity * p."purchasePrice") as cogs
+        FROM "sale_items" si
+        JOIN "sales" s ON s.id = si."saleId"
+        JOIN "products" p ON p.id = si."productId"
+        WHERE s."businessId" = ${businessId}
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+      `;
+      totalCogs = parseFloat(cogsRaw[0]?.cogs || 0);
+    }
+
+    const grossMargin = totalSales - totalCogs;
+    const marginPercentage = totalSales > 0 ? (grossMargin / totalSales) * 100 : 0;
 
     let dailyFinancial: any[] = [];
     if (warehouseId) {
@@ -656,6 +740,7 @@ export class ReportRepository {
         SELECT 
           d.day,
           COALESCE(s.sales_total, 0) as sales,
+          COALESCE(s.cogs_total, 0) as cogs,
           COALESCE(p.purchases_total, 0) as purchases
         FROM (
           SELECT DATE_TRUNC('day', "createdAt") as day FROM "sales" WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND "createdAt" >= ${start} AND "createdAt" <= ${end}
@@ -663,9 +748,11 @@ export class ReportRepository {
           SELECT DATE_TRUNC('day', "purchaseDate") as day FROM "purchases" WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
         ) d
         LEFT JOIN (
-          SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as sales_total
-          FROM "sales"
-          WHERE "businessId" = ${businessId} AND "warehouseId" = ${warehouseId} AND status != 'CANCELLED' AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          SELECT DATE_TRUNC('day', s."createdAt") as day, SUM(s."totalAmount") as sales_total, SUM(si.quantity * p."purchasePrice") as cogs_total
+          FROM "sales" s
+          JOIN "sale_items" si ON si."saleId" = s.id
+          JOIN "products" p ON p.id = si."productId"
+          WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s.status = 'COMPLETED' AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
           GROUP BY 1
         ) s ON s.day = d.day
         LEFT JOIN (
@@ -681,6 +768,7 @@ export class ReportRepository {
         SELECT 
           d.day,
           COALESCE(s.sales_total, 0) as sales,
+          COALESCE(s.cogs_total, 0) as cogs,
           COALESCE(p.purchases_total, 0) as purchases
         FROM (
           SELECT DATE_TRUNC('day', "createdAt") as day FROM "sales" WHERE "businessId" = ${businessId} AND "createdAt" >= ${start} AND "createdAt" <= ${end}
@@ -688,9 +776,11 @@ export class ReportRepository {
           SELECT DATE_TRUNC('day', "purchaseDate") as day FROM "purchases" WHERE "businessId" = ${businessId} AND "purchaseDate" >= ${start} AND "purchaseDate" <= ${end}
         ) d
         LEFT JOIN (
-          SELECT DATE_TRUNC('day', "createdAt") as day, SUM("totalAmount") as sales_total
-          FROM "sales"
-          WHERE "businessId" = ${businessId} AND status != 'CANCELLED' AND "createdAt" >= ${start} AND "createdAt" <= ${end}
+          SELECT DATE_TRUNC('day', s."createdAt") as day, SUM(s."totalAmount") as sales_total, SUM(si.quantity * p."purchasePrice") as cogs_total
+          FROM "sales" s
+          JOIN "sale_items" si ON si."saleId" = s.id
+          JOIN "products" p ON p.id = si."productId"
+          WHERE s."businessId" = ${businessId} AND s.status = 'COMPLETED' AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
           GROUP BY 1
         ) s ON s.day = d.day
         LEFT JOIN (
@@ -705,15 +795,24 @@ export class ReportRepository {
 
     return {
       totalSales,
+      totalCogs,
       totalPurchases,
       grossMargin,
+      marginPercentage,
       netFlow: grossMargin,
-      dailyFinancial: dailyFinancial.map(df => ({
-        day: df.day,
-        sales: Number(df.sales || 0),
-        purchases: Number(df.purchases || 0),
-        margin: Number(df.sales || 0) - Number(df.purchases || 0)
-      }))
+      dailyFinancial: dailyFinancial.map(df => {
+        const salesVal = Number(df.sales || 0);
+        const cogsVal = Number(df.cogs || 0);
+        const purchasesVal = Number(df.purchases || 0);
+        const marginVal = salesVal - cogsVal;
+        return {
+          day: df.day,
+          sales: salesVal,
+          cogs: cogsVal,
+          purchases: purchasesVal,
+          margin: marginVal
+        };
+      })
     };
   }
 
@@ -759,76 +858,82 @@ export class ReportRepository {
       totalValuation = parseFloat(res[0]?.total || 0);
     }
 
-    const summary = {
-      activeProducts: await prisma.product.count({ where: { businessId, status: 'ACTIVE' } }),
-      totalValuation,
-      withoutMovement: 0,
-      averageMargin: 0
-    };
-
     let topSelling: any[] = [];
     let categorySales: any[] = [];
-    let marginData: any[] = [];
 
     if (warehouseId) {
       topSelling = await prisma.$queryRaw`
-        SELECT p.name, p.sku, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        SELECT 
+          p.id as "productId",
+          p.name, 
+          p.sku, 
+          SUM(si.quantity) as qty, 
+          SUM(si."totalAmount") as total_revenue,
+          SUM(si.quantity * p."purchasePrice") as total_cost
         FROM "sale_items" si 
         JOIN "sales" s ON s.id = si."saleId"
         JOIN "products" p ON p.id = si."productId"
-        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-        GROUP BY p.name, p.sku
-        ORDER BY total DESC
+        WHERE s."businessId" = ${businessId} 
+          AND s."warehouseId" = ${warehouseId} 
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.id, p.name, p.sku
+        ORDER BY total_revenue DESC
         LIMIT 100
       `;
 
       categorySales = await prisma.$queryRaw`
-        SELECT c.name, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        SELECT 
+          c.name, 
+          SUM(si.quantity) as qty, 
+          SUM(si."totalAmount") as total_revenue,
+          SUM(si.quantity * p."purchasePrice") as total_cost
         FROM "sale_items" si 
         JOIN "sales" s ON s.id = si."saleId"
         JOIN "products" p ON p.id = si."productId"
         JOIN "categories" c ON c.id = p."categoryId"
-        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-        GROUP BY c.name
-        ORDER BY total DESC
-      `;
-
-      marginData = await prisma.$queryRaw`
-        SELECT SUM(si."totalAmount") as revenue, SUM(p."purchasePrice" * si.quantity) as cost
-        FROM "sale_items" si 
-        JOIN "sales" s ON s.id = si."saleId"
-        JOIN "products" p ON p.id = si."productId"
-        WHERE s."businessId" = ${businessId} AND s."warehouseId" = ${warehouseId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        WHERE s."businessId" = ${businessId} 
+          AND s."warehouseId" = ${warehouseId} 
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.id, c.name
+        ORDER BY total_revenue DESC
       `;
     } else {
       topSelling = await prisma.$queryRaw`
-        SELECT p.name, p.sku, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        SELECT 
+          p.id as "productId",
+          p.name, 
+          p.sku, 
+          SUM(si.quantity) as qty, 
+          SUM(si."totalAmount") as total_revenue,
+          SUM(si.quantity * p."purchasePrice") as total_cost
         FROM "sale_items" si 
         JOIN "sales" s ON s.id = si."saleId"
         JOIN "products" p ON p.id = si."productId"
-        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-        GROUP BY p.name, p.sku
-        ORDER BY total DESC
+        WHERE s."businessId" = ${businessId} 
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY p.id, p.name, p.sku
+        ORDER BY total_revenue DESC
         LIMIT 100
       `;
 
       categorySales = await prisma.$queryRaw`
-        SELECT c.name, SUM(si.quantity) as qty, SUM(si."totalAmount") as total
+        SELECT 
+          c.name, 
+          SUM(si.quantity) as qty, 
+          SUM(si."totalAmount") as total_revenue,
+          SUM(si.quantity * p."purchasePrice") as total_cost
         FROM "sale_items" si 
         JOIN "sales" s ON s.id = si."saleId"
         JOIN "products" p ON p.id = si."productId"
         JOIN "categories" c ON c.id = p."categoryId"
-        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
-        GROUP BY c.name
-        ORDER BY total DESC
-      `;
-
-      marginData = await prisma.$queryRaw`
-        SELECT SUM(si."totalAmount") as revenue, SUM(p."purchasePrice" * si.quantity) as cost
-        FROM "sale_items" si 
-        JOIN "sales" s ON s.id = si."saleId"
-        JOIN "products" p ON p.id = si."productId"
-        WHERE s."businessId" = ${businessId} AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        WHERE s."businessId" = ${businessId} 
+          AND s."status" = 'COMPLETED'
+          AND s."createdAt" >= ${start} AND s."createdAt" <= ${end}
+        GROUP BY c.id, c.name
+        ORDER BY total_revenue DESC
       `;
     }
 
@@ -844,27 +949,76 @@ export class ReportRepository {
       AND NOT EXISTS (
          SELECT 1 FROM "sale_items" si 
          JOIN "sales" s ON s.id = si."saleId" 
-         WHERE si."productId" = p.id AND s."createdAt" >= ${dateLimit}
+         WHERE si."productId" = p.id AND s."status" = 'COMPLETED' AND s."createdAt" >= ${dateLimit}
       )
-      GROUP BY p.name, p.sku
+      GROUP BY p.id, p.name, p.sku
       HAVING SUM(st.quantity) > 0
       LIMIT 100
     `;
 
-    summary.withoutMovement = slowMoving.length;
+    let totalRevenue = 0;
+    let totalCost = 0;
+    topSelling.forEach(item => {
+      totalRevenue += Number(item.total_revenue || 0);
+      totalCost += Number(item.total_cost || 0);
+    });
 
-    if (marginData && marginData[0] && marginData[0].revenue > 0) {
-       const rev = parseFloat(marginData[0].revenue);
-       const cost = parseFloat(marginData[0].cost);
-       summary.averageMargin = ((rev - cost) / rev) * 100;
-    }
+    const overallGrossProfit = totalRevenue - totalCost;
+    const averageMargin = totalRevenue > 0 ? (overallGrossProfit / totalRevenue) * 100 : 0;
+
+    const summary = {
+      activeProducts: await prisma.product.count({ where: { businessId, status: 'ACTIVE' } }),
+      totalValuation,
+      withoutMovement: slowMoving.length,
+      averageMargin
+    };
+
+    const mappedTopSelling = topSelling.map(i => {
+      const rev = Number(i.total_revenue || 0);
+      const cost = Number(i.total_cost || 0);
+      const profit = rev - cost;
+      const margin = rev > 0 ? (profit / rev) * 100 : 0;
+      return {
+        producto: i.name,
+        sku: i.sku || 'S/S',
+        cantidad: Number(i.qty || 0),
+        facturacion: rev,
+        costo: cost,
+        ganancia: profit,
+        margen: margin
+      };
+    });
+
+    const mappedCategories = categorySales.map(i => {
+      const rev = Number(i.total_revenue || 0);
+      const cost = Number(i.total_cost || 0);
+      const profit = rev - cost;
+      const margin = rev > 0 ? (profit / rev) * 100 : 0;
+      return {
+        name: i.name,
+        qty: Number(i.qty || 0),
+        total: rev,
+        cost,
+        ganancia: profit,
+        margen: margin
+      };
+    });
+
+    const mappedProfitability = mappedTopSelling.map(i => ({
+      producto: i.producto,
+      ventas: i.cantidad,
+      facturacion: i.facturacion,
+      costo: i.costo,
+      ganancia: i.ganancia,
+      margen: i.margen
+    }));
 
     return {
       summary,
-      topSelling: topSelling.map(i => ({ producto: i.name, sku: i.sku, cantidad: Number(i.qty), facturacion: Number(i.total), margen: summary.averageMargin })),
-      inactive: slowMoving.map(i => ({ producto: i.name, sku: i.sku, stock: Number(i.stock_qty), lastSale: `Hace más de ${queryDays} días` })),
-      categories: categorySales.map(i => ({ name: i.name, qty: Number(i.qty), total: Number(i.total) })),
-      profitability: topSelling.map(i => ({ producto: i.name, ventas: Number(i.qty), ganancia: Number(i.total) * (summary.averageMargin/100), margen: summary.averageMargin }))
+      topSelling: mappedTopSelling,
+      inactive: slowMoving.map(i => ({ producto: i.name, sku: i.sku || 'S/S', stock: Number(i.stock_qty || 0), lastSale: `Hace más de ${queryDays} días` })),
+      categories: mappedCategories,
+      profitability: mappedProfitability
     };
   }
 
