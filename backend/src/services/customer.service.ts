@@ -167,10 +167,13 @@ export class CustomerService {
   async registerAccountPayment(
     customerId: string,
     businessId: string,
-    data: { amount: number; paymentMethod?: string; description?: string },
+    data: { amount: number; paymentMethod?: string; description?: string; cashSessionId?: string; warehouseId?: string },
     userId?: string
   ) {
     console.log('[ACCOUNT PAYMENT] Service:', { customerId, businessId, data, userId });
+    if (!userId) {
+      throw new BadRequestError('Usuario no autenticado.');
+    }
     const customer = await this.repo.findById(customerId, businessId);
     if (!customer) {
       throw new NotFoundError('Cliente no encontrado');
@@ -183,6 +186,15 @@ export class CustomerService {
 
     const paymentMethod = data.paymentMethod || 'CASH';
 
-    return this.repo.registerPayment(customerId, businessId, amount, paymentMethod, data.description, userId);
+    return this.repo.registerPayment(
+      customerId,
+      businessId,
+      amount,
+      paymentMethod,
+      data.description,
+      userId,
+      data.cashSessionId,
+      data.warehouseId
+    );
   }
 }

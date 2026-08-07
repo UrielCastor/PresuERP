@@ -355,8 +355,14 @@ export class SaleService {
         });
       }
 
-      if (Math.abs(expectedTotal - data.totalAmount) > 0.05) {
-        throw new BadRequestError(`Los totales no coinciden. Calculado internamente: ${expectedTotal}, Recibido: ${data.totalAmount}`);
+      const isPendingSale = data.status === 'PENDING';
+
+      if (!isPendingSale) {
+        if (Math.abs(expectedTotal - data.totalAmount) > 0.05) {
+          throw new BadRequestError(`Los totales no coinciden. Calculado internamente: ${expectedTotal}, Recibido: ${data.totalAmount}`);
+        }
+      } else {
+        data.totalAmount = expectedTotal;
       }
 
       // 3. Document type / numeración secuencial
@@ -384,13 +390,15 @@ export class SaleService {
         totalAmount: data.totalAmount,
       });
 
-      let rawPayments = (data.payments && data.payments.length > 0)
-        ? data.payments
-        : (data as any).paymentMethod
-          ? [{ amount: data.totalAmount, details: (data as any).paymentMethod }]
-          : [];
+      let rawPayments = isPendingSale
+        ? []
+        : (data.payments && data.payments.length > 0)
+          ? data.payments
+          : (data as any).paymentMethod
+            ? [{ amount: data.totalAmount, details: (data as any).paymentMethod }]
+            : [];
 
-      if (rawPayments.length === 0 && (data.status || 'COMPLETED') === 'COMPLETED' && data.totalAmount > 0) {
+      if (!isPendingSale && rawPayments.length === 0 && (data.status || 'COMPLETED') === 'COMPLETED' && data.totalAmount > 0) {
         rawPayments = [{ amount: data.totalAmount, details: 'CASH' }];
       }
 
@@ -490,9 +498,9 @@ export class SaleService {
         }
       }
 
-      const isPendingMp = processedPayments.some(p => p.pmCode === 'MERCADO_PAGO') || data.status === 'PENDING';
-      const initialStatus = isPendingMp ? 'PENDING' : (data.status || 'COMPLETED');
-      const initialPaymentStatus = isPendingMp ? 'PENDING' : 'PAID';
+      const isPendingMp = processedPayments.some(p => p.pmCode === 'MERCADO_PAGO');
+      const initialStatus = (isPendingMp || isPendingSale) ? 'PENDING' : (data.status || 'COMPLETED');
+      const initialPaymentStatus = isPendingSale ? 'PENDING' : (isPendingMp ? 'PENDING' : 'PAID');
 
       console.log('[CASH TRACE 2] Antes de crear la venta en DB', {
         businessId,
@@ -678,15 +686,17 @@ export class SaleService {
       return sale;
     }); // End $transaction
 
-    // Intentar emisión de Factura ARCA en segundo plano si está activada
-    try {
-      const { FiscalService } = await import('./fiscal.service');
-      const fiscalInvoice = await FiscalService.emitInvoiceForSale(businessId, createdSale.id);
-      if (fiscalInvoice) {
-        (createdSale as any).electronicInvoice = fiscalInvoice;
+    // Intentar emisión de Factura ARCA en segundo plano si está activada (solo para ventas completadas)
+    if (createdSale.status === 'COMPLETED') {
+      try {
+        const { FiscalService } = await import('./fiscal.service');
+        const fiscalInvoice = await FiscalService.emitInvoiceForSale(businessId, createdSale.id);
+        if (fiscalInvoice) {
+          (createdSale as any).electronicInvoice = fiscalInvoice;
+        }
+      } catch (fiscalErr: any) {
+        console.warn(`[ARCA Invoicing Warning] No se pudo autorizar factura automática para venta ${createdSale.id}:`, fiscalErr.message);
       }
-    } catch (fiscalErr: any) {
-      console.warn(`[ARCA Invoicing Warning] No se pudo autorizar factura automática para venta ${createdSale.id}:`, fiscalErr.message);
     }
 
     return createdSale;
@@ -777,14 +787,20 @@ export class SaleService {
   }
 
   async getSuspendedSales(businessId: string, warehouseId?: string) {
+    console.log('[POS_SUSPENDED_SERVICE]', { businessId, warehouseId });
     const where: any = {
       businessId,
       status: 'PENDING',
     };
     if (warehouseId) {
-      where.warehouseId = warehouseId;
+      where.OR = [
+        { warehouseId: warehouseId },
+        { cashSession: { warehouseId: warehouseId } },
+        { cashSession: { cashRegister: { warehouseId: warehouseId } } },
+      ];
     }
-    return prisma.sale.findMany({
+    console.log('[POS_SUSPENDED_QUERY]', { businessId, warehouseId, where });
+    const items = await prisma.sale.findMany({
       where,
       orderBy: { createdAt: 'desc' },
       include: {
@@ -805,6 +821,8 @@ export class SaleService {
         }
       }
     });
+    console.log('[POS_SUSPENDED_RESULT]', { count: items.length, ids: items.map(i => i.id) });
+    return items;
   }
 
   async recoverSuspendedSale(id: string, businessId: string) {

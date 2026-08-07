@@ -122,7 +122,9 @@ export class SaleController {
     try {
       const businessId = req.user!.businessId;
       const warehouseId = req.query.warehouseId ? String(req.query.warehouseId) : undefined;
+      console.log('[POS_SUSPENDED_CONTROLLER]', { businessId, warehouseId, query: req.query });
       const items = await saleService.getSuspendedSales(businessId, warehouseId);
+      console.log('[POS_SUSPENDED_CONTROLLER_RESULT]', { count: items.length });
       return res.status(200).json({
         success: true,
         data: items,

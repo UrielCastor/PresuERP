@@ -4,6 +4,7 @@ export class PosRepository {
   async countSalesToday(businessId: string, start: Date, end: Date, warehouseId?: string) {
     const where: any = {
       businessId,
+      status: 'COMPLETED',
       createdAt: {
         gte: start,
         lte: end,
@@ -18,9 +19,7 @@ export class PosRepository {
   async sumRevenueToday(businessId: string, start: Date, end: Date, warehouseId?: string, cashSessionId?: string) {
     const where: any = {
       businessId,
-      status: {
-        not: 'CANCELLED'
-      }
+      status: 'COMPLETED',
     };
 
     if (cashSessionId) {
@@ -49,9 +48,7 @@ export class PosRepository {
       where: {
         businessId,
         cashSessionId,
-        status: {
-          not: 'CANCELLED'
-        }
+        status: 'COMPLETED',
       }
     });
   }

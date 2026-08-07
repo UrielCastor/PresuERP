@@ -94,7 +94,13 @@ export const getCustomerAccountMovements = async (customerId: string) => {
 
 export const registerCustomerAccountPayment = async (
   customerId: string,
-  data: { amount: number; paymentMethod?: string; description?: string }
+  data: {
+    amount: number;
+    paymentMethod?: string;
+    description?: string;
+    cashSessionId?: string;
+    warehouseId?: string;
+  }
 ) => {
   const response = await api.post(`/customers/${customerId}/payments`, data);
   return response.data;

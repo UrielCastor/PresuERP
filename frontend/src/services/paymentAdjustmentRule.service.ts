@@ -48,14 +48,14 @@ export interface PaymentAdjustmentCalculation {
 
 export function calculatePaymentAdjustment(
   baseAmount: number,
-  paymentMethod: string,
+  paymentMethod: string | null | undefined,
   rules: PaymentAdjustmentRule[]
 ): PaymentAdjustmentCalculation {
-  if (!baseAmount || baseAmount <= 0) {
+  if (!baseAmount || baseAmount <= 0 || !paymentMethod || paymentMethod === 'NONE' || paymentMethod === 'UNSELECTED') {
     return {
       adjustmentAmount: 0,
       rawAdjustmentAmount: 0,
-      finalTotal: 0,
+      finalTotal: baseAmount || 0,
       type: 'NONE',
       label: '',
       rawValue: 0,
@@ -63,7 +63,7 @@ export function calculatePaymentAdjustment(
     };
   }
 
-  let targetMethod = paymentMethod ? paymentMethod.toUpperCase() : 'CASH';
+  let targetMethod = paymentMethod.toUpperCase();
   if (targetMethod === 'MERCADO_PAGO') targetMethod = 'MERCADOPAGO';
   if (targetMethod === 'CARD') targetMethod = 'CREDIT_CARD';
 

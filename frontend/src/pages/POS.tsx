@@ -94,11 +94,38 @@ export const POS: React.FC = () => {
   // Estados para Ventas Suspendidas y Cobro en Efectivo (Vuelto)
   const [isSuspendedModalOpen, setIsSuspendedModalOpen] = useState<boolean>(false);
   const [cashReceivedInput, setCashReceivedInput] = useState<string>('');
+  const [suspendedSearchTerm, setSuspendedSearchTerm] = useState<string>('');
 
   const { data: suspendedSalesList = [], refetch: refetchSuspendedSales } = useQuery({
     queryKey: ['suspendedSales', selectedWarehouseId],
-    queryFn: () => saleApi.getSuspended(selectedWarehouseId || undefined),
+    queryFn: async () => {
+      console.log('[POS_SUSPENDED_LIST_REQUEST]', {
+        url: '/sales/suspended',
+        warehouseId: selectedWarehouseId || undefined,
+      });
+      const data = await saleApi.getSuspended(selectedWarehouseId || undefined);
+      console.log('[POS_SUSPENDED_LIST_RESPONSE]', data);
+      console.log('[POS_SUSPENDED_FRONTEND_DATA]', JSON.stringify(data, null, 2));
+      return data || [];
+    },
   });
+
+  const filteredSuspendedSales = useMemo(() => {
+    const term = suspendedSearchTerm.toLowerCase().trim();
+    if (!term) return suspendedSalesList;
+
+    return suspendedSalesList.filter((sale: any) => {
+      const docNumStr = String(sale.documentNumber || sale.id || '').toLowerCase();
+      const customerName = (sale.customer?.name || 'consumidor final').toLowerCase();
+      const createdByName = (sale.createdBy?.name || '').toLowerCase();
+
+      return (
+        docNumStr.includes(term) ||
+        customerName.includes(term) ||
+        createdByName.includes(term)
+      );
+    });
+  }, [suspendedSalesList, suspendedSearchTerm]);
 
   // Inline Quantity Editing State in Cart
   const [editingQtyProductId, setEditingQtyProductId] = useState<string | null>(null);
@@ -134,8 +161,8 @@ const isKgProduct = (p: any) => {
   // Checkout Modal State
   const [isCheckoutOpen, setIsCheckoutOpen] = useState(false);
   const [paymentMethod, setPaymentMethod] = useState<
-    'CASH' | 'CARD' | 'TRANSFER' | 'MERCADO_PAGO' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'CREDIT_ACCOUNT'
-  >('CASH');
+    'CASH' | 'CARD' | 'TRANSFER' | 'MERCADO_PAGO' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'CREDIT_ACCOUNT' | null
+  >(null);
 
   // Customer Selection State
   const [selectedCustomer, setSelectedCustomer] = useState<Customer | null>(null);
@@ -321,7 +348,7 @@ const isKgProduct = (p: any) => {
           setCart(parsed.cart);
           setDiscountType(parsed.discountType || 'PERCENTAGE');
           setDiscountValue(parsed.discountValue !== undefined ? parsed.discountValue : '');
-          setPaymentMethod(parsed.paymentMethod || 'CASH');
+          setPaymentMethod(parsed.paymentMethod || null);
           setSelectedCustomer(parsed.selectedCustomer || null);
           setRestoredBanner('Se restauró automáticamente una venta que estaba en curso.');
           setLoadedWarehouseId(selectedWarehouseId);
@@ -331,7 +358,7 @@ const isKgProduct = (p: any) => {
       setCart([]);
       setDiscountType('PERCENTAGE');
       setDiscountValue('');
-      setPaymentMethod('CASH');
+      setPaymentMethod(null);
       setSelectedCustomer(null);
       setRestoredBanner(null);
       setLoadedWarehouseId(selectedWarehouseId);
@@ -370,13 +397,12 @@ const isKgProduct = (p: any) => {
       const prefs = {
         activeCategory,
         selectedWarehouseId,
-        paymentMethod,
       };
       localStorage.setItem(POS_PREFERENCES_KEY, JSON.stringify(prefs));
     } catch (err) {
       console.error('Error al guardar preferencias del POS:', err);
     }
-  }, [activeCategory, selectedWarehouseId, paymentMethod]);
+  }, [activeCategory, selectedWarehouseId]);
 
   const { data: customersRes } = useQuery({
     queryKey: ['posCustomersList'],
@@ -778,6 +804,8 @@ const isKgProduct = (p: any) => {
     setPointsDiscountAmount(0);
     setPointsPreviewError(null);
     setEarnedPointsPreview(0);
+    setPaymentMethod(null);
+    setCashReceivedInput('');
   };
 
   // Totals
@@ -930,8 +958,17 @@ const isKgProduct = (p: any) => {
   }, [cartTotal]);
 
   const paymentAdjustmentDetails = useMemo(() => {
-    return calculatePaymentAdjustment(cartTotal, paymentMethod, adjustmentRules as any);
-  }, [paymentMethod, adjustmentRules, cartTotal]);
+    const details = calculatePaymentAdjustment(cartTotal, paymentMethod, adjustmentRules as any);
+    console.log('[POS_TOTAL_DEBUG]', {
+      subtotal,
+      discount: discountAmount,
+      cartTotal,
+      paymentMethod,
+      appliedPaymentRules: details,
+      adjustmentRules,
+    });
+    return details;
+  }, [paymentMethod, adjustmentRules, cartTotal, subtotal, discountAmount]);
 
   const { data: posSettingsRes } = useQuery({
     queryKey: ['posSettingsData'],
@@ -1075,6 +1112,11 @@ const isKgProduct = (p: any) => {
       return;
     }
 
+    if (!paymentMethod) {
+      swalWarning('Medio de Pago Requerido', 'Por favor selecciona el medio de pago para finalizar la venta.');
+      return;
+    }
+
     const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
 
     if (paymentMethod === 'CASH') {
@@ -1186,7 +1228,7 @@ const isKgProduct = (p: any) => {
     if (!confirmed) return;
 
     try {
-      const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
+      console.log('[POS_SUSPEND_START]', { selectedWarehouseId, selectedCustomer, subtotal, cart });
       const items = cart.map((item) => ({
         productId: item.product.id,
         quantity: item.quantity,
@@ -1205,19 +1247,24 @@ const isKgProduct = (p: any) => {
         discountType,
         discountValue: Number(discountValue) || 0,
         discountAmount,
-        totalAmount: finalTotalAmount,
+        totalAmount: cartTotal,
         status: 'PENDING',
         notes: 'Venta Suspendida en POS',
         items,
       };
 
+      console.log('[POS_SUSPEND_PAYLOAD]', saleData);
       const res = await saleApi.create(saleData);
+      console.log('[POS_SUSPEND_CREATED]', res);
+      console.log('[POS_SUSPEND_ID]', res?.id);
+      console.log('[POS_SUSPEND_FINISHED]', { success: true });
+
       await swalSuccess(
-        'Venta Suspendida',
-        `La venta fue guardada correctamente como Venta Pendiente #${res.documentNumber || res.id}.`
+        'Venta suspendida',
+        'La venta quedó guardada y podrás recuperarla cuando quieras.'
       );
       clearCart();
-      refetchSuspendedSales();
+      await refetchSuspendedSales();
     } catch (err: any) {
       handleApiError(err, 'Error al suspender venta');
     }
@@ -1237,6 +1284,7 @@ const isKgProduct = (p: any) => {
         }
         if (sale.discountType) setDiscountType(sale.discountType);
         if (sale.discountValue) setDiscountValue(sale.discountValue);
+        setPaymentMethod(null);
 
         setIsSuspendedModalOpen(false);
         await swalSuccess(
@@ -1433,7 +1481,10 @@ const isKgProduct = (p: any) => {
             type="button"
             variant="outline"
             size="sm"
-            onClick={() => setIsSuspendedModalOpen(true)}
+            onClick={async () => {
+              await refetchSuspendedSales();
+              setIsSuspendedModalOpen(true);
+            }}
             className="flex items-center gap-1 font-bold py-0.5 px-2 text-xs border-amber-200 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/50 text-amber-900 dark:text-amber-300 hover:bg-amber-100 rounded-lg"
             title="Ver ventas suspendidas"
           >
@@ -2241,7 +2292,11 @@ const isKgProduct = (p: any) => {
       {/* 4. MODAL DE PAGO / CHECKOUT */}
       <Modal
         isOpen={isCheckoutOpen}
-        onClose={() => setIsCheckoutOpen(false)}
+        onClose={() => {
+          setIsCheckoutOpen(false);
+          setPaymentMethod(null);
+          setCashReceivedInput('');
+        }}
         title="Cobro de Venta POS"
         size="md"
       >
@@ -2506,89 +2561,200 @@ const isKgProduct = (p: any) => {
         </div>
       </Modal>
 
-      {/* 4.5. MODAL DE VENTAS SUSPENDIDAS */}
+      {/* 4.5. MODAL REDISEÑADO DE VENTAS SUSPENDIDAS */}
       <Modal
         isOpen={isSuspendedModalOpen}
-        onClose={() => setIsSuspendedModalOpen(false)}
-        title="Ventas Suspendidas / Pendientes"
+        onClose={() => {
+          setIsSuspendedModalOpen(false);
+          setSuspendedSearchTerm('');
+        }}
+        title="Ventas suspendidas"
         size="lg"
       >
         <div className="space-y-4 pt-1">
-          {suspendedSalesList.length === 0 ? (
-            <EmptyState
-              title="No hay ventas suspendidas"
-              description="No existen operaciones guardadas temporalmente para este negocio."
-              icon={PauseCircle}
-            />
-          ) : (
-            <div className="space-y-3 max-h-[450px] overflow-y-auto pr-1">
-              {suspendedSalesList.map((sale: any) => (
-                <div
-                  key={sale.id}
-                  className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-amber-400 transition-colors"
+          {/* Subtítulo & Badge Contadores */}
+          <div className="flex items-center justify-between bg-indigo-50/60 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/40 p-3.5 rounded-2xl">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 bg-indigo-600 text-white rounded-xl shadow-xs">
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="text-xs font-bold text-indigo-950 dark:text-indigo-200">
+                  Operaciones pendientes
+                </h4>
+                <p className="text-[11px] text-indigo-700/80 dark:text-indigo-300/80 font-medium">
+                  {suspendedSalesList.length > 0
+                    ? 'Selecciona una venta para continuar con el cobro.'
+                    : 'Recupera una venta que dejaste pendiente.'}
+                </p>
+              </div>
+            </div>
+
+            <span className="px-3 py-1 rounded-full text-xs font-black bg-indigo-600 text-white font-mono shadow-xs shrink-0">
+              {suspendedSalesList.length} {suspendedSalesList.length === 1 ? 'pendiente' : 'pendientes'}
+            </span>
+          </div>
+
+          {/* Buscador Compacto */}
+          {suspendedSalesList.length > 0 && (
+            <div className="relative">
+              <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400 pointer-events-none" />
+              <input
+                type="text"
+                placeholder="Buscar por # de venta, cliente o cajero..."
+                value={suspendedSearchTerm}
+                onChange={(e) => setSuspendedSearchTerm(e.target.value)}
+                className="w-full h-10 pl-10 pr-4 bg-slate-50 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl text-xs font-medium text-slate-900 dark:text-white placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 transition-all"
+              />
+              {suspendedSearchTerm && (
+                <button
+                  type="button"
+                  onClick={() => setSuspendedSearchTerm('')}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
                 >
-                  <div className="space-y-1">
-                    <div className="flex items-center gap-2">
-                      <span className="font-extrabold text-slate-900 dark:text-white text-base">
-                        Venta pendiente #{sale.documentNumber || sale.id.substring(0, 8)}
+                  Limpiar
+                </button>
+              )}
+            </div>
+          )}
+
+          {/* Estado Vacío */}
+          {suspendedSalesList.length === 0 ? (
+            <div className="py-12 px-4 text-center bg-slate-50/50 dark:bg-slate-900/40 border border-dashed border-slate-200 dark:border-slate-800 rounded-3xl space-y-3">
+              <div className="w-12 h-12 rounded-2xl bg-indigo-50 dark:bg-indigo-950/60 text-indigo-500 flex items-center justify-center mx-auto shadow-sm">
+                <Clock className="w-6 h-6" />
+              </div>
+              <div className="space-y-1 max-w-sm mx-auto">
+                <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                  No hay ventas suspendidas
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  Las ventas que pauses desde el POS aparecerán aquí.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                className="font-bold text-xs"
+                onClick={() => setIsSuspendedModalOpen(false)}
+              >
+                Volver al POS
+              </Button>
+            </div>
+          ) : filteredSuspendedSales.length === 0 ? (
+            <div className="py-8 text-center bg-slate-50 dark:bg-slate-900/60 rounded-2xl border border-slate-200 dark:border-slate-800">
+              <p className="text-xs text-slate-500 font-medium">
+                No encontramos ventas pendientes con esa búsqueda.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-3 max-h-[420px] overflow-y-auto pr-1">
+              {filteredSuspendedSales.map((sale: any) => {
+                const totalItemsCount = sale.items?.reduce((acc: number, i: any) => acc + Number(i.quantity || 1), 0) || sale.items?.length || 0;
+                const formattedDate = new Date(sale.createdAt).toLocaleDateString('es-AR', { day: '2-digit', month: '2-digit' });
+                const formattedTime = new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                const firstProductName = sale.items?.[0]?.product?.name || '';
+                const hasMoreProducts = (sale.items?.length || 0) > 1;
+
+                return (
+                  <div
+                    key={sale.id}
+                    className="group bg-white dark:bg-slate-900 border border-slate-200/90 dark:border-slate-800 rounded-2xl p-4 shadow-xs hover:shadow-md hover:border-indigo-400 dark:hover:border-indigo-600 transition-all duration-200 space-y-3"
+                  >
+                    {/* Header de la Card: Título + Badge + Fecha */}
+                    <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-800/80 pb-2.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-black text-slate-900 dark:text-white text-sm tracking-tight">
+                          Venta pendiente #{sale.documentNumber || sale.id.substring(0, 8)}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800/80">
+                          Pendiente
+                        </span>
+                      </div>
+                      <span className="text-xs font-mono font-bold text-slate-400 dark:text-slate-500">
+                        {formattedDate}
                       </span>
-                      <Badge variant="warning" size="sm">PENDIENTE</Badge>
                     </div>
 
-                    <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-4 gap-y-1">
-                      <span className="flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300">
-                        <User className="w-3.5 h-3.5 text-slate-400" />
-                        {sale.customer?.name || 'Consumidor Final'}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <ShoppingCart className="w-3.5 h-3.5 text-slate-400" />
-                        {sale.items?.length || 0} productos
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="w-3.5 h-3.5 text-slate-400" />
-                        {new Date(sale.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} ({new Date(sale.createdAt).toLocaleDateString('es-AR')})
-                      </span>
-                      <span className="text-slate-400">
-                        Cajero: {sale.createdBy?.name || 'Usuario'}
-                      </span>
-                    </div>
-                  </div>
+                    {/* Cuerpo: Cliente, Metadata e Importe */}
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="space-y-1.5">
+                        <h4 className="text-sm font-bold text-slate-900 dark:text-slate-100 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                          {sale.customer?.name || 'Consumidor Final'}
+                        </h4>
 
-                  <div className="flex items-center justify-between sm:justify-end gap-3 pt-2 sm:pt-0 border-t sm:border-0 border-slate-100 dark:border-slate-800">
-                    <div className="text-right">
-                      <span className="text-[10px] uppercase font-bold text-slate-400 block">Total</span>
-                      <span className="text-lg font-black text-amber-600 font-mono">
-                        {formatCurrency(sale.totalAmount)}
-                      </span>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 flex flex-wrap items-center gap-x-2 gap-y-1 font-medium">
+                          {sale.createdBy?.name && (
+                            <span>👤 {sale.createdBy.name}</span>
+                          )}
+                          <span className="text-slate-300 dark:text-slate-700">•</span>
+                          <span>{totalItemsCount} {totalItemsCount === 1 ? 'producto' : 'productos'}</span>
+                          <span className="text-slate-300 dark:text-slate-700">•</span>
+                          <span className="font-mono">{formattedTime} hs</span>
+                        </div>
+
+                        {firstProductName && (
+                          <p className="text-[11px] text-slate-400 dark:text-slate-500 italic line-clamp-1">
+                            {firstProductName} {hasMoreProducts ? `y ${sale.items.length - 1} más...` : ''}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Importe Total */}
+                      <div className="text-right sm:text-right shrink-0 bg-slate-50 dark:bg-slate-800/40 px-3.5 py-2 rounded-xl border border-slate-100 dark:border-slate-800">
+                        <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">
+                          TOTAL
+                        </span>
+                        <span className="text-xl font-black text-slate-900 dark:text-white font-mono tracking-tight">
+                          {formatCurrency(sale.totalAmount)}
+                        </span>
+                      </div>
                     </div>
 
-                    <div className="flex items-center gap-1.5">
-                      <Button
+                    {/* Acciones */}
+                    <div className="flex items-center justify-end gap-2 pt-2.5 border-t border-slate-100 dark:border-slate-800/80">
+                      <button
                         type="button"
-                        variant="outline"
-                        size="sm"
                         onClick={() => handleDeleteSuspended(sale.id, sale.documentNumber)}
-                        className="text-rose-600 border-rose-200 hover:bg-rose-50 dark:hover:bg-rose-950 font-bold"
+                        className="px-3 py-1.5 text-xs font-bold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40 rounded-xl transition-colors"
                       >
-                        <Trash2 className="w-3.5 h-3.5 mr-1" />
                         Eliminar
-                      </Button>
+                      </button>
                       <Button
                         type="button"
                         variant="primary"
                         size="sm"
                         onClick={() => handleRecoverSuspended(sale.id)}
-                        className="bg-amber-600 hover:bg-amber-700 text-white font-bold"
+                        className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs px-4 py-2 rounded-xl shadow-xs flex items-center gap-1.5 transition-all"
                       >
-                        <RotateCcw className="w-3.5 h-3.5 mr-1" />
-                        Recuperar
+                        <RotateCcw className="w-3.5 h-3.5" />
+                        <span>Recuperar venta</span>
                       </Button>
                     </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           )}
+
+          {/* Footer discreto */}
+          <div className="flex items-center justify-between pt-3 border-t border-slate-100 dark:border-slate-800 text-xs text-slate-500 font-medium">
+            <span>
+              {suspendedSalesList.length} {suspendedSalesList.length === 1 ? 'venta pendiente' : 'ventas pendientes'}
+            </span>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                setIsSuspendedModalOpen(false);
+                setSuspendedSearchTerm('');
+              }}
+              className="font-bold text-xs"
+            >
+              Cerrar
+            </Button>
+          </div>
         </div>
       </Modal>
 
@@ -2733,50 +2899,106 @@ const isKgProduct = (p: any) => {
           isOpen={isOpenCashModalOpen}
           onClose={() => setIsOpenCashModalOpen(false)}
           title="Apertura de Caja POS"
-          size="md"
+          size="lg"
         >
           <div className="space-y-4 pt-1">
-            <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-              <Lock className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-              <span>
-                Para registrar ventas en efectivo o medios digitales en el POS, debes tener una sesión de caja abierta.
-              </span>
+            {/* Header explicativo directo */}
+            <div className="p-3.5 bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/60 dark:border-indigo-800/40 rounded-2xl text-xs text-indigo-900 dark:text-indigo-300 flex items-start gap-2.5">
+              <Store className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <div className="space-y-0.5">
+                <span className="font-extrabold block text-slate-900 dark:text-white">
+                  Apertura de Caja POS
+                </span>
+                <span className="text-slate-600 dark:text-slate-300 font-medium">
+                  Selecciona la caja donde vas a operar y define el efectivo inicial.
+                </span>
+              </div>
             </div>
 
-            {/* Selector de Caja / Terminal */}
-            <div className="space-y-1.5">
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                Seleccionar Caja / Terminal
-              </label>
+            {/* SECCIÓN DE SELECCIÓN DE CAJA */}
+            <div className="space-y-2">
+              <div>
+                <label className="block text-xs font-black uppercase tracking-wider text-slate-900 dark:text-white">
+                  Seleccionar caja
+                </label>
+                <p className="text-[11px] text-slate-500 font-medium">
+                  Elige la caja del depósito o local donde vas a trabajar.
+                </p>
+              </div>
+
               {cashRegisters.length === 0 ? (
-                <p className="text-xs text-slate-400 italic">No hay cajas configuradas en la empresa.</p>
+                <div className="p-6 text-center bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl">
+                  <p className="text-xs text-slate-500 font-medium italic">No hay cajas configuradas en la empresa.</p>
+                </div>
               ) : (
-                <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-                  {cashRegisters.map((reg: any) => (
-                    <POSItemCard
-                      key={reg.id}
-                      variant={reg.isOpen ? 'amber' : 'emerald'}
-                      dotColor={reg.isOpen ? 'amber' : 'emerald'}
-                      selected={selectedCashRegisterId === reg.id}
-                      onClick={() => setSelectedCashRegisterId(reg.id)}
-                      title={`${reg.name} (${reg.code})`}
-                      badge={
-                        reg.isOpen ? (
-                          <span className="text-amber-600 dark:text-amber-400 font-extrabold">⚠️ Ya Abierta</span>
-                        ) : (
-                          <span className="text-emerald-600 dark:text-emerald-400 font-extrabold">🟢 Disponible</span>
-                        )
-                      }
-                      description={reg.isOpen ? 'Esta caja posee un turno activo. Puedes ingresar para operar.' : 'Caja disponible para iniciar turno.'}
-                    />
-                  ))}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-60 overflow-y-auto pr-1 py-1">
+                  {cashRegisters.map((reg: any) => {
+                    const isSelected = selectedCashRegisterId === reg.id;
+                    const isRegOpen = reg.isOpen || (reg.sessions && reg.sessions[0]?.status === 'OPEN');
+                    const warehouseName = reg.warehouse?.name || reg.warehouseName || 'Casa Central';
+
+                    return (
+                      <div
+                        key={reg.id}
+                        onClick={() => setSelectedCashRegisterId(reg.id)}
+                        className={`cursor-pointer rounded-2xl p-3.5 transition-all relative flex flex-col justify-between space-y-3 ${
+                          isSelected
+                            ? 'border-2 border-indigo-500 dark:border-indigo-500 bg-indigo-50/60 dark:bg-indigo-950/40 ring-2 ring-indigo-500/20 shadow-md'
+                            : 'border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-indigo-300 dark:hover:border-indigo-700 hover:bg-slate-50/80 dark:hover:bg-slate-850 shadow-xs'
+                        }`}
+                      >
+                        {/* Header de la tarjeta: Badge Depósito y Check superior */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[11px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/80 max-w-[80%] truncate">
+                            <Building className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
+                            <span className="truncate">{warehouseName}</span>
+                          </span>
+
+                          {isSelected && (
+                            <span className="h-5 w-5 rounded-full bg-indigo-600 text-white flex items-center justify-center text-xs font-black shadow-xs shrink-0">
+                              ✓
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Cuerpo: Nombre de la caja e identificador */}
+                        <div className="space-y-0.5">
+                          <h4 className="text-sm font-extrabold text-slate-900 dark:text-white leading-snug">
+                            {reg.name}
+                          </h4>
+                          <span className="text-xs font-mono font-extrabold text-slate-400 dark:text-slate-500 block">
+                            {reg.code}
+                          </span>
+                        </div>
+
+                        {/* Footer: Estado y descripción */}
+                        <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs">
+                          {isRegOpen ? (
+                            <div className="flex items-center gap-1.5 text-amber-700 dark:text-amber-300 font-extrabold text-[11px]">
+                              <span className="h-2 w-2 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                              <span>⚠️ Turno Activo</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-1.5 text-emerald-700 dark:text-emerald-300 font-extrabold text-[11px]">
+                              <span className="h-2 w-2 rounded-full bg-emerald-500 shrink-0" />
+                              <span>🟢 Disponible</span>
+                            </div>
+                          )}
+
+                          <span className="text-[10px] text-slate-400 font-medium truncate max-w-[140px] text-right">
+                            {isRegOpen ? 'Caja con turno activo.' : 'Lista para iniciar turno.'}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
             </div>
 
             {/* Monto Inicial de Apertura */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 Monto Inicial en Efectivo ($)
               </label>
               <Input
@@ -2786,19 +3008,22 @@ const isKgProduct = (p: any) => {
                 value={openingBalanceInput}
                 onChange={(e) => setOpeningBalanceInput(e.target.value)}
                 placeholder="0.00"
-                className="font-mono text-sm font-bold"
+                className="font-mono text-base font-bold"
               />
+              <p className="text-[11px] text-slate-500 font-medium">
+                Indica cuánto efectivo hay en la caja al comenzar el turno.
+              </p>
             </div>
 
             {/* Notas opcionales */}
-            <div>
-              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+            <div className="space-y-1">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
                 Notas / Observaciones de Turno (opcional)
               </label>
               <Input
                 value={openingNotesInput}
                 onChange={(e) => setOpeningNotesInput(e.target.value)}
-                placeholder="Ej: Turno Mañana / Caja Principal"
+                placeholder="Ej.: Apertura turno mañana"
               />
             </div>
 
@@ -2808,17 +3033,20 @@ const isKgProduct = (p: any) => {
               </Button>
               <Button
                 variant="primary"
+                className="font-bold shadow-md"
                 disabled={!selectedCashRegisterId || openCashSessionMutation.isPending}
+                isLoading={openCashSessionMutation.isPending}
                 onClick={() => {
+                  const selectedReg = cashRegisters.find((r: any) => r.id === selectedCashRegisterId);
                   openCashSessionMutation.mutate({
-                    warehouseId: selectedWarehouseId,
+                    warehouseId: selectedReg?.warehouseId || selectedWarehouseId,
                     cashRegisterId: selectedCashRegisterId,
                     openingBalance: Number(openingBalanceInput) || 0,
                     notes: openingNotesInput,
                   });
                 }}
               >
-                {openCashSessionMutation.isPending ? 'Abriendo Caja...' : 'Abrir Caja y Continuar'}
+                {openCashSessionMutation.isPending ? 'Abriendo Caja...' : 'Abrir Caja'}
               </Button>
             </div>
           </div>

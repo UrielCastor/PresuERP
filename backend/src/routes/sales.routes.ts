@@ -8,6 +8,7 @@ import { requirePermission } from '../middlewares/auth.middleware';
 
 const router = Router();
 
+// 1. Rutas Estáticas y Específicas PRIMERO
 router.get(
   '/',
   requirePermission('sales:read'),
@@ -16,28 +17,9 @@ router.get(
 );
 
 router.get(
-  '/:id',
-  requirePermission('sales:read'),
-  SaleController.findById
-);
-
-router.post(
-  '/',
-  requirePermission('sales:write'),
-  validate(createSaleSchema),
-  SaleController.create
-);
-
-router.get(
   '/suspended',
   requirePermission('sales:read'),
   SaleController.getSuspended
-);
-
-router.post(
-  '/:id/recover',
-  requirePermission('sales:write'),
-  SaleController.recoverSuspended
 );
 
 router.delete(
@@ -47,15 +29,10 @@ router.delete(
 );
 
 router.post(
-  '/:id/refund',
+  '/',
   requirePermission('sales:write'),
-  SaleController.processRefund
-);
-
-router.post(
-  '/:id/cancel',
-  requirePermission('sales:cancel'),
-  SaleController.cancel
+  validate(createSaleSchema),
+  SaleController.create
 );
 
 router.post(
@@ -70,6 +47,31 @@ router.post(
   requirePermission('sales:read'),
   validate(previewPointsEarnSchema),
   PointsController.previewEarn
+);
+
+// 2. Rutas Parametrizadas (:id) DESPUÉS
+router.get(
+  '/:id',
+  requirePermission('sales:read'),
+  SaleController.findById
+);
+
+router.post(
+  '/:id/recover',
+  requirePermission('sales:write'),
+  SaleController.recoverSuspended
+);
+
+router.post(
+  '/:id/refund',
+  requirePermission('sales:write'),
+  SaleController.processRefund
+);
+
+router.post(
+  '/:id/cancel',
+  requirePermission('sales:cancel'),
+  SaleController.cancel
 );
 
 export default router;

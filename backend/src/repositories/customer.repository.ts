@@ -174,22 +174,110 @@ export class CustomerRepository {
     amount: number,
     paymentMethod: string = 'CASH',
     description?: string,
-    createdById?: string
+    createdById?: string,
+    cashSessionId?: string,
+    warehouseId?: string
   ) {
-    console.log('[ACCOUNT PAYMENT] Repository:', { customerId, businessId, amount, paymentMethod, description, createdById });
+    console.log('[ACCOUNT PAYMENT] Repository:', { customerId, businessId, amount, paymentMethod, description, createdById, cashSessionId, warehouseId });
     return prisma.$transaction(async (tx) => {
       const customer = await tx.customer.findFirst({ where: { id: customerId, businessId } });
       if (!customer) throw new NotFoundError('Cliente no encontrado');
 
-      // 1. Buscar la CashSession abierta del negocio
-      const activeSession = await tx.cashSession.findFirst({
-        where: { businessId, status: 'OPEN' },
-        orderBy: { openedAt: 'desc' },
-      });
+      let activeSession: any = null;
 
-      // 2. Si no existe una caja abierta, devolver error
+      // 1. Si se proporciona cashSessionId explícito, validar esa sesión
+      if (cashSessionId) {
+        activeSession = await tx.cashSession.findFirst({
+          where: {
+            id: cashSessionId,
+            businessId,
+            status: 'OPEN',
+          },
+          include: {
+            cashRegister: { include: { warehouse: true } },
+            warehouse: true,
+          },
+        });
+
+        if (!activeSession) {
+          throw new BadRequestError('La sesión de caja asignada no es válida o ya se encuentra cerrada. Operación cancelada.');
+        }
+
+        if (warehouseId) {
+          const sessionWhId = activeSession.warehouseId || activeSession.cashRegister?.warehouseId;
+          if (sessionWhId && sessionWhId !== warehouseId) {
+            throw new BadRequestError('La sesión de caja activa no corresponde al depósito o sucursal operativo seleccionado.');
+          }
+        }
+      }
+
+      // 2. Si no se especificó cashSessionId pero sí warehouseId, resolver la sesión abierta de ese depósito
+      if (!activeSession && warehouseId) {
+        if (createdById) {
+          activeSession = await tx.cashSession.findFirst({
+            where: {
+              businessId,
+              status: 'OPEN',
+              openedById: createdById,
+              OR: [
+                { warehouseId: warehouseId },
+                { cashRegister: { warehouseId: warehouseId } },
+              ],
+            },
+            include: {
+              cashRegister: { include: { warehouse: true } },
+              warehouse: true,
+            },
+            orderBy: { openedAt: 'desc' },
+          });
+        }
+
+        if (!activeSession) {
+          activeSession = await tx.cashSession.findFirst({
+            where: {
+              businessId,
+              status: 'OPEN',
+              OR: [
+                { warehouseId: warehouseId },
+                { cashRegister: { warehouseId: warehouseId } },
+              ],
+            },
+            include: {
+              cashRegister: { include: { warehouse: true } },
+              warehouse: true,
+            },
+            orderBy: { openedAt: 'desc' },
+          });
+        }
+
+        if (!activeSession) {
+          throw new BadRequestError('Para registrar un pago de cuenta corriente necesitas tener una caja abierta en el depósito donde estás operando.');
+        }
+      }
+
+      // 3. Fallback: Si ni cashSessionId ni warehouseId fueron provistos
+      if (!activeSession && createdById) {
+        const userOpenSessions = await tx.cashSession.findMany({
+          where: {
+            businessId,
+            openedById: createdById,
+            status: 'OPEN',
+          },
+          include: {
+            cashRegister: { include: { warehouse: true } },
+            warehouse: true,
+          },
+        });
+
+        if (userOpenSessions.length === 1) {
+          activeSession = userOpenSessions[0];
+        } else if (userOpenSessions.length > 1) {
+          throw new BadRequestError('Existen múltiples cajas abiertas. Es obligatorio especificar la caja o sucursal operativa desde la que realizas el cobro.');
+        }
+      }
+
       if (!activeSession) {
-        throw new BadRequestError('No existe una caja abierta para registrar el cobro de Cuenta Corriente.');
+        throw new BadRequestError('Para registrar un pago de cuenta corriente necesitas tener una caja abierta en el depósito donde estás operando.');
       }
 
       const debtAmount = Number(amount);

@@ -3,7 +3,11 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X, User, Building, Phone, Mail, MapPin, FileText, ShoppingBag, DollarSign, Calendar, CreditCard, Tag, PlusCircle, ArrowUpRight, ArrowDownLeft, Wallet, Check, Award, Gift } from 'lucide-react';
 import { Customer, getCustomerById, getCustomerAccountMovements, registerCustomerAccountPayment, CustomerAccountMovement } from '../../services/customer.service';
 import { api } from '../../services/api';
+import { cashApi } from '../../services/cash.service';
+import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../../utils/swal';
 import { paymentAdjustmentRuleService, calculatePaymentAdjustment } from '../../services/paymentAdjustmentRule.service';
+import { getInitialWarehouseId } from '../../utils/warehouse';
+import { useAuth } from '../../contexts/AuthContext';
 import { format } from 'date-fns';
 import { es } from 'date-fns/locale';
 
@@ -18,12 +22,14 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   onClose,
   customerId,
 }) => {
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [customer, setCustomer] = useState<Customer | null>(null);
   const [loading, setLoading] = useState(false);
   const [activeTab, setActiveTab] = useState<'PURCHASES' | 'CREDIT_ACCOUNT' | 'LOYALTY'>('PURCHASES');
   const [movements, setMovements] = useState<CustomerAccountMovement[]>([]);
   const [loadingMovements, setLoadingMovements] = useState(false);
+  const [activeCashSession, setActiveCashSession] = useState<any>(null);
 
   // Loyalty states
   const [loyaltyInfo, setLoyaltyInfo] = useState<any>(null);
@@ -160,6 +166,29 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
   const formatCurrency = (val: number) =>
     new Intl.NumberFormat('es-AR', { style: 'currency', currency: 'ARS' }).format(val);
 
+  const handleOpenPaymentModal = async () => {
+    try {
+      const targetWhId = getInitialWarehouseId(user);
+      const activeSession = await cashApi.getActiveSession(targetWhId ? { warehouseId: targetWhId } : undefined);
+      if (!activeSession) {
+        await swalWarning(
+          'No hay una caja abierta',
+          'Para registrar un pago de cuenta corriente necesitas tener una caja abierta en el depósito donde estás operando.'
+        );
+        return;
+      }
+      setActiveCashSession(activeSession);
+      setPaymentAmount(calculatedCurrentDebt > 0 ? calculatedCurrentDebt : 0);
+      setPaymentError(null);
+      setIsPaymentModalOpen(true);
+    } catch (err: any) {
+      await swalWarning(
+        'No hay una caja abierta',
+        'Para registrar un pago de cuenta corriente necesitas tener una caja abierta en el depósito donde estás operando.'
+      );
+    }
+  };
+
   const handleRegisterPayment = async (e: React.FormEvent) => {
     e.preventDefault();
     const numAmount = Number(paymentAmount) || 0;
@@ -168,27 +197,56 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       return;
     }
 
-    setSubmittingPayment(true);
-    setPaymentError(null);
-
     try {
+      const targetWhId = getInitialWarehouseId(user);
+      const activeSession = await cashApi.getActiveSession(targetWhId ? { warehouseId: targetWhId } : undefined);
+      if (!activeSession) {
+        setIsPaymentModalOpen(false);
+        await swalWarning(
+          'No hay una caja abierta',
+          'Para registrar un pago de cuenta corriente necesitas tener una caja abierta en el depósito donde estás operando.'
+        );
+        return;
+      }
+      setActiveCashSession(activeSession);
+
+      const warehouseName = activeSession.warehouse?.name || activeSession.cashRegister?.warehouse?.name || 'Sucursal Actual';
+      const registerName = activeSession.cashRegister?.name || 'Caja Principal';
+      const registerCode = activeSession.cashRegister?.code || activeSession.id.slice(0, 8);
+
+      const confirmed = await swalConfirm(
+        '¿Registrar pago de Cuenta Corriente?',
+        `Monto: $${numAmount.toLocaleString('es-AR')}\n\nSe acreditará en:\n${registerName} (${registerCode})\n🏢 ${warehouseName}`,
+        'Registrar pago',
+        'Cancelar',
+        'question'
+      );
+      if (!confirmed) return;
+
+      setSubmittingPayment(true);
+      setPaymentError(null);
+
       await registerCustomerAccountPayment(customerId, {
         amount: numAmount,
         paymentMethod,
         description: paymentDescription.trim() || 'Pago a cuenta corriente',
+        cashSessionId: activeSession.id,
+        warehouseId: activeSession.warehouseId || activeSession.cashRegister?.warehouseId,
       });
+
       setIsPaymentModalOpen(false);
       setPaymentAmount('');
       setPaymentMethod('CASH');
       setPaymentDescription('');
-      console.log('[PAYMENT] Invalidando query', ['cash']);
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['cash', 'active'] });
       queryClient.refetchQueries({ queryKey: ['cash', 'active'] });
       fetchCustomerData();
       fetchMovements();
+      await swalSuccess('Pago Registrado', `El cobro fue acreditado exitosamente en ${registerName} (${warehouseName}).`);
     } catch (err: any) {
-      setPaymentError(err.response?.data?.message || err.message || 'Error al registrar el pago');
+      setIsPaymentModalOpen(false);
+      handleApiError(err, 'No puedes registrar este pago');
     } finally {
       setSubmittingPayment(false);
     }
@@ -708,11 +766,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
                       </div>
 
                       <button
-                        onClick={() => {
-                          setPaymentAmount(calculatedCurrentDebt > 0 ? calculatedCurrentDebt : 0);
-                          setPaymentError(null);
-                          setIsPaymentModalOpen(true);
-                        }}
+                        onClick={handleOpenPaymentModal}
                         className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl flex items-center gap-1.5 shadow-sm transition-all self-end sm:self-auto"
                       >
                         <PlusCircle className="w-4 h-4" /> Registrar Pago / Cobro
@@ -865,6 +919,22 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
             </div>
 
             <form onSubmit={handleRegisterPayment} className="space-y-4">
+              {activeCashSession && (
+                <div className="bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl p-3 text-xs space-y-1">
+                  <div className="flex items-center justify-between font-bold text-emerald-800 dark:text-emerald-300">
+                    <span className="flex items-center gap-1.5">
+                      🏢 {activeCashSession.warehouse?.name || activeCashSession.cashRegister?.warehouse?.name || 'Casa Central'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 text-[11px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 font-extrabold">
+                      🟢 Caja abierta
+                    </span>
+                  </div>
+                  <div className="text-slate-600 dark:text-slate-300 font-medium">
+                    {activeCashSession.cashRegister?.name || 'Caja Principal'} ({activeCashSession.cashRegister?.code || activeCashSession.id?.slice(0, 8)})
+                  </div>
+                </div>
+              )}
+
               {paymentError && (
                 <div className="p-3 text-xs text-red-700 bg-red-50 dark:bg-red-950/30 rounded-xl border border-red-200">
                   {paymentError}
