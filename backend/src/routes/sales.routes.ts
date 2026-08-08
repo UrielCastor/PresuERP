@@ -28,6 +28,18 @@ router.delete(
   SaleController.deleteSuspended
 );
 
+router.get(
+  '/returns/list',
+  requirePermission('sales:read'),
+  SaleController.getAllReturns
+);
+
+router.get(
+  '/returns/:id',
+  requirePermission('sales:read'),
+  SaleController.getReturnById
+);
+
 router.post(
   '/',
   requirePermission('sales:write'),
@@ -56,6 +68,12 @@ router.get(
   SaleController.findById
 );
 
+router.get(
+  '/:id/returns',
+  requirePermission('sales:read'),
+  SaleController.getSaleReturns
+);
+
 router.post(
   '/:id/recover',
   requirePermission('sales:write'),
@@ -64,6 +82,12 @@ router.post(
 
 router.post(
   '/:id/refund',
+  requirePermission('sales:write'),
+  SaleController.processRefund
+);
+
+router.post(
+  '/:id/returns',
   requirePermission('sales:write'),
   SaleController.processRefund
 );

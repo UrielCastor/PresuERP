@@ -41,6 +41,7 @@ import { Modal } from '../components/ui/Modal';
 import { Skeleton } from '../components/ui/Skeleton';
 import { EmptyState } from '../components/ui/EmptyState';
 import { SaleRefundModal } from '../components/sales/SaleRefundModal';
+import { SaleReturnList } from './sales/SaleReturnList';
 
 type PeriodPreset = 'HOY' | 'AYER' | 'SEMANA' | 'MES' | 'CUSTOM';
 
@@ -50,6 +51,9 @@ export const Sales: React.FC = () => {
   const navigate = useNavigate();
 
   const getTodayStr = () => format(new Date(), 'yyyy-MM-dd');
+
+  // Tab Principal: Ventas vs Devoluciones
+  const [activeTab, setActiveTab] = useState<'sales' | 'returns'>('sales');
 
   // Estado del Período Operativo (Default = HOY)
   const [periodPreset, setPeriodPreset] = useState<PeriodPreset>('HOY');
@@ -275,22 +279,55 @@ export const Sales: React.FC = () => {
 
   return (
     <div className="space-y-4">
-      {/* 1. HEADER COMPACTO CON SELECTOR DE PERÍODO Y ACCIONES */}
-      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
-        <div>
-          <div className="flex items-center gap-2.5">
-            <h1 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight">
-              Panel Diario de Ventas
-            </h1>
-            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
-              <Calendar className="w-3.5 h-3.5" />
-              Período: {getPeriodLabelText()}
-            </span>
-          </div>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Resumen diario de facturación, métricas del período y operaciones recientes.
-          </p>
-        </div>
+      {/* TAB SELECTOR: VENTAS VS DEVOLUCIONES */}
+      <div className="flex border-b border-slate-200 dark:border-slate-800 gap-4 text-xs font-bold px-1">
+        <button
+          type="button"
+          onClick={() => setActiveTab('sales')}
+          className={`pb-2.5 pt-1 px-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+            activeTab === 'sales'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          <FileText className="w-4 h-4" />
+          <span>Ventas Operativas</span>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setActiveTab('returns')}
+          className={`pb-2.5 pt-1 px-2 border-b-2 transition-colors flex items-center gap-1.5 ${
+            activeTab === 'returns'
+              ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400 font-black'
+              : 'border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300'
+          }`}
+        >
+          <RotateCcw className="w-4 h-4" />
+          <span>Historial de Devoluciones</span>
+        </button>
+      </div>
+
+      {activeTab === 'returns' ? (
+        <SaleReturnList />
+      ) : (
+        <>
+          {/* 1. HEADER COMPACTO CON SELECTOR DE PERÍODO Y ACCIONES */}
+          <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-3 bg-white dark:bg-slate-900 px-4 py-3 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-sm">
+            <div>
+              <div className="flex items-center gap-2.5">
+                <h1 className="text-lg md:text-xl font-black text-slate-900 dark:text-white tracking-tight">
+                  Panel Diario de Ventas
+                </h1>
+                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-xs font-extrabold bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-800">
+                  <Calendar className="w-3.5 h-3.5" />
+                  Período: {getPeriodLabelText()}
+                </span>
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Resumen diario de facturación, métricas del período y operaciones recientes.
+              </p>
+            </div>
 
         {/* SELECTOR DE PERÍODO + ACCIONES PRINCIPALES */}
         <div className="flex flex-wrap items-center gap-2">
@@ -1108,7 +1145,13 @@ export const Sales: React.FC = () => {
                   {(selectedSale as any).warehouse?.name || 'Principal'}
                 </p>
                 <p className="text-slate-400 text-[11px]">
-                  {(selectedSale as any).paymentCondition || 'Contado'}
+                  {(selectedSale as any).paymentCondition ||
+                    ((selectedSale as any).payments?.some((p: any) =>
+                      String(p.details || '').toUpperCase().includes('CREDIT_ACCOUNT') ||
+                      p.paymentMethod?.type === 'CREDIT_ACCOUNT'
+                    )
+                      ? 'Cuenta Corriente'
+                      : 'Contado')}
                 </p>
               </div>
             </div>
@@ -1244,6 +1287,8 @@ export const Sales: React.FC = () => {
             </div>
           </div>
         </Modal>
+      )}
+      </>
       )}
 
       {/* MODAL DE DEVOLUCIÓN DE PRODUCTOS */}

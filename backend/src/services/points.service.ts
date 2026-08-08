@@ -638,6 +638,147 @@ export class PointsService {
     }
   }
 
+  /**
+   * Reversa proporcional de puntos para DEVOLUCIONES (parciales o totales).
+   *
+   * Diferencias con reverseSalePoints (que es para ANULACIONES completas):
+   * - Calcula los puntos proporcionales al importe realmente devuelto vs el total de la venta.
+   * - Protege contra sobre-reversión: suma los puntos ya revertidos por devoluciones previas.
+   * - Protege contra duplicación: verifica si ya existe un registro para el mismo refundId.
+   * - No permite que el saldo quede negativo.
+   * - Usa reason='SALE_REFUND' para distinguirlo de las anulaciones (reason='SALE_CANCEL').
+   *
+   * @returns Cantidad de puntos efectivamente revertidos (0 si no aplica).
+   */
+  async reverseRefundPoints(
+    businessId: string,
+    saleId: string,
+    refundId: string,
+    refundTotal: number,
+    userId: string,
+    tx: any,
+    isFullyRefunded: boolean = false
+  ): Promise<number> {
+    // 1. Obtener la venta para acceder a pointsEarned y totalAmount
+    const sale = await tx.sale.findUnique({
+      where: { id: saleId },
+      select: {
+        id: true,
+        customerId: true,
+        pointsEarned: true,
+        totalAmount: true,
+        documentType: { select: { code: true } },
+        documentNumber: true,
+      },
+    });
+
+    // Sin cliente o sin puntos ganados: nada que revertir
+    if (!sale || !sale.customerId || !sale.pointsEarned || sale.pointsEarned <= 0) {
+      return 0;
+    }
+
+    // 2. Verificar idempotencia: si ya existe un registro ADJUSTMENT/SALE_REFUND para este refundId
+    const alreadyReversedForThisRefund = await tx.customerPointsHistory.findFirst({
+      where: {
+        businessId,
+        customerId: sale.customerId,
+        saleId,
+        reason: 'SALE_REFUND',
+        // Usamos description para vincular con el refundId específico
+        description: { contains: refundId },
+      },
+    });
+    if (alreadyReversedForThisRefund) {
+      console.log(`[POINTS_REFUND] Reversión ya registrada para refundId=${refundId}. Omitiendo.`);
+      return 0;
+    }
+
+    const originalPointsEarned = sale.pointsEarned;
+    const saleTotal = Number(sale.totalAmount || 0);
+
+    // 3. Calcular puntos ya revertidos por devoluciones parciales previas de esta venta
+    const previousReversals = await tx.customerPointsHistory.findMany({
+      where: {
+        businessId,
+        customerId: sale.customerId,
+        saleId,
+        reason: 'SALE_REFUND',
+        type: 'ADJUSTMENT',
+        points: { lt: 0 },
+      },
+    });
+    const alreadyReversedPoints = previousReversals.reduce(
+      (acc: number, h: any) => acc + Math.abs(h.points),
+      0
+    );
+
+    // 4. Cuántos puntos quedan disponibles para revertir
+    const pointsStillReversible = Math.max(0, originalPointsEarned - alreadyReversedPoints);
+    if (pointsStillReversible <= 0) {
+      console.log(`[POINTS_REFUND] Todos los puntos de saleId=${saleId} ya fueron revertidos (${alreadyReversedPoints}/${originalPointsEarned}).`);
+      return 0;
+    }
+
+    // 5. Calcular puntos proporcionales al importe devuelto (o 100% restante si es devolución completa)
+    let pointsToReverse: number;
+    if (isFullyRefunded) {
+      pointsToReverse = pointsStillReversible;
+    } else if (saleTotal > 0) {
+      const refundRatio = Math.min(1, refundTotal / saleTotal);
+      const rawPoints = originalPointsEarned * refundRatio;
+      pointsToReverse = Math.floor(rawPoints);
+    } else {
+      pointsToReverse = pointsStillReversible;
+    }
+
+    // 6. Limitar al máximo revertible (protección anti-sobreversión)
+    pointsToReverse = Math.min(pointsToReverse, pointsStillReversible);
+
+
+    if (pointsToReverse <= 0) {
+      return 0;
+    }
+
+    // 7. Obtener saldo actual del cliente y proteger contra saldo negativo
+    const customer = await tx.customer.findUnique({
+      where: { id: sale.customerId },
+      select: { id: true, pointsBalance: true },
+    });
+    if (!customer) return 0;
+
+    // Limitar al saldo disponible (no puede quedar negativo)
+    const effectivePointsToReverse = Math.min(pointsToReverse, customer.pointsBalance);
+
+    const newBalance = customer.pointsBalance - effectivePointsToReverse;
+
+    // 8. Actualizar saldo del cliente
+    await tx.customer.update({
+      where: { id: sale.customerId },
+      data: { pointsBalance: newBalance },
+    });
+
+    // 9. Registrar en historial con reason='SALE_REFUND' y referencia al refundId
+    const refundCode = refundId.substring(0, 8); // referencia corta
+    const saleDoc = `${sale.documentType?.code || 'TICKET'}-${sale.documentNumber}`;
+    await tx.customerPointsHistory.create({
+      data: {
+        businessId,
+        customerId: sale.customerId,
+        saleId,
+        type: 'ADJUSTMENT',
+        reason: 'SALE_REFUND',
+        points: -effectivePointsToReverse,
+        balanceAfter: newBalance,
+        description: `Reversión de ${effectivePointsToReverse} pts por devolución ${saleDoc} [refundId:${refundId}]`,
+        createdById: userId,
+      },
+    });
+
+    console.log(`[POINTS_REFUND] ✅ Revertidos ${effectivePointsToReverse} pts de ${originalPointsEarned} originales. Saldo: ${customer.pointsBalance} → ${newBalance}`);
+
+    return effectivePointsToReverse;
+  }
+
   async adjustPoints(
     businessId: string,
     data: {

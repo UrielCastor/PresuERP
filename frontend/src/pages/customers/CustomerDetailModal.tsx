@@ -241,6 +241,7 @@ export const CustomerDetailModal: React.FC<CustomerDetailModalProps> = ({
       queryClient.invalidateQueries({ queryKey: ['cash'] });
       queryClient.invalidateQueries({ queryKey: ['cash', 'active'] });
       queryClient.refetchQueries({ queryKey: ['cash', 'active'] });
+      window.dispatchEvent(new CustomEvent('customer-debt-updated'));
       fetchCustomerData();
       fetchMovements();
       await swalSuccess('Pago Registrado', `El cobro fue acreditado exitosamente en ${registerName} (${warehouseName}).`);

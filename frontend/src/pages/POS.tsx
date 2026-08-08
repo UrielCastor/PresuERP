@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { swalSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
+import { swalSuccess, swalSaleSuccess, swalWarning, swalConfirm, handleApiError } from '../utils/swal';
 import { getInitialWarehouseId } from '../utils/warehouse';
 import {
   Search,
@@ -185,23 +185,6 @@ const isKgProduct = (p: any) => {
   const [pointsPreviewError, setPointsPreviewError] = useState<string | null>(null);
   const [earnedPointsPreview, setEarnedPointsPreview] = useState<number>(0);
   const [isPreviewLoading, setIsPreviewLoading] = useState<boolean>(false);
-  const [loyaltyToast, setLoyaltyToast] = useState<{
-    show: boolean;
-    pointsRedeemed: number;
-    pointsDiscountAmount: number;
-    pointsEarned: number;
-    newBalance: number;
-  } | null>(null);
-
-  useEffect(() => {
-    let t: any;
-    if (loyaltyToast?.show) {
-      t = setTimeout(() => setLoyaltyToast(null), 6000);
-    }
-    return () => {
-      if (t) clearTimeout(t);
-    };
-  }, [loyaltyToast]);
 
   // Loyalty handlers and effects are defined below after cartTotal is calculated.
 
@@ -1073,28 +1056,32 @@ const isKgProduct = (p: any) => {
       }
 
       const targetCustomer = selectedCustomer;
+      let newBalance: number | undefined = undefined;
+
       if (targetCustomer && (data.pointsEarned > 0 || data.pointsRedeemed > 0)) {
-        api.get(`/points/customers/${targetCustomer.id}/balance`)
-          .then(res => {
-            if (res.data?.success) {
-              setLoyaltyToast({
-                show: true,
-                pointsRedeemed: data.pointsRedeemed || 0,
-                pointsDiscountAmount: Number(data.pointsDiscountAmount || 0),
-                pointsEarned: data.pointsEarned || 0,
-                newBalance: Number(res.data.data.pointsBalance),
-              });
-            }
-          })
-          .catch(err => console.error('Error fetching new points balance for toast:', err));
+        try {
+          const res = await api.get(`/points/customers/${targetCustomer.id}/balance`);
+          if (res.data?.success) {
+            newBalance = Number(res.data.data.pointsBalance);
+          }
+        } catch (err) {
+          console.error('Error fetching new points balance for swal:', err);
+        }
       }
 
-      swalSuccess('Venta Registrada', `¡Venta registrada exitosamente!\nComprobante: ${data.documentNumber}`);
+      await swalSaleSuccess({
+        documentNumber: String(data.documentNumber || ''),
+        pointsEarned: Number(data.pointsEarned || 0),
+        pointsRedeemed: Number(data.pointsRedeemed || 0),
+        newBalance,
+      });
+
       clearCart();
       setSelectedCustomer(null);
       setIsCheckoutOpen(false);
       const draftKey = `presuerp_pos_draft_v1_${user?.businessId || 'default'}_${selectedWarehouseId}`;
       localStorage.removeItem(draftKey);
+      window.dispatchEvent(new CustomEvent('customer-debt-updated'));
       queryClient.invalidateQueries({ queryKey: ['posDashboard'] });
       queryClient.invalidateQueries({ queryKey: ['dashboard'] });
       queryClient.invalidateQueries({ queryKey: ['cash'] });
@@ -1120,7 +1107,8 @@ const isKgProduct = (p: any) => {
     const finalTotalAmount = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
 
     if (paymentMethod === 'CASH') {
-      const received = parseFloat(cashReceivedInput) || 0;
+      const rawInput = cashReceivedInput.trim();
+      const received = rawInput === '' ? finalTotalAmount : (parseFloat(rawInput) || 0);
       if (received < finalTotalAmount - 0.01) {
         swalWarning(
           'Pago Insuficiente',
@@ -2422,6 +2410,7 @@ const isKgProduct = (p: any) => {
               <div className="flex justify-between items-center">
                 <label className="text-xs font-black text-emerald-900 dark:text-emerald-300 uppercase tracking-wider flex items-center gap-1.5">
                   <Banknote className="w-4 h-4 text-emerald-600" /> EFECTIVO RECIBIDO
+                  <span className="text-[10px] text-slate-400 font-normal lowercase tracking-normal"> (opcional)</span>
                 </label>
                 <button
                   type="button"
@@ -2438,7 +2427,7 @@ const isKgProduct = (p: any) => {
                   type="number"
                   min="0"
                   step="0.01"
-                  placeholder="0.00"
+                  placeholder="Importe entregado (opcional)"
                   value={cashReceivedInput}
                   onChange={(e) => setCashReceivedInput(e.target.value)}
                   className="w-full pl-8 pr-3 py-2 text-lg font-mono font-black border-2 border-emerald-300 dark:border-emerald-700 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
@@ -2465,10 +2454,23 @@ const isKgProduct = (p: any) => {
               {/* VUELTO O FALTA COBRAR */}
               {(() => {
                 const finalToPay = Math.max(0, roundedFinalTotal - pointsDiscountAmount);
-                const received = parseFloat(cashReceivedInput) || 0;
+                const isInputEmpty = cashReceivedInput.trim() === '';
+                const received = isInputEmpty ? finalToPay : (parseFloat(cashReceivedInput) || 0);
                 const diff = received - finalToPay;
 
-                if (received <= 0) return null;
+                if (isInputEmpty) {
+                  return (
+                    <div className="p-2.5 bg-emerald-100/70 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 rounded-xl flex items-center justify-between text-emerald-900 dark:text-emerald-200 text-xs">
+                      <span className="font-extrabold flex items-center gap-1.5">
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0" />
+                        Pago exacto — sin necesidad de ingresar el importe
+                      </span>
+                      <span className="font-mono font-black">
+                        Vuelto: $ 0,00
+                      </span>
+                    </div>
+                  );
+                }
 
                 if (diff < -0.01) {
                   return (
@@ -2553,6 +2555,11 @@ const isKgProduct = (p: any) => {
               variant="success"
               className="font-bold shadow-md"
               onClick={confirmSale}
+              disabled={
+                paymentMethod === 'CASH' &&
+                cashReceivedInput.trim() !== '' &&
+                (parseFloat(cashReceivedInput) || 0) < Math.max(0, roundedFinalTotal - pointsDiscountAmount) - 0.01
+              }
               isLoading={createSaleMutation.isPending}
             >
               Confirmar y Cobrar
@@ -3078,47 +3085,6 @@ const isKgProduct = (p: any) => {
           </div>
         </div>
       </Modal>
-
-      {loyaltyToast && loyaltyToast.show && (
-        <div className="fixed bottom-4 right-4 z-[9999] w-80 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-2xl shadow-2xl border border-slate-800 dark:border-slate-200 p-4.5 space-y-3 animate-slideIn">
-          <div className="flex items-center justify-between">
-            <span className="flex items-center gap-1.5 font-black text-xs text-amber-400">
-              <Award className="w-5 h-5 text-amber-500 fill-amber-500" /> PROGRAMA DE FIDELIZACIÓN
-            </span>
-            <button
-              onClick={() => setLoyaltyToast(null)}
-              className="text-slate-400 hover:text-white dark:text-slate-500 dark:hover:text-slate-900 transition-colors"
-            >
-              <X className="w-4 h-4" />
-            </button>
-          </div>
-          
-          <div className="space-y-2 text-xs font-semibold">
-            {loyaltyToast.pointsRedeemed > 0 && (
-              <div className="flex justify-between border-b border-slate-800 dark:border-slate-100 pb-1.5">
-                <span className="text-slate-400 dark:text-slate-500">Canjeaste:</span>
-                <span className="font-mono font-black text-rose-450 dark:text-rose-600">
-                  {loyaltyToast.pointsRedeemed} pts (-{formatCurrency(loyaltyToast.pointsDiscountAmount)})
-                </span>
-              </div>
-            )}
-            
-            <div className="flex justify-between">
-              <span className="text-slate-400 dark:text-slate-500">Ganaste:</span>
-              <span className="font-mono font-black text-emerald-400 dark:text-emerald-600">
-                +{loyaltyToast.pointsEarned} pts
-              </span>
-            </div>
-            
-            <div className="flex justify-between pt-1.5 border-t border-slate-800 dark:border-slate-100 font-black text-sm">
-              <span>Nuevo saldo:</span>
-              <span className="font-mono text-amber-400 dark:text-amber-600">
-                {loyaltyToast.newBalance} pts
-              </span>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

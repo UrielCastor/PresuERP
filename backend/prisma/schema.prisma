@@ -1215,6 +1215,9 @@ model SaleRefund {
   cashSessionId String?
   createdById   String
   refundNumber  Int
+  refundCode    String?
+  status        String   @default("COMPLETED") // COMPLETED, PENDING, CANCELLED
+  paymentMethod String?  // CASH, MERCADO_PAGO, CREDIT_ACCOUNT, CARD, TRANSFER, MULTIPLE
   totalAmount   Decimal  @db.Decimal(12, 2)
   reason        String?  @db.Text
   createdAt     DateTime @default(now())
@@ -1233,13 +1236,14 @@ model SaleRefund {
 }
 
 model SaleRefundItem {
-  id          String  @id @default(uuid())
-  refundId    String
-  saleItemId  String
-  productId   String
-  quantity    Decimal @db.Decimal(12, 3)
-  unitPrice   Decimal @db.Decimal(12, 2)
-  totalAmount Decimal @db.Decimal(12, 2)
+  id               String  @id @default(uuid())
+  refundId         String
+  saleItemId       String
+  productId        String
+  quantity         Decimal @db.Decimal(12, 3)
+  unitPrice        Decimal @db.Decimal(12, 2)
+  totalAmount      Decimal @db.Decimal(12, 2)
+  stockDisposition String  @default("RESTOCK") // RESTOCK, DAMAGED
 
   refund   SaleRefund @relation(fields: [refundId], references: [id], onDelete: Cascade)
   saleItem SaleItem   @relation(fields: [saleItemId], references: [id], onDelete: Restrict)

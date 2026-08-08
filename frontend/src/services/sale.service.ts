@@ -106,8 +106,31 @@ export const saleApi = {
     return res.data;
   },
 
-  processRefund: async (id: string, payload: { reason?: string; items: { saleItemId: string; quantity: number }[] }) => {
+  processRefund: async (
+    id: string,
+    payload: {
+      reason?: string;
+      paymentMethod?: string;
+      paymentDistribution?: { method: string; amount: number }[];
+      items: { saleItemId: string; quantity: number; stockDisposition?: string }[];
+    }
+  ) => {
     const res = await api.post(`/sales/${id}/refund`, payload);
     return res.data;
+  },
+
+  getSaleReturns: async (id: string) => {
+    const res = await api.get(`/sales/${id}/returns`);
+    return res.data.data;
+  },
+
+  getAllReturns: async (params?: Record<string, any>) => {
+    const res = await api.get('/sales/returns/list', { params });
+    return res.data.data;
+  },
+
+  getReturnById: async (id: string) => {
+    const res = await api.get(`/sales/returns/${id}`);
+    return res.data.data;
   },
 };

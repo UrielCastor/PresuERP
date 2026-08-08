@@ -176,4 +176,51 @@ export class SaleController {
       return next(error);
     }
   }
+
+  static async getSaleReturns(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const items = await saleService.getReturnsBySaleId(req.params.id, businessId);
+      return res.status(200).json({
+        success: true,
+        data: items,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async getAllReturns(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const filters = {
+        startDate: req.query.startDate ? String(req.query.startDate) : undefined,
+        endDate: req.query.endDate ? String(req.query.endDate) : undefined,
+        warehouseId: req.query.warehouseId ? String(req.query.warehouseId) : undefined,
+        customerId: req.query.customerId ? String(req.query.customerId) : undefined,
+        status: req.query.status ? String(req.query.status) : undefined,
+        userId: req.query.userId ? String(req.query.userId) : undefined,
+      };
+      const items = await saleService.getAllReturns(businessId, filters);
+      return res.status(200).json({
+        success: true,
+        data: items,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
+
+  static async getReturnById(req: Request, res: Response, next: NextFunction) {
+    try {
+      const businessId = req.user!.businessId;
+      const item = await saleService.getReturnById(req.params.id, businessId);
+      return res.status(200).json({
+        success: true,
+        data: item,
+      });
+    } catch (error) {
+      return next(error);
+    }
+  }
 }

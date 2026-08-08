@@ -24,6 +24,18 @@ import {
   Scale,
   Activity,
   Sparkles,
+  Landmark,
+  Tag,
+  Users,
+  ShoppingBag,
+  Settings,
+  Building2,
+  Boxes,
+  DollarSign,
+  Truck,
+  Store,
+  Package,
+  BarChart3,
 } from 'lucide-react';
 import { roleService } from '../../services/role.service';
 import {
@@ -110,6 +122,71 @@ const getSubgroupForCapability = (moduleName: string, cap: CapabilityItemDto): s
       if (cap.type === 'CRITICAL') return 'Acciones Críticas';
       return 'Operaciones';
   }
+};
+
+// Helper para icono según módulo principal
+const getModuleIconComponent = (moduleName: string) => {
+  switch (moduleName) {
+    case 'Auditoría':
+      return Activity;
+    case 'Caja':
+      return Landmark;
+    case 'Categorías':
+      return Tag;
+    case 'Clientes':
+      return Users;
+    case 'Compras':
+      return ShoppingBag;
+    case 'Configuración':
+      return Settings;
+    case 'Dashboard':
+      return PieChart;
+    case 'Depósitos':
+      return Building2;
+    case 'Inventario':
+      return Boxes;
+    case 'Kardex':
+      return History;
+    case 'Listas de Precios':
+      return DollarSign;
+    case 'Logística':
+      return Truck;
+    case 'POS / Ventas':
+      return Store;
+    case 'Productos':
+      return Package;
+    case 'Proveedores':
+      return Truck;
+    case 'Reportes':
+      return BarChart3;
+    case 'Usuarios y Seguridad':
+      return Shield;
+    default:
+      return Layers;
+  }
+};
+
+// Helper para badges de estado de selección
+const renderCountBadge = (active: number, total: number) => {
+  if (total > 0 && active === total) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+        <Check className="w-3 h-3 stroke-[3]" /> {active} / {total}
+      </span>
+    );
+  }
+  if (active > 0) {
+    return (
+      <span className="inline-flex items-center gap-1 text-[11px] font-black px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 dark:bg-indigo-950/60 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+        {active} / {total}
+      </span>
+    );
+  }
+  return (
+    <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400 border border-slate-200 dark:border-slate-700">
+      {active} / {total}
+    </span>
+  );
 };
 
 type WorkspaceTab = 'MATRIX' | 'SIMULATOR' | 'COMPARISON' | 'DIAGNOSTICS';
@@ -381,7 +458,14 @@ export const RoleCapabilitiesPage: React.FC = () => {
 
   const handleExpandAll = () => {
     const allMods = new Set(structuredModules.map((m) => m.module));
+    const allSgs = new Set<string>();
+    structuredModules.forEach((m) => {
+      m.subgroups.forEach((sg) => {
+        allSgs.add(`${m.module}:${sg.name}`);
+      });
+    });
     setOpenModules(allMods);
+    setOpenSubgroups(allSgs);
   };
 
   const handleCollapseAll = () => {
@@ -790,8 +874,8 @@ export const RoleCapabilitiesPage: React.FC = () => {
               )}
             </div>
 
-            {/* COLUMN 2 (1fr ~70% width): Enterprise Accordion Matrix */}
-            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-5 space-y-5 h-[calc(100vh-210px)] overflow-y-auto pr-2">
+            {/* COLUMN 2 (~70% width): Enterprise Accordion Matrix */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-xs p-4 flex flex-col space-y-4">
               {selectedRole ? (
                 <>
                   {/* Matrix Control Bar */}
@@ -800,7 +884,7 @@ export const RoleCapabilitiesPage: React.FC = () => {
                       <Search className="h-4 w-4 text-slate-400 absolute left-3 top-2.5" />
                       <input
                         type="text"
-                        placeholder="Buscar capacidad por nombre, código o módulo..."
+                        placeholder="Buscar permiso por nombre, código o módulo..."
                         value={moduleSearchQuery}
                         onChange={(e) => setModuleSearchQuery(e.target.value)}
                         className="w-full pl-9 pr-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl text-xs font-semibold focus:ring-2 focus:ring-primary-500"
@@ -811,62 +895,61 @@ export const RoleCapabilitiesPage: React.FC = () => {
                       <button
                         type="button"
                         onClick={handleExpandAll}
-                        className="p-1.5 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-lg flex items-center gap-1"
-                        title="Expandir todos los acordeones"
+                        className="p-1.5 px-2.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition-colors"
+                        title="Expandir todos los módulos y categorías"
                       >
-                        <Maximize2 className="h-3.5 w-3.5" /> Expandir
+                        <Maximize2 className="h-3.5 w-3.5" /> Expandir todo
                       </button>
                       <button
                         type="button"
                         onClick={handleCollapseAll}
-                        className="p-1.5 text-xs font-semibold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 text-slate-600 dark:text-slate-300 rounded-lg flex items-center gap-1"
-                        title="Colapsar todos los acordeones"
+                        className="p-1.5 px-2.5 text-xs font-bold bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl flex items-center gap-1.5 transition-colors"
+                        title="Colapsar todos los módulos y categorías"
                       >
-                        <Minimize2 className="h-3.5 w-3.5" /> Colapsar
+                        <Minimize2 className="h-3.5 w-3.5" /> Colapsar todo
                       </button>
                     </div>
                   </div>
 
-                  {/* Accordion Module List */}
+                  {/* Accordion Module List with 65vh Scroll */}
                   {isLoadingCapabilities ? (
                     <div className="p-12 text-center text-xs text-slate-400 animate-pulse space-y-2">
                       <Layers className="h-8 w-8 mx-auto text-slate-300" />
-                      <p>Cargando matriz jerárquica de capacidades...</p>
+                      <p>Cargando matriz jerárquica de permisos...</p>
                     </div>
                   ) : filteredStructuredModules.length === 0 ? (
                     <div className="p-8 text-center text-xs text-slate-400 border border-dashed border-slate-200 dark:border-slate-800 rounded-xl">
-                      No se encontraron capacidades coincidentes con "{moduleSearchQuery}".
+                      No se encontraron permisos coincidentes con "{moduleSearchQuery}".
                     </div>
                   ) : (
-                    <div className="space-y-4">
+                    <div className="max-h-[65vh] overflow-y-auto pr-1.5 space-y-2.5 text-xs">
                       {filteredStructuredModules.map((modGroup) => {
                         const isModOpen = openModules.has(modGroup.module) || !!moduleSearchQuery.trim();
                         const activeModCapsCount = modGroup.allCapabilities.filter((c) => selectedCapabilityIds.has(c.id)).length;
                         const isAllModSelected = modGroup.allCapabilities.every((c) => selectedCapabilityIds.has(c.id));
+                        const ModIcon = getModuleIconComponent(modGroup.module);
 
                         return (
                           <div
                             key={modGroup.module}
-                            className="border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-2xs transition-all w-full"
+                            className="border border-slate-200/90 dark:border-slate-800 rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-2xs transition-all w-full"
                           >
                             {/* Primary Module Accordion Bar */}
                             <div
                               onClick={() => toggleModuleOpen(modGroup.module)}
-                              className="w-full flex items-center justify-between p-3.5 bg-slate-50/80 dark:bg-slate-800/50 cursor-pointer hover:bg-slate-100/70 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800"
+                              className="w-full flex items-center justify-between p-3 bg-slate-50/90 dark:bg-slate-800/60 cursor-pointer hover:bg-slate-100/80 dark:hover:bg-slate-800 transition-colors border-b border-slate-100 dark:border-slate-800"
                             >
-                              <div className="flex items-center gap-2.5">
-                                {isModOpen ? (
-                                  <ChevronDown className="h-4 w-4 text-slate-500" />
-                                ) : (
-                                  <ChevronRight className="h-4 w-4 text-slate-400" />
-                                )}
-                                <Layers className="h-4 w-4 text-primary-600" />
-                                <span className="font-extrabold text-sm text-slate-900 dark:text-slate-100">
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <ChevronRight
+                                  className={`h-4 w-4 text-slate-400 shrink-0 transition-transform duration-200 ${
+                                    isModOpen ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''
+                                  }`}
+                                />
+                                <ModIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                                <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-slate-100 truncate">
                                   {modGroup.module}
                                 </span>
-                                <span className="text-[11px] font-bold px-2 py-0.5 bg-primary-50 dark:bg-primary-950/60 text-primary-700 dark:text-primary-300 rounded-full">
-                                  {activeModCapsCount} / {modGroup.allCapabilities.length}
-                                </span>
+                                {renderCountBadge(activeModCapsCount, modGroup.allCapabilities.length)}
                               </div>
 
                               <button
@@ -875,7 +958,7 @@ export const RoleCapabilitiesPage: React.FC = () => {
                                   e.stopPropagation();
                                   handleToggleModule(modGroup.allCapabilities);
                                 }}
-                                className="text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400 transition-colors px-2 py-1 hover:bg-primary-50 dark:hover:bg-primary-950/40 rounded-lg"
+                                className="text-xs font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 transition-colors px-2 py-1 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg shrink-0"
                               >
                                 {isAllModSelected ? 'Desmarcar todo' : 'Seleccionar todo'}
                               </button>
@@ -883,35 +966,33 @@ export const RoleCapabilitiesPage: React.FC = () => {
 
                             {/* Collapsible Subgroups Body */}
                             {isModOpen && (
-                              <div className="p-3.5 space-y-3.5 bg-white dark:bg-slate-900">
+                              <div className="p-2.5 space-y-2 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
                                 {modGroup.subgroups.map((subgroup) => {
                                   const sgKey = `${modGroup.module}:${subgroup.name}`;
-                                  const isSgOpen = openSubgroups.has(sgKey) || !openSubgroups.size || !!moduleSearchQuery.trim();
+                                  const isSgOpen = openSubgroups.has(sgKey) || !!moduleSearchQuery.trim();
                                   const activeSgCapsCount = subgroup.capabilities.filter((c) => selectedCapabilityIds.has(c.id)).length;
                                   const isAllSgSelected = subgroup.capabilities.every((c) => selectedCapabilityIds.has(c.id));
 
                                   return (
                                     <div
                                       key={subgroup.name}
-                                      className="border border-slate-100 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/40 dark:bg-slate-950/40 w-full"
+                                      className="border border-slate-200/60 dark:border-slate-800 rounded-xl overflow-hidden bg-slate-50/30 dark:bg-slate-950/30 w-full"
                                     >
                                       {/* Subgroup Accordion Bar */}
                                       <div
                                         onClick={() => toggleSubgroupOpen(sgKey)}
-                                        className="flex items-center justify-between p-2.5 px-3 bg-slate-100/60 dark:bg-slate-800/40 cursor-pointer hover:bg-slate-200/50 transition-colors"
+                                        className="flex items-center justify-between p-2 px-3 bg-slate-100/70 dark:bg-slate-800/50 cursor-pointer hover:bg-slate-200/50 dark:hover:bg-slate-800 transition-colors"
                                       >
                                         <div className="flex items-center gap-2">
-                                          {isSgOpen ? (
-                                            <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
-                                          ) : (
-                                            <ChevronRight className="h-3.5 w-3.5 text-slate-400" />
-                                          )}
+                                          <ChevronRight
+                                            className={`h-3.5 w-3.5 text-slate-400 transition-transform duration-200 ${
+                                              isSgOpen ? 'rotate-90 text-indigo-600 dark:text-indigo-400' : ''
+                                            }`}
+                                          />
                                           <span className="font-bold text-xs text-slate-800 dark:text-slate-200">
-                                            ▶ {subgroup.name}
+                                            {subgroup.name}
                                           </span>
-                                          <span className="text-[10px] font-bold text-slate-400">
-                                            ({activeSgCapsCount} / {subgroup.capabilities.length})
-                                          </span>
+                                          {renderCountBadge(activeSgCapsCount, subgroup.capabilities.length)}
                                         </div>
 
                                         <button
@@ -920,7 +1001,7 @@ export const RoleCapabilitiesPage: React.FC = () => {
                                             e.stopPropagation();
                                             handleToggleSubgroup(subgroup.capabilities);
                                           }}
-                                          className="text-[11px] font-bold text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 transition-colors px-1.5 py-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-700"
+                                          className="text-[10px] font-bold text-indigo-600 hover:text-indigo-700 dark:text-indigo-400 transition-colors px-2 py-0.5 rounded hover:bg-indigo-50 dark:hover:bg-indigo-950/40"
                                         >
                                           {isAllSgSelected ? 'Desmarcar' : 'Seleccionar todo'}
                                         </button>
@@ -928,23 +1009,23 @@ export const RoleCapabilitiesPage: React.FC = () => {
 
                                       {/* Subgroup Capability Items Grid */}
                                       {isSgOpen && (
-                                        <div className="p-2.5 grid grid-cols-1 gap-2">
+                                        <div className="p-2 space-y-1.5 bg-white dark:bg-slate-900/80">
                                           {subgroup.capabilities.map((cap) => {
                                             const isEnabled = selectedCapabilityIds.has(cap.id);
                                             return (
                                               <label
                                                 key={cap.id}
-                                                className={`p-3 rounded-xl border transition-all cursor-pointer flex items-start gap-3 w-full ${
+                                                className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 w-full ${
                                                   isEnabled
-                                                    ? 'bg-white dark:bg-slate-900 border-primary-300 dark:border-primary-800 shadow-2xs'
-                                                    : 'bg-white/70 dark:bg-slate-900/40 border-slate-200/80 dark:border-slate-800/80 hover:border-slate-300'
+                                                    ? 'bg-indigo-50/40 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/60 shadow-2xs'
+                                                    : 'bg-slate-50/50 dark:bg-slate-900/40 border-slate-200/60 dark:border-slate-800/60 hover:border-slate-300 dark:hover:border-slate-700'
                                                 }`}
                                               >
                                                 <input
                                                   type="checkbox"
                                                   checked={isEnabled}
                                                   onChange={() => handleToggleCapability(cap.id)}
-                                                  className="mt-0.5 h-4 w-4 text-primary-600 rounded border-slate-300 focus:ring-primary-500 flex-shrink-0 cursor-pointer"
+                                                  className="mt-0.5 h-4 w-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500 flex-shrink-0 cursor-pointer"
                                                 />
                                                 <div className="space-y-0.5 flex-1 min-w-0">
                                                   <div className="flex items-center justify-between gap-2">

@@ -59,6 +59,18 @@ export const Customers: React.FC = () => {
   }, [search, typeFilter, sortBy, sortOrder]);
 
   useEffect(() => {
+    const handleUpdate = () => {
+      loadCustomers(meta.page);
+    };
+    window.addEventListener('customer-debt-updated', handleUpdate);
+    window.addEventListener('customers-updated', handleUpdate);
+    return () => {
+      window.removeEventListener('customer-debt-updated', handleUpdate);
+      window.removeEventListener('customers-updated', handleUpdate);
+    };
+  }, [loadCustomers, meta.page]);
+
+  useEffect(() => {
     const timer = setTimeout(() => {
       loadCustomers(1);
     }, 300);
@@ -195,6 +207,7 @@ export const Customers: React.FC = () => {
                   <th className="px-6 py-4">Documento / CUIT</th>
                   <th className="px-6 py-4">Contacto</th>
                   <th className="px-6 py-4">Lista de precios</th>
+                  <th className="px-6 py-4">Cuenta Corriente</th>
                   <th 
                     className="px-6 py-4 cursor-pointer hover:bg-slate-100 dark:hover:bg-slate-850/80 transition-colors select-none"
                     onClick={() => handleSort('points')}
@@ -206,65 +219,89 @@ export const Customers: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {customers.map((c) => (
-                  <tr key={c.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
-                    <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
-                          {c.name.charAt(0).toUpperCase()}
+                {customers.map((c) => {
+                  const currentDebtVal = Math.max(0, Number(c.currentDebt || 0));
+                  const hasDebt = currentDebtVal > 0.001;
+
+                  return (
+                    <tr key={c.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition-colors">
+                      <td className="px-6 py-4 font-semibold text-slate-900 dark:text-slate-100">
+                        <div className="flex items-center gap-3">
+                          <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 text-indigo-600 dark:text-indigo-400 flex items-center justify-center font-bold text-xs shrink-0">
+                            {c.name.charAt(0).toUpperCase()}
+                          </div>
+                          <div>
+                            <div>{c.name}</div>
+                            {c.taxCondition && (
+                              <div className="text-xs text-slate-400 font-normal">{c.taxCondition}</div>
+                            )}
+                          </div>
                         </div>
-                        <div>
-                          <div>{c.name}</div>
-                          {c.taxCondition && (
-                            <div className="text-xs text-slate-400 font-normal">{c.taxCondition}</div>
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${c.type === 'COMPANY' ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'}`}>
+                          {c.type === 'COMPANY' ? <Building className="w-3 h-3" /> : <User className="w-3 h-3" />}
+                          {c.type === 'COMPANY' ? 'Empresa' : 'Persona'}
+                        </span>
+                      </td>
+
+                      <td className="px-6 py-4 font-mono font-medium text-slate-700 dark:text-slate-300">
+                        {c.document || c.taxId || '-'}
+                      </td>
+
+                      <td className="px-6 py-4">
+                        <div className="space-y-1 text-xs">
+                          {c.phone && (
+                            <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
+                              <Phone className="w-3.5 h-3.5 text-slate-400" /> {c.phone}
+                            </div>
                           )}
+                          {c.email && (
+                            <div className="flex items-center gap-1.5 text-slate-500">
+                              <Mail className="w-3.5 h-3.5 text-slate-400" /> {c.email}
+                            </div>
+                          )}
+                          {!c.phone && !c.email && <span className="text-slate-400">-</span>}
                         </div>
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${c.type === 'COMPANY' ? 'bg-purple-50 text-purple-700 dark:bg-purple-950/50 dark:text-purple-300' : 'bg-blue-50 text-blue-700 dark:bg-blue-950/50 dark:text-blue-300'}`}>
-                        {c.type === 'COMPANY' ? <Building className="w-3 h-3" /> : <User className="w-3 h-3" />}
-                        {c.type === 'COMPANY' ? 'Empresa' : 'Persona'}
-                      </span>
-                    </td>
-
-                    <td className="px-6 py-4 font-mono font-medium text-slate-700 dark:text-slate-300">
-                      {c.document || c.taxId || '-'}
-                    </td>
-
-                    <td className="px-6 py-4">
-                      <div className="space-y-1 text-xs">
-                        {c.phone && (
-                          <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300">
-                            <Phone className="w-3.5 h-3.5 text-slate-400" /> {c.phone}
-                          </div>
+                      <td className="px-6 py-4">
+                        {c.defaultPriceList?.name ? (
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shadow-sm">
+                            <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                            {c.defaultPriceList.name}
+                          </span>
+                        ) : (
+                          <span className="text-xs text-slate-400 font-medium">
+                            Sin asignar
+                          </span>
                         )}
-                        {c.email && (
-                          <div className="flex items-center gap-1.5 text-slate-500">
-                            <Mail className="w-3.5 h-3.5 text-slate-400" /> {c.email}
-                          </div>
+                      </td>
+
+                      {/* Nueva Columna: Cuenta Corriente */}
+                      <td className="px-6 py-4 font-mono">
+                        {c.allowCreditAccount ? (
+                          hasDebt ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 text-rose-700 dark:bg-rose-950/60 dark:text-rose-300 border border-rose-200 dark:border-rose-800 shadow-2xs whitespace-nowrap">
+                              <span>🔴</span>
+                              <span>${currentDebtVal.toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 shadow-2xs whitespace-nowrap">
+                              <span>🟢</span>
+                              <span>$0,00</span>
+                            </span>
+                          )
+                        ) : (
+                          <span className="text-xs text-slate-400 font-medium">—</span>
                         )}
-                        {!c.phone && !c.email && <span className="text-slate-400">-</span>}
-                      </div>
-                    </td>
+                      </td>
 
-                    <td className="px-6 py-4">
-                      {c.defaultPriceList?.name ? (
-                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-amber-50 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300 border border-amber-200 dark:border-amber-800 shadow-sm">
-                          <Tag className="w-3.5 h-3.5 text-amber-500 shrink-0" />
-                          {c.defaultPriceList.name}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-slate-400 font-medium">
-                          Sin asignar
-                        </span>
-                      )}
-                    </td>
+                      <td className="px-6 py-4 font-mono font-bold text-amber-600 dark:text-amber-400">
+                        {c.pointsBalance ?? 0}
+                      </td>
 
-                    <td className="px-6 py-4 font-mono font-bold text-amber-600 dark:text-amber-400">
-                      {c.pointsBalance ?? 0}
-                    </td>
 
                     <td className="px-6 py-4 text-center">
                       <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-semibold ${c.active ? 'bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300' : 'bg-slate-100 text-slate-500'}`}>
@@ -299,8 +336,9 @@ export const Customers: React.FC = () => {
                       </div>
                     </td>
                   </tr>
-                ))}
-              </tbody>
+                );
+              })}
+            </tbody>
             </table>
           </div>
         )}
@@ -339,7 +377,10 @@ export const Customers: React.FC = () => {
 
       <CustomerDetailModal
         isOpen={isDetailOpen}
-        onClose={() => setIsDetailOpen(false)}
+        onClose={() => {
+          setIsDetailOpen(false);
+          loadCustomers(meta.page);
+        }}
         customerId={selectedCustomerId}
       />
     </div>
